@@ -1,0 +1,2 @@
+-- Idempotent seed data goes here. Empty until a feature needs seeded rows
+-- (e.g. a loginable test user for preview branches).
