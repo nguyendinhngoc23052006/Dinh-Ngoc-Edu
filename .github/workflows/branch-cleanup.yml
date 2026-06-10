@@ -1,0 +1,43 @@
+name: Branch cleanup
+
+on:
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete branches with no commits for 7+ days and no open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cutoff="$(date -u -d '7 days ago' +%s)"
+
+          open_pr_heads="$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" -q '.[].head.ref' | sort -u)"
+
+          gh api --paginate "repos/$REPO/branches?per_page=100" -q '.[] | select(.protected | not) | .name' |
+          while IFS= read -r branch; do
+            # Hard exclusion: never touch main, regardless of any other rule.
+            if [ "$branch" = "main" ]; then
+              echo "keep $branch: hard-excluded by name"
+              continue
+            fi
+            last="$(gh api "repos/$REPO/branches/$branch" -q '.commit.commit.committer.date')"
+            if [ "$(date -u -d "$last" +%s)" -ge "$cutoff" ]; then
+              echo "keep $branch: last commit $last is within 7 days"
+              continue
+            fi
+            if printf '%s\n' "$open_pr_heads" | grep -qxF "$branch"; then
+              echo "keep $branch: head of an open PR"
+              continue
+            fi
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$branch"
+            echo "deleted $branch (last commit $last)"
+          done
