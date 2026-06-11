@@ -1,0 +1,100 @@
+import { supabase } from '../lib/supabaseClient'
+import { requireUserId } from './authService'
+import type { Course, Visibility } from '../types/database'
+
+export const PAGE_SIZE = 20
+
+const OUTPUT_LANGUAGES = [
+  'English',
+  'Spanish',
+  'French',
+  'German',
+  'Vietnamese',
+  'Chinese',
+  'Japanese',
+] as const
+
+export type OutputLanguage = (typeof OUTPUT_LANGUAGES)[number]
+
+export function listOutputLanguages(): readonly string[] {
+  return OUTPUT_LANGUAGES
+}
+
+// Returns a human-readable problem, or null when the input is usable.
+export function validateNewCourse(
+  title: string,
+  outputLanguage: string,
+): string | null {
+  if (title.trim().length === 0) return 'Give the course a title.'
+  if (title.trim().length > 120) return 'Title must be 120 characters or fewer.'
+  if (!OUTPUT_LANGUAGES.includes(outputLanguage as OutputLanguage)) {
+    return 'Choose an output language from the list.'
+  }
+  return null
+}
+
+// Creates the course shell in 'processing' status. The AI pipeline that scans
+// the materials and fills in chapters/nodes/questions is a later feature.
+export async function createCourse(
+  title: string,
+  outputLanguage: string,
+): Promise<Course> {
+  const problem = validateNewCourse(title, outputLanguage)
+  if (problem) throw new Error(problem)
+  const ownerId = await requireUserId()
+  const { data, error } = await supabase
+    .from('courses')
+    .insert({
+      owner_id: ownerId,
+      title: title.trim(),
+      output_language: outputLanguage,
+    })
+    .select()
+    .single()
+  if (error) throw new Error(error.message)
+  return data as Course
+}
+
+export async function getCourse(courseId: string): Promise<Course | null> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select()
+    .eq('id', courseId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data as Course | null
+}
+
+export async function listMyCourses(page = 0): Promise<Course[]> {
+  const ownerId = await requireUserId()
+  const { data, error } = await supabase
+    .from('courses')
+    .select()
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false })
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Course[]
+}
+
+export async function listPublicCourses(page = 0): Promise<Course[]> {
+  const { data, error } = await supabase
+    .from('courses')
+    .select()
+    .eq('visibility', 'public')
+    .order('created_at', { ascending: false })
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Course[]
+}
+
+export async function setCourseVisibility(
+  courseId: string,
+  visibility: Visibility,
+): Promise<void> {
+  const { error } = await supabase
+    .from('courses')
+    .update({ visibility })
+    .eq('id', courseId)
+  if (error) throw new Error(error.message)
+}

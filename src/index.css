@@ -1,0 +1,171 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #1f2937;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: #16a34a;
+}
+
+.app-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.app-main {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.75rem 0;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+
+.form label {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.form input,
+.form select {
+  display: block;
+  width: 100%;
+  padding: 0.4rem;
+  margin-top: 0.25rem;
+  box-sizing: border-box;
+}
+
+.state {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+.state-loading {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.state-empty {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.state-error {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.state-correct {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.course-meta {
+  color: #64748b;
+}
+
+.course-map {
+  list-style: none;
+  padding: 0;
+}
+
+.chapter {
+  margin-bottom: 1.5rem;
+}
+
+.node-path {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.node {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  text-decoration: none;
+  color: #1f2937;
+}
+
+.node-done {
+  background: #bbf7d0;
+}
+
+.options,
+.chapter-picker {
+  list-style: none;
+  padding: 0;
+}
+
+.cta {
+  display: inline-block;
+  background: #16a34a;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+}
+
+.visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.pager {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.landing-steps li {
+  margin-bottom: 0.25rem;
+}
