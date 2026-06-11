@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import type { Course } from '../../types/database'
+import type { CourseProgress } from '../../services/progressService'
 
 interface CourseCardProps {
   course: Course
+  progress?: CourseProgress
   action?: ReactNode
 }
 
-function CourseCard({ course, action }: CourseCardProps) {
+function CourseCard({ course, progress, action }: CourseCardProps) {
   return (
     <article className="card course-card">
       <h3>
@@ -16,6 +18,12 @@ function CourseCard({ course, action }: CourseCardProps) {
       <p className="course-meta">
         {course.output_language} · {course.status} · {course.visibility}
       </p>
+      {progress && progress.total > 0 ? (
+        <p className="course-progress">
+          <progress value={progress.completed} max={progress.total} />{' '}
+          {progress.completed} / {progress.total} lessons
+        </p>
+      ) : null}
       {action}
     </article>
   )

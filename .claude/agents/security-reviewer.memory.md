@@ -9,3 +9,6 @@ commits entries from the agent's "Memory candidates" report section.
 - An RLS `with check` of only `owner_id = auth.uid()` on a child table lets users attach rows to other people's parent rows — require an `owns_course`-style parent check, especially when a service-role pipeline will later read by parent id.
 - FK constraints run with owner privileges, so insert policies alone don't stop referencing unreadable rows — low risk with uuids, but glance per table.
 - uuid[] columns (like mock_tests.chapter_ids) bypass FK enforcement entirely — flag array-of-ids columns for server-side membership validation and a length cap.
+- `revoke execute ... from anon` on a function is a no-op (EXECUTE defaults to PUBLIC) — require revoke-from-PUBLIC + grant-to-authenticated, or an explicit `auth.uid()` check inside (caught in clone_course, PR #12).
+- Background-pipeline Edge Functions need an atomic status claim (conditional UPDATE, check affected rows); an "already done" early-return doesn't stop spammed/concurrent runs (caught in generate-course, PR #12).
+- Error columns written from raw provider responses inherit the row's select policy — check who can read diagnostics on shareable rows (generation_error was anon-visible, PR #12).

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { supabaseMock, sessionResult } from '../test/supabaseMock'
-import { createCourse, validateNewCourse } from './courseService'
+import {
+  createCourse,
+  deleteCourse,
+  renameCourse,
+  validateNewCourse,
+} from './courseService'
 
 vi.mock('../lib/supabaseClient', async () => {
   const { supabaseMock } = await import('../test/supabaseMock')
@@ -57,5 +62,28 @@ describe('createCourse', () => {
     await expect(createCourse('Biology', 'English')).rejects.toThrow(
       /row level security/,
     )
+  })
+})
+
+describe('renameCourse', () => {
+  test('rejects an unusable title before touching the database', async () => {
+    await expect(renameCourse('c1', '   ')).rejects.toThrow(/title/i)
+    expect(supabaseMock.calls).toHaveLength(0)
+  })
+
+  test('updates with the trimmed title', async () => {
+    supabaseMock.reset([{ data: null, error: null }])
+    await renameCourse('c1', '  New name ')
+    const update = supabaseMock.calls.find((c) => c.path.endsWith('update'))
+    expect(update?.args[0]).toEqual({ title: 'New name' })
+  })
+})
+
+describe('deleteCourse', () => {
+  test('surfaces database errors', async () => {
+    supabaseMock.reset([
+      { data: null, error: { message: 'permission denied' } },
+    ])
+    await expect(deleteCourse('c1')).rejects.toThrow(/permission denied/)
   })
 })

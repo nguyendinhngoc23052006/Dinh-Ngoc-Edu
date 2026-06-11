@@ -169,3 +169,51 @@ body {
 .landing-steps li {
   margin-bottom: 0.25rem;
 }
+
+.lesson-bar,
+.course-progress progress {
+  width: 100%;
+  accent-color: #16a34a;
+}
+
+.course-progress {
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.course-settings {
+  margin: 0.75rem 0;
+}
+
+.settings-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.settings-row input {
+  flex: 1;
+  padding: 0.4rem;
+}
+
+.danger {
+  color: #b91c1c;
+}
+
+.chapter-breakdown li {
+  margin-bottom: 0.25rem;
+}
+
+.visitor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mock-test-list {
+  list-style: none;
+  padding: 0;
+}
+
+.mock-test-list li {
+  margin-bottom: 0.25rem;
+}

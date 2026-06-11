@@ -7,12 +7,23 @@ import FillBlankQuestion from '../lessons/FillBlankQuestion'
 
 interface MockTestRunnerProps {
   questions: Question[]
+  chapterTitleByNodeId: Map<string, string>
 }
 
-// Exam mode: no per-question feedback, just a score at the end.
-function MockTestRunner({ questions }: MockTestRunnerProps) {
+interface ChapterScore {
+  title: string
+  correct: number
+  total: number
+}
+
+// Exam mode: no per-question feedback; at the end, the overall score plus a
+// per-chapter breakdown that highlights weak spots.
+function MockTestRunner({
+  questions,
+  chapterTitleByNodeId,
+}: MockTestRunnerProps) {
   const [index, setIndex] = useState(0)
-  const [score, setScore] = useState(0)
+  const [correctByIndex, setCorrectByIndex] = useState<boolean[]>([])
 
   if (questions.length === 0) {
     return (
@@ -24,24 +35,49 @@ function MockTestRunner({ questions }: MockTestRunnerProps) {
 
   const question = questions[index]
   if (!question) {
+    const score = correctByIndex.filter(Boolean).length
+    const byChapter = new Map<string, ChapterScore>()
+    questions.forEach((q, i) => {
+      const title = chapterTitleByNodeId.get(q.node_id) ?? 'Other'
+      const entry = byChapter.get(title) ?? { title, correct: 0, total: 0 }
+      entry.total += 1
+      if (correctByIndex[i]) entry.correct += 1
+      byChapter.set(title, entry)
+    })
     return (
       <div className="card">
         <h3>Test finished</h3>
         <p>
           Score: {score} / {questions.length}
         </p>
+        <h4>By chapter</h4>
+        <ul className="chapter-breakdown">
+          {[...byChapter.values()].map((entry) => (
+            <li key={entry.title}>
+              {entry.title}: {entry.correct} / {entry.total}
+              {entry.correct < entry.total ? ' — review this chapter' : ''}
+            </li>
+          ))}
+        </ul>
       </div>
     )
   }
 
   function handleSubmit(response: QuestionResponse) {
     if (!question) return
-    if (gradeQuestion(question, response)) setScore((s) => s + 1)
+    const correct = gradeQuestion(question, response)
+    setCorrectByIndex((current) => [...current, correct])
     setIndex((i) => i + 1)
   }
 
   return (
     <div className="card">
+      <progress
+        className="lesson-bar"
+        value={index}
+        max={questions.length}
+        aria-label="Test progress"
+      />
       <p className="lesson-progress">
         Question {index + 1} of {questions.length}
       </p>

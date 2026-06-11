@@ -18,11 +18,12 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          {/* Public: a shared course link works logged-out (read-only path). */}
+          <Route path="/courses/:courseId" element={<CoursePage />} />
           <Route element={<RequireAuth />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/explore" element={<ExplorePage />} />
             <Route path="/courses/new" element={<NewCoursePage />} />
-            <Route path="/courses/:courseId" element={<CoursePage />} />
             <Route
               path="/courses/:courseId/nodes/:nodeId"
               element={<LessonPage />}

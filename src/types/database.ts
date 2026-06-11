@@ -3,7 +3,7 @@
 
 export type Visibility = 'private' | 'public'
 
-export type CourseStatus = 'processing' | 'ready' | 'failed'
+export type CourseStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi'
 
@@ -14,6 +14,8 @@ export interface Course {
   output_language: string
   visibility: Visibility
   status: CourseStatus
+  generation_error: string | null
+  generation_started_at: string | null
   created_at: string
 }
 
@@ -76,6 +78,7 @@ export interface MockTest {
   owner_id: string
   title: string
   chapter_ids: string[]
+  question_count: number
   created_at: string
 }
 

@@ -15,6 +15,18 @@ export async function saveCourse(courseId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// Deep-copies a viewable course (chapters, nodes, questions, fresh ids) into
+// the caller's account via the clone_course database function, so the copy
+// stays usable even if the original is deleted or made private again.
+export async function cloneCourse(courseId: string): Promise<string> {
+  await requireUserId()
+  const { data, error } = await supabase.rpc('clone_course', {
+    source_course: courseId,
+  })
+  if (error) throw new Error(error.message)
+  return data as string
+}
+
 export async function unsaveCourse(courseId: string): Promise<void> {
   const userId = await requireUserId()
   const { error } = await supabase
