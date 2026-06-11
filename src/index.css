@@ -202,38 +202,6 @@ button:disabled {
   margin: 2.5rem auto;
 }
 
-.google-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  width: 100%;
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-}
-
-.google-button:hover {
-  filter: none;
-  background: #f8fafc;
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  flex: 1;
-  border-top: 1px solid var(--line);
-}
-
 /* ---- Course map (Duolingo-style path) ---- */
 
 .course-map {

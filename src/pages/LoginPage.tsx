@@ -9,10 +9,7 @@ function LoginPage() {
 
   return (
     <section>
-      <LoginForm
-        onSuccess={() => navigate(from, { replace: true })}
-        returnTo={from}
-      />
+      <LoginForm onSuccess={() => navigate(from, { replace: true })} />
     </section>
   )
 }

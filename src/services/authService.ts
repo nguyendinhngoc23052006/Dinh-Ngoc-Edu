@@ -33,24 +33,17 @@ export async function signUp(
     // URL (the localhost default on a fresh project) — a blank page.
     options: { emailRedirectTo: `${window.location.origin}/dashboard` },
   })
-  if (error) throw new Error(error.message)
+  if (error) {
+    // Supabase's built-in mailer allows only a few emails per hour for the
+    // WHOLE project; its raw error reads like the user did something wrong.
+    if (error.code === 'over_email_send_rate_limit') {
+      throw new Error(
+        'Too many signup emails were sent in the last hour (a shared limit, not yours). Please try again in about an hour.',
+      )
+    }
+    throw new Error(error.message)
+  }
   return data.session === null
-}
-
-// Google OAuth: no confirmation email, so it dodges the project-wide email
-// rate limit entirely. The browser leaves the app and comes back to returnTo.
-export async function signInWithGoogle(returnTo = '/dashboard'): Promise<void> {
-  // Only a same-origin path may ride the redirect: anything not starting
-  // with a single '/' could rewrite the host (open-redirect phishing).
-  const path =
-    returnTo.startsWith('/') && !returnTo.startsWith('//')
-      ? returnTo
-      : '/dashboard'
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${window.location.origin}${path}` },
-  })
-  if (error) throw new Error(error.message)
 }
 
 export async function signIn(email: string, password: string): Promise<void> {

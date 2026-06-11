@@ -44,7 +44,7 @@ completions endpoint configured by Edge Function secrets: `AI_API_KEY`
 | Route | Page | Access |
 | --- | --- | --- |
 | `/` | `LandingPage` — upload form works for guests; submission is stashed in memory (`lib/pendingCourse`) across the login bounce | public |
-| `/login` | `LoginPage` — Google OAuth + email sign-in / sign-up | public |
+| `/login` | `LoginPage` — email sign-in / sign-up; confirmation links return to the app via `emailRedirectTo` | public |
 | `/dashboard` | `DashboardPage` — own + saved courses with per-course progress bars | logged in |
 | `/explore` | `ExplorePage` — public courses, save action | logged in |
 | `/courses/new` | `NewCoursePage` — one-time upload + language, kicks off generation | logged in |
