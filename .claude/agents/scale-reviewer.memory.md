@@ -12,3 +12,6 @@ commits entries from the agent's "Memory candidates" report section.
 - An early-return on the finished status guards re-runs but not concurrent runs — idempotent job kickoff must atomically claim the in-flight status (caught in generate-course, PR #12).
 - Background-job + client-poll designs need a staleness escape: a crashed worker leaves 'processing' forever and the client polls forever — store started_at and expire it (PR #12).
 - `.limit(n)` without `.order()` on a sampling query silently biases the sample once rows exceed n; safe in PR #12 only because generation caps total questions below the pool size.
+- Two constants capping the same data at different layers (chunkText maxChars=6000 vs prompt slice 8000) are a drift hazard — flag caps that don't share a constant.
+- "Truncate after accumulating" is an unbounded-memory pattern: a loop concatenating everything before a final `.slice(MAX)` must short-circuit at MAX inside the loop (caught in extractMaterialsText).
+- A wipe-before-rebuild retry is only as idempotent as its delete — an unchecked delete error turns retries into unique-constraint failures with misleading messages.

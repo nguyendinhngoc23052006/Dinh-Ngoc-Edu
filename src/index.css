@@ -1,39 +1,107 @@
 :root {
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-  color: #1f2937;
+  --green: #16a34a;
+  --green-dark: #15803d;
+  --green-soft: #dcfce7;
+  --ink: #1f2937;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --bg: #f6f8fb;
+  --red: #b91c1c;
+  --red-soft: #fee2e2;
+  --radius: 0.75rem;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  line-height: 1.55;
+  color: var(--ink);
 }
 
 body {
   margin: 0;
-  background: #f8fafc;
+  background: var(--bg);
+}
+
+h1 {
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+button,
+.cta {
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.55rem 1.1rem;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--green-dark);
+  transition:
+    transform 0.06s ease,
+    filter 0.12s ease;
+}
+
+button:hover,
+.cta:hover {
+  filter: brightness(1.06);
+}
+
+button:active,
+.cta:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+button:disabled {
+  background: #cbd5e1;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1.5rem;
   background: #fff;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--line);
 }
 
 .brand {
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 1.15rem;
   text-decoration: none;
-  color: #16a34a;
+  color: var(--green);
 }
 
 .app-nav {
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   align-items: center;
+}
+
+.app-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.app-nav a.active,
+.app-nav a:hover {
+  color: var(--green-dark);
 }
 
 .app-main {
   max-width: 56rem;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 4rem;
 }
 
 .page-header {
@@ -45,10 +113,11 @@ body {
 
 .card {
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
   margin: 0.75rem 0;
+  box-shadow: var(--shadow);
 }
 
 .card-grid {
@@ -60,75 +129,200 @@ body {
 .form label {
   display: block;
   margin-bottom: 0.75rem;
+  font-weight: 600;
 }
 
 .form input,
 .form select {
   display: block;
   width: 100%;
-  padding: 0.4rem;
-  margin-top: 0.25rem;
+  padding: 0.55rem 0.65rem;
+  margin-top: 0.3rem;
   box-sizing: border-box;
+  font: inherit;
+  font-weight: 400;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.form input:focus,
+.form select:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+  border-color: var(--green);
 }
 
 .state {
-  padding: 0.75rem;
-  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
 }
 
-.state-loading {
-  color: #475569;
-  background: #f1f5f9;
-}
-
+.state-loading,
 .state-empty {
   color: #475569;
-  background: #f1f5f9;
+  background: #eef2f7;
 }
 
 .state-error {
-  color: #b91c1c;
-  background: #fee2e2;
+  color: var(--red);
+  background: var(--red-soft);
 }
 
 .state-correct {
-  color: #15803d;
+  color: var(--green-dark);
   font-weight: 600;
 }
 
 .course-meta {
-  color: #64748b;
+  color: var(--muted);
 }
 
+/* ---- Landing ---- */
+
+.landing h1 {
+  font-size: 2.3rem;
+  margin-bottom: 0.25rem;
+}
+
+.landing > p:first-of-type {
+  font-size: 1.1rem;
+  color: var(--muted);
+  max-width: 40rem;
+}
+
+.landing-steps li {
+  margin-bottom: 0.35rem;
+}
+
+/* ---- Auth ---- */
+
+.auth-card {
+  max-width: 24rem;
+  margin: 2.5rem auto;
+}
+
+/* ---- Course map (Duolingo-style path) ---- */
+
 .course-map {
-  list-style: none;
-  padding: 0;
+  margin-top: 1.5rem;
 }
 
 .chapter {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.chapter-banner {
+  background: var(--green);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 0.9rem 1.25rem;
+  box-shadow: 0 3px 0 var(--green-dark);
+}
+
+.chapter-banner h3 {
+  margin: 0;
+}
+
+.chapter-banner p {
+  margin: 0.25rem 0 0;
+  opacity: 0.9;
+  font-size: 0.95rem;
 }
 
 .node-path {
   list-style: none;
-  padding: 0;
+  padding: 1.25rem 0 0;
+  margin: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.node-step {
+  position: relative;
+  padding-bottom: 1.6rem;
+}
+
+/* The connector between nodes. */
+.node-step + .node-step::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1.6rem;
+  height: 1.6rem;
+  border-left: 4px dotted #cbd5e1;
+}
+
+/* The path winds left and right like a trail. */
+.node-step-1 {
+  transform: translateX(3.5rem);
+}
+
+.node-step-3 {
+  transform: translateX(-3.5rem);
 }
 
 .node {
-  display: inline-block;
-  padding: 0.5rem 0.9rem;
-  border-radius: 999px;
-  background: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
   text-decoration: none;
-  color: #1f2937;
+  color: var(--ink);
+  max-width: 11rem;
+  text-align: center;
 }
 
-.node-done {
-  background: #bbf7d0;
+.node-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 50%;
+  font-size: 1.4rem;
+  background: #d6dde7;
+  color: #fff;
+  box-shadow: 0 4px 0 #b6c0cf;
+  transition: transform 0.06s ease;
 }
+
+.node:hover .node-circle {
+  transform: translateY(1px);
+}
+
+.node-done .node-circle {
+  background: var(--green);
+  box-shadow: 0 4px 0 var(--green-dark);
+}
+
+.node-next .node-circle {
+  background: #f59e0b;
+  box-shadow: 0 4px 0 #b45309;
+}
+
+.node-start {
+  position: absolute;
+  top: -0.5rem;
+  background: #fff;
+  color: var(--green-dark);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.1rem 0.5rem;
+  letter-spacing: 0.05em;
+}
+
+.node-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---- Lesson player ---- */
 
 .options,
 .chapter-picker {
@@ -136,21 +330,100 @@ body {
   padding: 0;
 }
 
+.options li {
+  margin-bottom: 0.5rem;
+}
+
+.lesson-bar,
+.course-progress progress {
+  width: 100%;
+  accent-color: var(--green);
+}
+
+.lesson-progress {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.question-prompt {
+  font-weight: 600;
+}
+
+/* Duolingo-style result sheet: slides over the bottom of the screen. */
+.feedback-popup {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 1.25rem 1.5rem 1.75rem;
+  border-top-left-radius: 1.25rem;
+  border-top-right-radius: 1.25rem;
+  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.15);
+  animation: feedback-rise 0.18s ease-out;
+}
+
+@keyframes feedback-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.feedback-popup p {
+  max-width: 53rem;
+  margin: 0 auto 0.5rem;
+}
+
+.feedback-popup button {
+  display: block;
+  max-width: 53rem;
+  margin: 0.75rem auto 0;
+  width: 100%;
+}
+
+.feedback-popup-correct {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.feedback-popup-wrong {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.feedback-popup-wrong button {
+  background: var(--red);
+  box-shadow: 0 2px 0 #7f1d1d;
+}
+
+.feedback-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+/* ---- Misc ---- */
+
 .cta {
   display: inline-block;
-  background: #16a34a;
-  color: #fff;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
   text-decoration: none;
 }
 
 .link-button {
   background: none;
   border: none;
+  box-shadow: none;
   color: #2563eb;
   cursor: pointer;
   padding: 0;
+  font-weight: 600;
+}
+
+.link-button:hover {
+  filter: none;
+  text-decoration: underline;
 }
 
 .visibility-toggle {
@@ -164,16 +437,6 @@ body {
   display: flex;
   gap: 0.5rem;
   margin-top: 1rem;
-}
-
-.landing-steps li {
-  margin-bottom: 0.25rem;
-}
-
-.lesson-bar,
-.course-progress progress {
-  width: 100%;
-  accent-color: #16a34a;
 }
 
 .course-progress {
@@ -197,11 +460,25 @@ body {
 }
 
 .danger {
-  color: #b91c1c;
+  color: var(--red);
 }
 
 .chapter-breakdown li {
   margin-bottom: 0.25rem;
+}
+
+.mistake-list {
+  list-style: none;
+  padding: 0;
+}
+
+.mistake-list li {
+  border-top: 1px solid var(--line);
+  padding: 0.6rem 0;
+}
+
+.mistake-list p {
+  margin: 0.15rem 0;
 }
 
 .visitor-actions {

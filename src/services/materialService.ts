@@ -23,7 +23,25 @@ export function validateMaterialFile(file: {
   return null
 }
 
-// Uploads to <user_id>/<course_id>/<file_name> in the private
+// Supabase Storage rejects object keys with most non-ASCII characters
+// ("Invalid key"), so accented file names (e.g. Vietnamese) failed to upload.
+// The key gets an ASCII-safe name; the original stays in file_name. A short
+// hash of the original name keeps two files that sanitize alike from
+// colliding, while staying deterministic so re-uploads remain idempotent.
+export function toStorageName(fileName: string): string {
+  let hash = 5381
+  for (let i = 0; i < fileName.length; i += 1) {
+    hash = ((hash << 5) + hash + fileName.charCodeAt(i)) >>> 0
+  }
+  const ascii =
+    fileName
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '_') || 'file'
+  return `${hash.toString(36)}_${ascii}`
+}
+
+// Uploads to <user_id>/<course_id>/<storage_name> in the private
 // 'course-materials' bucket (the storage policies scope on that first
 // segment), then records the metadata row.
 export async function uploadMaterial(
@@ -33,7 +51,7 @@ export async function uploadMaterial(
   const problem = validateMaterialFile(file)
   if (problem) throw new Error(problem)
   const ownerId = await requireUserId()
-  const storagePath = `${ownerId}/${courseId}/${file.name}`
+  const storagePath = `${ownerId}/${courseId}/${toStorageName(file.name)}`
 
   const { error: uploadError } = await supabase.storage
     .from('course-materials')

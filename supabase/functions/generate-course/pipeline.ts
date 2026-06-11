@@ -125,57 +125,72 @@ export function validateSyllabus(
   return chapters
 }
 
-// Format enforcement for step 2: drop anything that does not match the
-// database contract exactly (kind, options, answer key shape).
-export function validateQuestions(value: unknown): GeneratedQuestion[] {
+// Format enforcement for step 2: one AI answer covers a whole chapter
+// (node_index routes each question to its lesson); anything that does not
+// match the database contract exactly (kind, options, answer key shape) is
+// dropped, never failing the chapter.
+export function validateChapterQuestions(
+  value: unknown,
+  nodeCount: number,
+): GeneratedQuestion[][] {
   const root =
     value && typeof value === 'object' && 'questions' in value
       ? (value as { questions: unknown }).questions
       : value
-  if (!Array.isArray(root)) return []
-  const questions: GeneratedQuestion[] = []
-  for (const entry of root.slice(0, MAX_QUESTIONS_PER_NODE)) {
+  const buckets: GeneratedQuestion[][] = Array.from(
+    { length: nodeCount },
+    () => [],
+  )
+  if (!Array.isArray(root)) return buckets
+  for (const entry of root) {
     if (!entry || typeof entry !== 'object') continue
-    const raw = entry as Record<string, unknown>
-    const prompt = typeof raw.prompt === 'string' ? raw.prompt.trim() : ''
-    if (!prompt) continue
-    if (raw.kind === 'fill_blank') {
-      const accepted = (Array.isArray(raw.accepted) ? raw.accepted : [])
-        .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
-        .map((a) => a.trim())
-        .slice(0, 10)
-      if (accepted.length === 0) continue
-      questions.push({
-        kind: 'fill_blank',
-        prompt,
-        options: [],
-        answer: { accepted },
-      })
-      continue
-    }
-    if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') continue
-    const options = (Array.isArray(raw.options) ? raw.options : [])
-      .filter((o): o is string => typeof o === 'string' && o.trim() !== '')
-      .map((o) => o.trim())
-      .slice(0, MAX_OPTIONS)
-    if (options.length < 2) continue
-    const correct = [
-      ...new Set(
-        (Array.isArray(raw.correct_indexes) ? raw.correct_indexes : [])
-          .filter((i): i is number => typeof i === 'number')
-          .map((i) => Math.floor(i)),
-      ),
-    ].filter((i) => i >= 0 && i < options.length)
-    if (raw.kind === 'mcq' && correct.length !== 1) continue
-    if (raw.kind === 'mcq_multi' && correct.length === 0) continue
-    questions.push({
-      kind: raw.kind,
-      prompt,
-      options,
-      answer: { correct_indexes: correct.sort((a, b) => a - b) },
-    })
+    const rawIndex = (entry as Record<string, unknown>).node_index
+    const nodeIndex = typeof rawIndex === 'number' ? Math.floor(rawIndex) : -1
+    const bucket = buckets[nodeIndex]
+    if (!bucket || bucket.length >= MAX_QUESTIONS_PER_NODE) continue
+    const question = validateQuestion(entry)
+    if (question) bucket.push(question)
   }
-  return questions
+  return buckets
+}
+
+function validateQuestion(entry: unknown): GeneratedQuestion | null {
+  if (!entry || typeof entry !== 'object') return null
+  const raw = entry as Record<string, unknown>
+  // Length caps: AI output is untrusted input — nothing unbounded reaches
+  // the database.
+  const prompt =
+    typeof raw.prompt === 'string' ? raw.prompt.trim().slice(0, 1000) : ''
+  if (!prompt) return null
+  if (raw.kind === 'fill_blank') {
+    const accepted = (Array.isArray(raw.accepted) ? raw.accepted : [])
+      .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
+      .map((a) => a.trim().slice(0, 300))
+      .slice(0, 10)
+    if (accepted.length === 0) return null
+    return { kind: 'fill_blank', prompt, options: [], answer: { accepted } }
+  }
+  if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
+  const options = (Array.isArray(raw.options) ? raw.options : [])
+    .filter((o): o is string => typeof o === 'string' && o.trim() !== '')
+    .map((o) => o.trim().slice(0, 300))
+    .slice(0, MAX_OPTIONS)
+  if (options.length < 2) return null
+  const correct = [
+    ...new Set(
+      (Array.isArray(raw.correct_indexes) ? raw.correct_indexes : [])
+        .filter((i): i is number => typeof i === 'number')
+        .map((i) => Math.floor(i)),
+    ),
+  ].filter((i) => i >= 0 && i < options.length)
+  if (raw.kind === 'mcq' && correct.length !== 1) return null
+  if (raw.kind === 'mcq_multi' && correct.length === 0) return null
+  return {
+    kind: raw.kind,
+    prompt,
+    options,
+    answer: { correct_indexes: correct.sort((a, b) => a - b) },
+  }
 }
 
 function normalize(text: string): string {
@@ -238,21 +253,35 @@ export function buildSyllabusPrompt(
   ].join('\n')
 }
 
-export function buildQuestionsPrompt(
-  chapterTitle: string,
-  nodeTitle: string,
-  chunk: string,
+// One prompt covers a whole chapter — one AI call per chapter instead of one
+// per node keeps a full course within free-tier request limits.
+export function buildChapterQuestionsPrompt(
+  chapter: SyllabusChapter,
+  chunks: string[],
   outputLanguage: string,
 ): string {
+  const lessonList = chapter.nodes
+    .map(
+      (node, index) =>
+        `${index}: "${node.title}" (source chunk ${node.chunk_index})`,
+    )
+    .join('\n')
+  const usedIndexes = [...new Set(chapter.nodes.map((n) => n.chunk_index))]
+  const sources = usedIndexes
+    .map(
+      (i) => `[Chunk ${i}]\n${(chunks[i] ?? chunks[0] ?? '').slice(0, 8000)}`,
+    )
+    .join('\n\n')
   return [
-    `Write exactly ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for the lesson "${nodeTitle}" (chapter "${chapterTitle}").`,
-    `Base every question and answer ONLY on the source text below — never invent facts.`,
+    `Write quiz questions in ${outputLanguage} for the chapter "${chapter.title}" of a study course.`,
+    `The chapter has these lessons (node_index: title, with its source chunk):`,
+    lessonList,
+    `Write exactly ${QUESTIONS_PER_NODE} questions per lesson. Base every question and answer ONLY on that lesson's source chunk below — never invent facts.`,
     `Mix the kinds: "mcq" (one correct option), "mcq_multi" (several correct options), "fill_blank" (the student types a missing word or phrase).`,
     `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give the accepted answers (short, copied from the source) and no options.`,
-    `Respond with ONLY this JSON:`,
-    `{"questions":[{"kind":"mcq","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"kind":"fill_blank","prompt":"... ____ ...","accepted":["..."]}]}`,
+    `Respond with ONLY this JSON (node_index says which lesson the question belongs to):`,
+    `{"questions":[{"node_index":0,"kind":"mcq","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","prompt":"... ____ ...","accepted":["..."]}]}`,
     '',
-    `Source text:`,
-    chunk.slice(0, 8000),
+    sources,
   ].join('\n')
 }

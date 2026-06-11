@@ -7,7 +7,9 @@ interface CourseMapProps {
   completedNodeIds: Set<string>
 }
 
-// The Duolingo-style path: chapters in order, each with its lesson nodes.
+// The Duolingo-style path: chapter banners, then each lesson as a circular
+// node on a winding vertical trail. Done nodes get a check; the first
+// not-yet-done node is highlighted as the place to continue.
 function CourseMap({ courseId, chapters, completedNodeIds }: CourseMapProps) {
   if (chapters.length === 0) {
     return (
@@ -16,35 +18,56 @@ function CourseMap({ courseId, chapters, completedNodeIds }: CourseMapProps) {
       </p>
     )
   }
+  const nextNodeId = chapters
+    .flatMap((chapter) => chapter.nodes)
+    .find((node) => !completedNodeIds.has(node.id))?.id
+
   return (
-    <ol className="course-map">
+    <div className="course-map">
       {chapters.map((chapter) => (
-        <li key={chapter.id} className="chapter">
-          <h3>
-            {chapter.position}. {chapter.title}
-          </h3>
-          {chapter.summary ? <p>{chapter.summary}</p> : null}
+        <section key={chapter.id} className="chapter">
+          <header className="chapter-banner">
+            <h3>
+              Chapter {chapter.position} · {chapter.title}
+            </h3>
+            {chapter.summary ? <p>{chapter.summary}</p> : null}
+          </header>
           {chapter.nodes.length === 0 ? (
             <p className="state state-empty">No lessons in this chapter.</p>
           ) : (
             <ol className="node-path">
-              {chapter.nodes.map((node) => (
-                <li key={node.id}>
-                  <Link
-                    className={
-                      completedNodeIds.has(node.id) ? 'node node-done' : 'node'
-                    }
-                    to={`/courses/${courseId}/nodes/${node.id}`}
+              {chapter.nodes.map((node, index) => {
+                const done = completedNodeIds.has(node.id)
+                const next = node.id === nextNodeId
+                return (
+                  <li
+                    key={node.id}
+                    className={`node-step node-step-${index % 4}`}
                   >
-                    {node.title}
-                  </Link>
-                </li>
-              ))}
+                    <Link
+                      className={
+                        done
+                          ? 'node node-done'
+                          : next
+                            ? 'node node-next'
+                            : 'node'
+                      }
+                      to={`/courses/${courseId}/nodes/${node.id}`}
+                    >
+                      <span className="node-circle" aria-hidden="true">
+                        {done ? '✓' : '★'}
+                      </span>
+                      {next ? <span className="node-start">START</span> : null}
+                      <span className="node-label">{node.title}</span>
+                    </Link>
+                  </li>
+                )
+              })}
             </ol>
           )}
-        </li>
+        </section>
       ))}
-    </ol>
+    </div>
   )
 }
 

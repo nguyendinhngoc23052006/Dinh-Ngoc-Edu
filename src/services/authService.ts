@@ -18,14 +18,32 @@ export function validateCredentials(
   return null
 }
 
-export async function signUp(email: string, password: string): Promise<void> {
+// Returns true when the project requires email confirmation (no session yet),
+// so the form can say "check your inbox" instead of bouncing off RequireAuth.
+export async function signUp(
+  email: string,
+  password: string,
+): Promise<boolean> {
   const problem = validateCredentials(email, password)
   if (problem) throw new Error(problem)
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
+    // Without this, the confirmation link falls back to the project's Site
+    // URL (the localhost default on a fresh project) — a blank page.
+    options: { emailRedirectTo: `${window.location.origin}/dashboard` },
   })
-  if (error) throw new Error(error.message)
+  if (error) {
+    // Supabase's built-in mailer allows only a few emails per hour for the
+    // WHOLE project; its raw error reads like the user did something wrong.
+    if (error.code === 'over_email_send_rate_limit') {
+      throw new Error(
+        'Too many signup emails were sent in the last hour (a shared limit, not yours). Please try again in about an hour.',
+      )
+    }
+    throw new Error(error.message)
+  }
+  return data.session === null
 }
 
 export async function signIn(email: string, password: string): Promise<void> {

@@ -11,17 +11,25 @@ function LoginForm({ onSuccess }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
+    setNotice(null)
     setBusy(true)
     try {
       if (mode === 'sign-in') {
         await signIn(email, password)
       } else {
-        await signUp(email, password)
+        const needsConfirmation = await signUp(email, password)
+        if (needsConfirmation) {
+          setNotice(
+            'Almost there — we sent you a confirmation email. Click the link inside, and you will land here logged in.',
+          )
+          return
+        }
       }
       onSuccess()
     } catch (cause) {
@@ -32,8 +40,8 @@ function LoginForm({ onSuccess }: LoginFormProps) {
   }
 
   return (
-    <form className="card form" onSubmit={handleSubmit}>
-      <h2>{mode === 'sign-in' ? 'Log in' : 'Create account'}</h2>
+    <form className="card form auth-card" onSubmit={handleSubmit}>
+      <h2>{mode === 'sign-in' ? 'Welcome back' : 'Create your account'}</h2>
       <label>
         Email
         <input
@@ -53,13 +61,17 @@ function LoginForm({ onSuccess }: LoginFormProps) {
         />
       </label>
       {error ? <p className="state state-error">{error}</p> : null}
+      {notice ? <p className="state state-empty">{notice}</p> : null}
       <button type="submit" disabled={busy}>
         {busy ? 'Working…' : mode === 'sign-in' ? 'Log in' : 'Sign up'}
       </button>
       <button
         type="button"
         className="link-button"
-        onClick={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
+        onClick={() => {
+          setNotice(null)
+          setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')
+        }}
       >
         {mode === 'sign-in'
           ? 'New here? Create an account'

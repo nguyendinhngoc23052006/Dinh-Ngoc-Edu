@@ -79,3 +79,14 @@ export function gradeQuestion(
     correct.every((value, index) => value === selected[index])
   )
 }
+
+// Human-readable correct answer, shown after a wrong response.
+export function describeCorrectAnswer(question: Question): string {
+  if (question.kind === 'fill_blank') {
+    return question.answer.accepted?.[0] ?? ''
+  }
+  return (question.answer.correct_indexes ?? [])
+    .map((index) => question.options[index])
+    .filter((option): option is string => option !== undefined)
+    .join(', ')
+}

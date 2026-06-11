@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
+  buildChapterQuestionsPrompt,
   chunkText,
   extractXmlText,
   parseJsonLoose,
-  validateQuestions,
+  validateChapterQuestions,
   validateSyllabus,
   verifyQuestion,
 } from './pipeline'
@@ -95,48 +96,72 @@ describe('validateSyllabus', () => {
   })
 })
 
-describe('validateQuestions', () => {
+describe('validateChapterQuestions', () => {
   test('keeps only questions matching the database contract', () => {
-    const questions = validateQuestions({
-      questions: [
-        {
-          kind: 'mcq',
-          prompt: 'Pick one',
-          options: ['a', 'b', 'c'],
-          correct_indexes: [1],
-        },
-        {
-          kind: 'mcq_multi',
-          prompt: 'Pick many',
-          options: ['a', 'b'],
-          correct_indexes: [1, 0, 0],
-        },
-        { kind: 'fill_blank', prompt: 'The ____ rises', accepted: ['sun'] },
-        // All of the below are malformed and must be dropped:
-        {
-          kind: 'mcq',
-          prompt: 'Two correct',
-          options: ['a', 'b'],
-          correct_indexes: [0, 1],
-        },
-        {
-          kind: 'mcq',
-          prompt: 'Index out of range',
-          options: ['a', 'b'],
-          correct_indexes: [5],
-        },
-        {
-          kind: 'mcq',
-          prompt: 'One option',
-          options: ['a'],
-          correct_indexes: [0],
-        },
-        { kind: 'fill_blank', prompt: 'No answers', accepted: [] },
-        { kind: 'essay', prompt: 'Unknown kind' },
-        { kind: 'mcq', prompt: '', options: ['a', 'b'], correct_indexes: [0] },
-      ],
-    })
-    expect(questions).toEqual([
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Pick one',
+            options: ['a', 'b', 'c'],
+            correct_indexes: [1],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq_multi',
+            prompt: 'Pick many',
+            options: ['a', 'b'],
+            correct_indexes: [1, 0, 0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            prompt: 'The ____ rises',
+            accepted: ['sun'],
+          },
+          // All of the below are malformed and must be dropped:
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Two correct',
+            options: ['a', 'b'],
+            correct_indexes: [0, 1],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Index out of range',
+            options: ['a', 'b'],
+            correct_indexes: [5],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'One option',
+            options: ['a'],
+            correct_indexes: [0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            prompt: 'No answers',
+            accepted: [],
+          },
+          { node_index: 0, kind: 'essay', prompt: 'Unknown kind' },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: '',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+        ],
+      },
+      1,
+    )
+    expect(buckets[0]).toEqual([
       {
         kind: 'mcq',
         prompt: 'Pick one',
@@ -158,8 +183,105 @@ describe('validateQuestions', () => {
     ])
   })
 
-  test('returns empty for non-list values instead of failing the course', () => {
-    expect(validateQuestions('garbage')).toEqual([])
+  test('caps persisted string lengths (AI output is untrusted)', () => {
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'p'.repeat(5000),
+            options: ['o'.repeat(5000), 'b'],
+            correct_indexes: [1],
+          },
+        ],
+      },
+      1,
+    )
+    expect(buckets[0][0].prompt).toHaveLength(1000)
+    expect(buckets[0][0].options[0]).toHaveLength(300)
+  })
+
+  test('routes questions to their node by node_index', () => {
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 1,
+            kind: 'mcq',
+            prompt: 'Pick one',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            prompt: 'The ____ rises',
+            accepted: ['sun'],
+          },
+        ],
+      },
+      2,
+    )
+    expect(buckets[0]).toHaveLength(1)
+    expect(buckets[0][0].kind).toBe('fill_blank')
+    expect(buckets[1]).toHaveLength(1)
+    expect(buckets[1][0].kind).toBe('mcq')
+  })
+
+  test('drops out-of-range or missing node_index and malformed entries', () => {
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 9,
+            kind: 'mcq',
+            prompt: 'Out of range',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+          {
+            kind: 'mcq',
+            prompt: 'No node_index',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+          { node_index: 0, kind: 'mcq', prompt: 'No options' },
+        ],
+      },
+      1,
+    )
+    expect(buckets).toEqual([[]])
+  })
+
+  test('returns empty buckets per node for garbage instead of throwing', () => {
+    expect(validateChapterQuestions('garbage', 3)).toEqual([[], [], []])
+  })
+})
+
+describe('buildChapterQuestionsPrompt', () => {
+  const chapter = {
+    title: 'Cells',
+    summary: 'Cell basics.',
+    nodes: [
+      { title: 'Organelles', chunk_index: 0 },
+      { title: 'Membranes', chunk_index: 0 },
+      { title: 'Energy', chunk_index: 1 },
+    ],
+  }
+
+  test('lists every lesson with its node_index and includes each chunk once', () => {
+    const prompt = buildChapterQuestionsPrompt(
+      chapter,
+      ['chunk zero text', 'chunk one text'],
+      'English',
+    )
+    expect(prompt).toContain('0: "Organelles"')
+    expect(prompt).toContain('2: "Energy"')
+    expect(prompt).toContain('node_index')
+    // Two nodes share chunk 0; it must appear only once.
+    expect(prompt.match(/chunk zero text/g)).toHaveLength(1)
+    expect(prompt).toContain('chunk one text')
   })
 })
 

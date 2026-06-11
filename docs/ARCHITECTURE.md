@@ -22,11 +22,13 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
    (`pipeline.ts`, pure and unit-tested).
 3. **Syllabus** — one AI call returns a strict-JSON chapter/node outline;
    each node names the chunk it came from.
-4. **Questions** — one AI call per node writes mcq/mcq_multi/fill_blank
-   questions from that node's chunk, in the course's output language.
+4. **Questions** — one AI call **per chapter** (not per node — a full course
+   stays within free-tier request limits) writes mcq/mcq_multi/fill_blank
+   questions for every lesson in that chapter, each tagged with its
+   `node_index`, in the course's output language.
 5. **Enforce + verify** — malformed questions are dropped
-   (`validateQuestions`), and a question is marked `verified` only when its
-   correct answer literally appears in the source chunk.
+   (`validateChapterQuestions`), and a question is marked `verified` only
+   when its correct answer literally appears in the source chunk.
 6. **Finish** — status flips to `ready`, or `failed` with the reason in
    `courses.generation_error` (owner sees it + a Retry button).
 
@@ -42,7 +44,7 @@ completions endpoint configured by Edge Function secrets: `AI_API_KEY`
 | Route | Page | Access |
 | --- | --- | --- |
 | `/` | `LandingPage` — upload form works for guests; submission is stashed in memory (`lib/pendingCourse`) across the login bounce | public |
-| `/login` | `LoginPage` — email sign-in / sign-up | public |
+| `/login` | `LoginPage` — email sign-in / sign-up; confirmation links return to the app via `emailRedirectTo` | public |
 | `/dashboard` | `DashboardPage` — own + saved courses with per-course progress bars | logged in |
 | `/explore` | `ExplorePage` — public courses, save action | logged in |
 | `/courses/new` | `NewCoursePage` — one-time upload + language, kicks off generation | logged in |
@@ -82,7 +84,9 @@ all go through `src/lib/supabaseClient.ts`.
   RLS: owner full access, public readable.
 - `course_materials` — metadata for files uploaded once per course; bytes in
   the private `course-materials` storage bucket under
-  `<user_id>/<course_id>/<file>`. Owner-only.
+  `<user_id>/<course_id>/<ascii-safe name>` (storage keys reject non-ASCII,
+  so the key is sanitized + hashed; the original name stays in `file_name`).
+  Owner-only.
 - `chapters` → `nodes` → `questions` — the generated course content.
   `nodes`/`questions` carry a denormalized `course_id` so RLS is one lookup
   and a course loads in one query per table. Readable when the course is
@@ -109,3 +113,5 @@ account so the copy survives the original being deleted or made private.
 - Every data-backed view renders loading / empty / error (via `useAsync`).
 - Services validate input before any network call and throw `Error` with a
   human-readable message; pages render it in the error state.
+- `vercel.json` rewrites every non-file route to `index.html` — the SPA
+  router owns the URL space, so a hard reload on a deep link never 404s.
