@@ -208,3 +208,12 @@ body {
   display: flex;
   gap: 0.5rem;
 }
+
+.mock-test-list {
+  list-style: none;
+  padding: 0;
+}
+
+.mock-test-list li {
+  margin-bottom: 0.25rem;
+}

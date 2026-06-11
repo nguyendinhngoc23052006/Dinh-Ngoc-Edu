@@ -1,10 +1,30 @@
 -- MVP feature support on top of the core schema:
--- 1. courses.generation_error — why the AI pipeline failed, shown to the owner.
--- 2. mock_tests.question_count — how many questions the user asked for.
--- 3. clone_course() — deep-copies a viewable course into the caller's account.
+-- 1. courses.status gains 'pending' (initial state): the generate-course
+--    function atomically claims pending/failed -> processing, so spammed or
+--    concurrent invocations can never run two AI pipelines for one course.
+-- 2. courses.generation_error — why the AI pipeline failed, shown to the owner.
+-- 3. mock_tests.question_count — how many questions the user asked for.
+-- 4. clone_course() — deep-copies a viewable course into the caller's account.
 
 alter table public.courses
   add column generation_error text;
+
+-- When the pipeline claimed the course; lets a crashed run be re-claimed
+-- after a staleness window instead of blocking the course forever.
+alter table public.courses
+  add column generation_started_at timestamptz;
+
+alter table public.courses
+  drop constraint courses_status_check;
+alter table public.courses
+  add constraint courses_status_check
+    check (status in ('pending', 'processing', 'ready', 'failed'));
+alter table public.courses
+  alter column status set default 'pending';
+
+-- Pre-pipeline rows sat in 'processing' (the old default) with no run ever
+-- started; move them to the new initial state so they are claimable.
+update public.courses set status = 'pending' where status = 'processing';
 
 alter table public.mock_tests
   add column question_count integer not null default 20
@@ -70,4 +90,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.clone_course(uuid) from anon;
+-- EXECUTE on functions defaults to PUBLIC, so revoking only from anon would
+-- be a no-op; revoke from everyone, then grant back to logged-in users.
+revoke execute on function public.clone_course(uuid) from public;
+grant execute on function public.clone_course(uuid) to authenticated;

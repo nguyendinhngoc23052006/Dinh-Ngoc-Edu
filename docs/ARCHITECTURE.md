@@ -7,10 +7,13 @@ their owner unless shared as public; public courses can be saved by others.
 
 ## AI pipeline (`supabase/functions/generate-course`)
 
-`createCourse` leaves the course in `processing` status; the frontend then
-invokes the `generate-course` Edge Function, which answers 202 immediately and
-runs the pipeline in the background (`EdgeRuntime.waitUntil`) while CoursePage
-polls `course.status`:
+`createCourse` leaves the course in `pending` status; the frontend then
+invokes the `generate-course` Edge Function, which **atomically claims**
+`pending`/`failed` (or a `processing` run stale for 15+ minutes) into
+`processing` — so spammed or concurrent invocations can never run two
+pipelines for one course. It answers 202 immediately and works in the
+background (`EdgeRuntime.waitUntil`, self-imposed 6-minute budget) while
+CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
 
 1. **Extract** — downloads the course's materials from storage and pulls
    plain text out of txt/md (direct), pdf (`unpdf`), docx/pptx (`fflate`
@@ -75,7 +78,8 @@ all go through `src/lib/supabaseClient.ts`.
 ## Tables (see `supabase/migrations/20260610213500_core_schema.sql`)
 
 - `courses` — owner, title, output_language, visibility (private/public),
-  status (processing/ready/failed). RLS: owner full access, public readable.
+  status (pending/processing/ready/failed) + generation_error/started_at.
+  RLS: owner full access, public readable.
 - `course_materials` — metadata for files uploaded once per course; bytes in
   the private `course-materials` storage bucket under
   `<user_id>/<course_id>/<file>`. Owner-only.

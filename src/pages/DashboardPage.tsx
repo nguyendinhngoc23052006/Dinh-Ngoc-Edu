@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import { useAsync } from '../hooks/useAsync'
-import { listMyCourses } from '../services/courseService'
-import { listSavedCourses } from '../services/savedCourseService'
+import { listMyCourses, PAGE_SIZE } from '../services/courseService'
+import { listSavedCourses, unsaveCourse } from '../services/savedCourseService'
 import { getCourseProgress } from '../services/progressService'
 import type { CourseProgress } from '../services/progressService'
 import CourseCard from '../components/courses/CourseCard'
@@ -12,10 +14,7 @@ interface CourseList {
   progress: Map<string, CourseProgress>
 }
 
-async function listWithProgress(
-  list: () => Promise<Course[]>,
-): Promise<CourseList> {
-  const courses = await list()
+async function listWithProgress(courses: Course[]): Promise<CourseList> {
   const progress = await getCourseProgress(courses.map((c) => c.id))
   return { courses, progress }
 }
@@ -27,6 +26,9 @@ interface CourseSectionProps {
   error: string | null
   reload: () => void
   emptyText: string
+  page: number
+  onPage: (page: number) => void
+  action?: (course: Course) => ReactNode
 }
 
 function CourseSection({
@@ -36,7 +38,11 @@ function CourseSection({
   error,
   reload,
   emptyText,
+  page,
+  onPage,
+  action,
 }: CourseSectionProps) {
+  const courses = data?.courses ?? []
   return (
     <section>
       <h2>{title}</h2>
@@ -49,26 +55,66 @@ function CourseSection({
             Retry
           </button>
         </p>
-      ) : !data || data.courses.length === 0 ? (
-        <p className="state state-empty">{emptyText}</p>
+      ) : courses.length === 0 ? (
+        <p className="state state-empty">
+          {page === 0 ? emptyText : 'No more courses.'}
+        </p>
       ) : (
         <div className="card-grid">
-          {data.courses.map((course) => (
+          {courses.map((course) => (
             <CourseCard
               key={course.id}
               course={course}
-              progress={data.progress.get(course.id)}
+              progress={data?.progress.get(course.id)}
+              action={action?.(course)}
             />
           ))}
         </div>
       )}
+      {page > 0 || courses.length === PAGE_SIZE ? (
+        <div className="pager">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => onPage(page - 1)}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={courses.length < PAGE_SIZE}
+            onClick={() => onPage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }
 
 function DashboardPage() {
-  const mine = useAsync(() => listWithProgress(listMyCourses), [])
-  const saved = useAsync(() => listWithProgress(listSavedCourses), [])
+  const [minePage, setMinePage] = useState(0)
+  const [savedPage, setSavedPage] = useState(0)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const mine = useAsync(
+    async () => listWithProgress(await listMyCourses(minePage)),
+    [minePage],
+  )
+  const saved = useAsync(
+    async () => listWithProgress(await listSavedCourses(savedPage)),
+    [savedPage],
+  )
+
+  async function handleUnsave(courseId: string) {
+    setActionError(null)
+    try {
+      await unsaveCourse(courseId)
+      saved.reload()
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Remove failed.')
+    }
+  }
 
   return (
     <div>
@@ -78,6 +124,7 @@ function DashboardPage() {
           New course
         </Link>
       </div>
+      {actionError ? <p className="state state-error">{actionError}</p> : null}
       <CourseSection
         title="Created by you"
         data={mine.data}
@@ -85,6 +132,8 @@ function DashboardPage() {
         error={mine.error}
         reload={mine.reload}
         emptyText="No courses yet — upload materials to generate your first one."
+        page={minePage}
+        onPage={setMinePage}
       />
       <CourseSection
         title="Saved from Explore"
@@ -93,6 +142,13 @@ function DashboardPage() {
         error={saved.error}
         reload={saved.reload}
         emptyText="Nothing saved yet — find public courses on Explore."
+        page={savedPage}
+        onPage={setSavedPage}
+        action={(course) => (
+          <button type="button" onClick={() => void handleUnsave(course.id)}>
+            Remove from saved
+          </button>
+        )}
       />
     </div>
   )

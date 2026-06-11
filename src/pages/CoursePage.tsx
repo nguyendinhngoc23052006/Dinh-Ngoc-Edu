@@ -11,13 +11,18 @@ import {
 import { getCourseContent } from '../services/lessonService'
 import { getCompletedNodeIds } from '../services/progressService'
 import { cloneCourse, saveCourse } from '../services/savedCourseService'
+import { listMyMockTests } from '../services/mockTestService'
 import { startGeneration } from '../services/generationService'
 import CourseMap from '../components/courses/CourseMap'
 import CourseSettings from '../components/courses/CourseSettings'
 import VisibilityToggle from '../components/courses/VisibilityToggle'
+import MockTestList from '../components/mock-tests/MockTestList'
 import type { Visibility } from '../types/database'
 
 const POLL_MS = 4000
+// Stop telling the user "almost there" after this long; the run is likely
+// crashed (the pipeline itself gives up well before this).
+const POLL_TIMEOUT_MS = 10 * 60 * 1000
 
 function CoursePage() {
   const { courseId = '' } = useParams()
@@ -27,27 +32,53 @@ function CoursePage() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [savedNote, setSavedNote] = useState(false)
+  const [stalled, setStalled] = useState(false)
 
   const state = useAsync(async () => {
     const course = await getCourse(courseId)
     if (!course) return null
-    const chapters = await getCourseContent(courseId)
+    const [chapters, mockTests] = await Promise.all([
+      getCourseContent(courseId),
+      session ? listMyMockTests(courseId) : Promise.resolve([]),
+    ])
     const nodeIds = chapters.flatMap((c) => c.nodes.map((n) => n.id))
     // Guests have no progress rows; skip the query, render an untouched path.
     const completed = session
       ? await getCompletedNodeIds(nodeIds)
       : new Set<string>()
-    return { course, chapters, completed }
+    return { course, chapters, completed, mockTests }
   }, [courseId, session?.user.id])
 
-  // While the AI pipeline runs, poll until the status leaves 'processing'.
-  const processing = state.data?.course.status === 'processing'
+  // While the AI pipeline runs, poll the status only (one PK lookup per
+  // tick) and reload the full page once it leaves the generating states.
+  const status = state.data?.course.status
+  const generating = status === 'pending' || status === 'processing'
   const reload = state.reload
   useEffect(() => {
-    if (!processing) return
-    const timer = setInterval(reload, POLL_MS)
+    if (!generating) return
+    const startedAt = Date.now()
+    const timer = setInterval(() => {
+      void (async () => {
+        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+          setStalled(true)
+          return
+        }
+        try {
+          const fresh = await getCourse(courseId)
+          if (
+            fresh &&
+            fresh.status !== 'pending' &&
+            fresh.status !== 'processing'
+          ) {
+            reload()
+          }
+        } catch {
+          // Transient fetch problem; the next tick tries again.
+        }
+      })()
+    }, POLL_MS)
     return () => clearInterval(timer)
-  }, [processing, reload])
+  }, [generating, courseId, reload])
 
   if (state.loading) {
     return <p className="state state-loading">Loading course…</p>
@@ -70,7 +101,7 @@ function CoursePage() {
     )
   }
 
-  const { course, chapters, completed } = state.data
+  const { course, chapters, completed, mockTests } = state.data
   const isOwner = session?.user.id === course.owner_id
 
   async function run(action: () => Promise<void>, failure: string) {
@@ -120,18 +151,25 @@ function CoursePage() {
     }, 'Clone failed.')
   }
 
-  function handleRetryGeneration() {
+  function handleStartGeneration() {
+    setStalled(false)
     void run(async () => {
       await startGeneration(course.id)
       state.reload()
-    }, 'Could not restart generation.')
+    }, 'Could not start generation.')
   }
+
+  const startButton = (
+    <button type="button" disabled={busy} onClick={handleStartGeneration}>
+      {course.status === 'failed' ? 'Retry generation' : 'Start generation'}
+    </button>
+  )
 
   return (
     <div>
       <div className="page-header">
         <h1>{course.title}</h1>
-        {session ? (
+        {session && course.status === 'ready' ? (
           <Link className="cta" to={`/courses/${course.id}/mock-tests/new`}>
             Create mock test
           </Link>
@@ -140,25 +178,40 @@ function CoursePage() {
       <p className="course-meta">
         {course.output_language} · status: {course.status}
       </p>
+      {course.status === 'pending' ? (
+        isOwner ? (
+          <p className="state state-empty">
+            Generation hasn't started for this course. {startButton}
+          </p>
+        ) : (
+          <p className="state state-empty">
+            This course hasn't been generated yet.
+          </p>
+        )
+      ) : null}
       {course.status === 'processing' ? (
-        <p className="state state-loading">
-          Generation in progress — chapters and lessons appear here when the AI
-          finishes scanning your materials. This page refreshes itself.
-        </p>
+        stalled ? (
+          <p className="state state-error">
+            Generation is taking unusually long — the run may have crashed.
+            {isOwner ? (
+              <> A retry becomes possible a few minutes in. {startButton}</>
+            ) : null}
+          </p>
+        ) : (
+          <p className="state state-loading">
+            Generation in progress — chapters and lessons appear here when the
+            AI finishes scanning your materials. This page refreshes itself.
+          </p>
+        )
       ) : null}
       {course.status === 'failed' ? (
         <p className="state state-error">
           Generation failed
-          {course.generation_error ? `: ${course.generation_error}` : '.'}{' '}
-          {isOwner ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleRetryGeneration}
-            >
-              Retry generation
-            </button>
-          ) : null}
+          {/* The raw failure reason can quote provider errors; owner-only. */}
+          {isOwner && course.generation_error
+            ? `: ${course.generation_error}`
+            : '.'}{' '}
+          {isOwner ? startButton : null}
         </p>
       ) : null}
       {isOwner ? (
@@ -202,6 +255,12 @@ function CoursePage() {
         chapters={chapters}
         completedNodeIds={completed}
       />
+      {session && course.status === 'ready' ? (
+        <section>
+          <h2>Your mock tests</h2>
+          <MockTestList tests={mockTests} />
+        </section>
+      ) : null}
     </div>
   )
 }

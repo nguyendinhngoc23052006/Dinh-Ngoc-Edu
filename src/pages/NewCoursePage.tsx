@@ -15,12 +15,19 @@ function NewCoursePage() {
   const [initial] = useState(() => getPendingCourse())
 
   async function handleSubmit(input: UploadInput) {
+    // A failure here leaves nothing behind; the form shows the error.
     const course = await createCourse(input.title, input.outputLanguage)
     clearPendingCourse()
-    for (const file of input.files) {
-      await uploadMaterial(course.id, file)
+    try {
+      for (const file of input.files) {
+        await uploadMaterial(course.id, file)
+      }
+      await startGeneration(course.id)
+    } catch {
+      // The course shell already exists — resubmitting the form would only
+      // create a duplicate. Its page has the recovery paths instead: it shows
+      // the 'pending' state with a Start-generation button, and Delete.
     }
-    await startGeneration(course.id)
     navigate(`/courses/${course.id}`)
   }
 

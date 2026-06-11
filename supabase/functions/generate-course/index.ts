@@ -29,6 +29,10 @@ import type { GeneratedQuestion } from './pipeline.ts'
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
 const MAX_SOURCE_CHARS = 200_000
+// A run older than this is considered crashed and may be re-claimed; the
+// pipeline budgets its own time well below it so it normally fails cleanly.
+const STALE_PROCESSING_MS = 15 * 60 * 1000
+const MAX_PIPELINE_MS = 6 * 60 * 1000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,19 +98,46 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Atomic claim: exactly one invocation flips the course into 'processing'
+  // (pending/failed, or a crashed run past the staleness window). Concurrent
+  // or spammed invocations get zero rows back and start nothing — no
+  // parallel pipelines, no double-billing the key.
+  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString()
+  const { data: claimed, error: claimError } = await supabase
+    .from('courses')
+    .update({
+      status: 'processing',
+      generation_error: null,
+      generation_started_at: new Date().toISOString(),
+    })
+    .eq('id', courseId)
+    .or(
+      `status.in.(pending,failed),and(status.eq.processing,generation_started_at.lt."${staleBefore}")`,
+    )
+    .select('id')
+  if (claimError) return json({ error: claimError.message }, 500)
+  if (!claimed || claimed.length === 0) {
+    return json({ status: 'processing' }, 202)
+  }
+
   EdgeRuntime.waitUntil(generate(supabase, course))
   return json({ status: 'processing' }, 202)
 })
+
+function ensureTime(deadline: number): void {
+  if (Date.now() > deadline) {
+    throw new Error(
+      'Generation timed out — retry, or upload smaller materials.',
+    )
+  }
+}
 
 async function generate(
   supabase: SupabaseClient,
   course: CourseRow,
 ): Promise<void> {
+  const deadline = Date.now() + MAX_PIPELINE_MS
   try {
-    await supabase
-      .from('courses')
-      .update({ status: 'processing', generation_error: null })
-      .eq('id', course.id)
     // A failed or interrupted earlier run may have left partial content;
     // wiping the chapters (cascades to nodes/questions) makes retries clean.
     await supabase.from('chapters').delete().eq('course_id', course.id)
@@ -118,11 +149,13 @@ async function generate(
     }
 
     const language = course.output_language
+    ensureTime(deadline)
     const syllabus = validateSyllabus(
       parseJsonLoose(await chat(buildSyllabusPrompt(chunks, language))),
       chunks.length,
     )
 
+    let totalQuestions = 0
     for (const [chapterIndex, chapter] of syllabus.entries()) {
       const { data: chapterRow, error: chapterError } = await supabase
         .from('chapters')
@@ -150,6 +183,7 @@ async function generate(
         if (nodeError) throw new Error(nodeError.message)
 
         const chunk = chunks[node.chunk_index] ?? chunks[0]
+        ensureTime(deadline)
         let questions: GeneratedQuestion[] = []
         try {
           questions = validateQuestions(
@@ -183,8 +217,14 @@ async function generate(
               })),
             )
           if (questionsError) throw new Error(questionsError.message)
+          totalQuestions += questions.length
         }
       }
+    }
+    // Per-node AI failures are tolerated, but a course where every node came
+    // back empty is unusable — fail it so the owner can retry.
+    if (totalQuestions === 0) {
+      throw new Error('The AI did not produce any usable questions.')
     }
 
     await supabase

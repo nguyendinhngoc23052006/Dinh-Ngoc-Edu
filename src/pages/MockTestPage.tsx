@@ -10,10 +10,12 @@ function MockTestPage() {
   const state = useAsync(async () => {
     const test = await getMockTest(testId)
     if (!test) return null
-    const questions = await getMockTestQuestions(test)
-    // Map node -> chapter title so the results screen can break the score
-    // down by chapter and point at weak spots.
-    const chapters = await getCourseContent(test.course_id)
+    // Course content maps node -> chapter title so the results screen can
+    // break the score down by chapter and point at weak spots.
+    const [questions, chapters] = await Promise.all([
+      getMockTestQuestions(test),
+      getCourseContent(test.course_id),
+    ])
     const chapterTitleByNodeId = new Map<string, string>()
     for (const chapter of chapters) {
       for (const node of chapter.nodes) {
