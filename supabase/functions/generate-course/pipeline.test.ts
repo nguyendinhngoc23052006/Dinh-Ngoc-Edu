@@ -5,7 +5,6 @@ import {
   extractXmlText,
   parseJsonLoose,
   validateChapterQuestions,
-  validateQuestions,
   validateSyllabus,
   verifyQuestion,
 } from './pipeline'
@@ -97,48 +96,72 @@ describe('validateSyllabus', () => {
   })
 })
 
-describe('validateQuestions', () => {
+describe('validateChapterQuestions', () => {
   test('keeps only questions matching the database contract', () => {
-    const questions = validateQuestions({
-      questions: [
-        {
-          kind: 'mcq',
-          prompt: 'Pick one',
-          options: ['a', 'b', 'c'],
-          correct_indexes: [1],
-        },
-        {
-          kind: 'mcq_multi',
-          prompt: 'Pick many',
-          options: ['a', 'b'],
-          correct_indexes: [1, 0, 0],
-        },
-        { kind: 'fill_blank', prompt: 'The ____ rises', accepted: ['sun'] },
-        // All of the below are malformed and must be dropped:
-        {
-          kind: 'mcq',
-          prompt: 'Two correct',
-          options: ['a', 'b'],
-          correct_indexes: [0, 1],
-        },
-        {
-          kind: 'mcq',
-          prompt: 'Index out of range',
-          options: ['a', 'b'],
-          correct_indexes: [5],
-        },
-        {
-          kind: 'mcq',
-          prompt: 'One option',
-          options: ['a'],
-          correct_indexes: [0],
-        },
-        { kind: 'fill_blank', prompt: 'No answers', accepted: [] },
-        { kind: 'essay', prompt: 'Unknown kind' },
-        { kind: 'mcq', prompt: '', options: ['a', 'b'], correct_indexes: [0] },
-      ],
-    })
-    expect(questions).toEqual([
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Pick one',
+            options: ['a', 'b', 'c'],
+            correct_indexes: [1],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq_multi',
+            prompt: 'Pick many',
+            options: ['a', 'b'],
+            correct_indexes: [1, 0, 0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            prompt: 'The ____ rises',
+            accepted: ['sun'],
+          },
+          // All of the below are malformed and must be dropped:
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Two correct',
+            options: ['a', 'b'],
+            correct_indexes: [0, 1],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'Index out of range',
+            options: ['a', 'b'],
+            correct_indexes: [5],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'One option',
+            options: ['a'],
+            correct_indexes: [0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            prompt: 'No answers',
+            accepted: [],
+          },
+          { node_index: 0, kind: 'essay', prompt: 'Unknown kind' },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: '',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+        ],
+      },
+      1,
+    )
+    expect(buckets[0]).toEqual([
       {
         kind: 'mcq',
         prompt: 'Pick one',
@@ -160,12 +183,25 @@ describe('validateQuestions', () => {
     ])
   })
 
-  test('returns empty for non-list values instead of failing the course', () => {
-    expect(validateQuestions('garbage')).toEqual([])
+  test('caps persisted string lengths (AI output is untrusted)', () => {
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'p'.repeat(5000),
+            options: ['o'.repeat(5000), 'b'],
+            correct_indexes: [1],
+          },
+        ],
+      },
+      1,
+    )
+    expect(buckets[0][0].prompt).toHaveLength(1000)
+    expect(buckets[0][0].options[0]).toHaveLength(300)
   })
-})
 
-describe('validateChapterQuestions', () => {
   test('routes questions to their node by node_index', () => {
     const buckets = validateChapterQuestions(
       {

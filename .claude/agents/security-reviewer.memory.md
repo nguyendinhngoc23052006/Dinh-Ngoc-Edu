@@ -12,3 +12,6 @@ commits entries from the agent's "Memory candidates" report section.
 - `revoke execute ... from anon` on a function is a no-op (EXECUTE defaults to PUBLIC) — require revoke-from-PUBLIC + grant-to-authenticated, or an explicit `auth.uid()` check inside (caught in clone_course, PR #12).
 - Background-pipeline Edge Functions need an atomic status claim (conditional UPDATE, check affected rows); an "already done" early-return doesn't stop spammed/concurrent runs (caught in generate-course, PR #12).
 - Error columns written from raw provider responses inherit the row's select policy — check who can read diagnostics on shareable rows (generation_error was anon-visible, PR #12).
+- `${window.location.origin}${path}` is only safe when `path` is forced to start with a single `/` — non-`/`-prefixed input rewrites the host; guard inside the auth service, not at call sites.
+- OAuth `redirectTo`/`emailRedirectTo` silently fall back to the Site URL unless the target (incl. Vercel preview wildcards) is on Supabase's Redirect URLs allow-list — auth PRs must name that dashboard step.
+- AI-output validators must length-cap every persisted string, not just titles — `validateQuestion` capped counts but not `prompt`/`options` (generate-course).

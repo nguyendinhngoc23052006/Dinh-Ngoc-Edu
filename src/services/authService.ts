@@ -40,9 +40,15 @@ export async function signUp(
 // Google OAuth: no confirmation email, so it dodges the project-wide email
 // rate limit entirely. The browser leaves the app and comes back to returnTo.
 export async function signInWithGoogle(returnTo = '/dashboard'): Promise<void> {
+  // Only a same-origin path may ride the redirect: anything not starting
+  // with a single '/' could rewrite the host (open-redirect phishing).
+  const path =
+    returnTo.startsWith('/') && !returnTo.startsWith('//')
+      ? returnTo
+      : '/dashboard'
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${window.location.origin}${returnTo}` },
+    options: { redirectTo: `${window.location.origin}${path}` },
   })
   if (error) throw new Error(error.message)
 }

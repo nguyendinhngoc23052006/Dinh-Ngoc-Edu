@@ -12,3 +12,6 @@ commits entries from the agent's "Memory candidates" report section.
 - Grep every newly exported service function for callers before sign-off — PR #12 shipped two dead exports (listMyMockTests, unsaveCourse), one hiding a missing view.
 - Multi-step client flows (create row → upload → kick job) need a failure story per step; the tell is an orphaned in-progress row the UI polls forever (PR #12).
 - A service accepting a `page` param is not pagination — verify the calling page wires a pager (DashboardPage didn't; ExplorePage did, PR #12).
+- A batching refactor (per-node → per-chapter AI call) tends to strand the old validator as a dead export with passing tests — grep the new entry point's imports against every pipeline export.
+- Docs naming internal functions drift in the same PR that renames the code path — check identifiers in changed docs against the diff.
+- Double-submit in quiz flows is safe when the next question mounts with a disabled submit (empty selection/text) — verify that invariant rather than demanding a busy flag.

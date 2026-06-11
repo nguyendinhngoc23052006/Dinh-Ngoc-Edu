@@ -125,24 +125,10 @@ export function validateSyllabus(
   return chapters
 }
 
-// Format enforcement for step 2: drop anything that does not match the
-// database contract exactly (kind, options, answer key shape).
-export function validateQuestions(value: unknown): GeneratedQuestion[] {
-  const root =
-    value && typeof value === 'object' && 'questions' in value
-      ? (value as { questions: unknown }).questions
-      : value
-  if (!Array.isArray(root)) return []
-  const questions: GeneratedQuestion[] = []
-  for (const entry of root.slice(0, MAX_QUESTIONS_PER_NODE)) {
-    const question = validateQuestion(entry)
-    if (question) questions.push(question)
-  }
-  return questions
-}
-
-// One AI answer covers a whole chapter (node_index routes each question to
-// its lesson); malformed entries are dropped, never failing the chapter.
+// Format enforcement for step 2: one AI answer covers a whole chapter
+// (node_index routes each question to its lesson); anything that does not
+// match the database contract exactly (kind, options, answer key shape) is
+// dropped, never failing the chapter.
 export function validateChapterQuestions(
   value: unknown,
   nodeCount: number,
@@ -171,12 +157,15 @@ export function validateChapterQuestions(
 function validateQuestion(entry: unknown): GeneratedQuestion | null {
   if (!entry || typeof entry !== 'object') return null
   const raw = entry as Record<string, unknown>
-  const prompt = typeof raw.prompt === 'string' ? raw.prompt.trim() : ''
+  // Length caps: AI output is untrusted input — nothing unbounded reaches
+  // the database.
+  const prompt =
+    typeof raw.prompt === 'string' ? raw.prompt.trim().slice(0, 1000) : ''
   if (!prompt) return null
   if (raw.kind === 'fill_blank') {
     const accepted = (Array.isArray(raw.accepted) ? raw.accepted : [])
       .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
-      .map((a) => a.trim())
+      .map((a) => a.trim().slice(0, 300))
       .slice(0, 10)
     if (accepted.length === 0) return null
     return { kind: 'fill_blank', prompt, options: [], answer: { accepted } }
@@ -184,7 +173,7 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
   if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
   const options = (Array.isArray(raw.options) ? raw.options : [])
     .filter((o): o is string => typeof o === 'string' && o.trim() !== '')
-    .map((o) => o.trim())
+    .map((o) => o.trim().slice(0, 300))
     .slice(0, MAX_OPTIONS)
   if (options.length < 2) return null
   const correct = [

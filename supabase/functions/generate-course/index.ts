@@ -140,7 +140,13 @@ async function generate(
   try {
     // A failed or interrupted earlier run may have left partial content;
     // wiping the chapters (cascades to nodes/questions) makes retries clean.
-    await supabase.from('chapters').delete().eq('course_id', course.id)
+    // An unchecked failure here would surface later as a misleading
+    // unique-violation on the rebuild inserts.
+    const { error: wipeError } = await supabase
+      .from('chapters')
+      .delete()
+      .eq('course_id', course.id)
+    if (wipeError) throw new Error(wipeError.message)
 
     const text = await extractMaterialsText(supabase, course.id)
     const chunks = chunkText(text.slice(0, MAX_SOURCE_CHARS))
@@ -261,7 +267,11 @@ async function extractMaterialsText(
     throw new Error('This course has no uploaded materials.')
   }
   const parts: string[] = []
+  let totalChars = 0
   for (const material of rows) {
+    // Everything past the source cap gets discarded anyway — stop
+    // downloading instead of buffering unused megabytes.
+    if (totalChars >= MAX_SOURCE_CHARS) break
     const { data: blob, error: downloadError } = await supabase.storage
       .from('course-materials')
       .download(material.storage_path)
@@ -269,7 +279,9 @@ async function extractMaterialsText(
       throw new Error(`Could not read ${material.file_name}.`)
     }
     const bytes = new Uint8Array(await blob.arrayBuffer())
-    parts.push(await extractFileText(material.file_name, bytes))
+    const part = await extractFileText(material.file_name, bytes)
+    totalChars += part.length
+    parts.push(part)
   }
   return parts.join('\n\n')
 }

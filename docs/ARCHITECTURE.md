@@ -27,8 +27,8 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
    questions for every lesson in that chapter, each tagged with its
    `node_index`, in the course's output language.
 5. **Enforce + verify** — malformed questions are dropped
-   (`validateQuestions`), and a question is marked `verified` only when its
-   correct answer literally appears in the source chunk.
+   (`validateChapterQuestions`), and a question is marked `verified` only
+   when its correct answer literally appears in the source chunk.
 6. **Finish** — status flips to `ready`, or `failed` with the reason in
    `courses.generation_error` (owner sees it + a Retry button).
 
