@@ -20,13 +20,20 @@ export function listOutputLanguages(): readonly string[] {
   return OUTPUT_LANGUAGES
 }
 
+// Returns a human-readable problem, or null when the title is usable.
+export function validateCourseTitle(title: string): string | null {
+  if (title.trim().length === 0) return 'Give the course a title.'
+  if (title.trim().length > 120) return 'Title must be 120 characters or fewer.'
+  return null
+}
+
 // Returns a human-readable problem, or null when the input is usable.
 export function validateNewCourse(
   title: string,
   outputLanguage: string,
 ): string | null {
-  if (title.trim().length === 0) return 'Give the course a title.'
-  if (title.trim().length > 120) return 'Title must be 120 characters or fewer.'
+  const titleProblem = validateCourseTitle(title)
+  if (titleProblem) return titleProblem
   if (!OUTPUT_LANGUAGES.includes(outputLanguage as OutputLanguage)) {
     return 'Choose an output language from the list.'
   }
@@ -96,5 +103,26 @@ export async function setCourseVisibility(
     .from('courses')
     .update({ visibility })
     .eq('id', courseId)
+  if (error) throw new Error(error.message)
+}
+
+export async function renameCourse(
+  courseId: string,
+  title: string,
+): Promise<void> {
+  const problem = validateCourseTitle(title)
+  if (problem) throw new Error(problem)
+  const { error } = await supabase
+    .from('courses')
+    .update({ title: title.trim() })
+    .eq('id', courseId)
+  if (error) throw new Error(error.message)
+}
+
+// Cascades take the materials metadata, chapters, nodes, questions, progress,
+// mock tests, and bookmarks with it. The uploaded bytes stay in storage; the
+// path is owner-scoped so nobody else can ever read them.
+export async function deleteCourse(courseId: string): Promise<void> {
+  const { error } = await supabase.from('courses').delete().eq('id', courseId)
   if (error) throw new Error(error.message)
 }

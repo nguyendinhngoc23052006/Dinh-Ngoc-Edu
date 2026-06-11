@@ -385,6 +385,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+[functions.generate-course]
+enabled = true
+# The function needs the caller's identity (it writes with the user's JWT).
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

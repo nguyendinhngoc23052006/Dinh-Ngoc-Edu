@@ -4,6 +4,7 @@ import { useAsync } from '../hooks/useAsync'
 import { getCourseContent } from '../services/lessonService'
 import {
   createMockTest,
+  MAX_TEST_QUESTIONS,
   validateNewMockTest,
 } from '../services/mockTestService'
 import ChapterPicker from '../components/mock-tests/ChapterPicker'
@@ -14,6 +15,7 @@ function NewMockTestPage() {
   const state = useAsync(() => getCourseContent(courseId), [courseId])
   const [title, setTitle] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [questionCount, setQuestionCount] = useState(20)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -26,7 +28,7 @@ function NewMockTestPage() {
   }
 
   async function handleCreate() {
-    const problem = validateNewMockTest(title, selectedIds)
+    const problem = validateNewMockTest(title, selectedIds, questionCount)
     if (problem) {
       setError(problem)
       return
@@ -34,7 +36,12 @@ function NewMockTestPage() {
     setError(null)
     setBusy(true)
     try {
-      const test = await createMockTest(courseId, title, selectedIds)
+      const test = await createMockTest(
+        courseId,
+        title,
+        selectedIds,
+        questionCount,
+      )
       navigate(`/mock-tests/${test.id}`)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Creation failed.')
@@ -71,6 +78,17 @@ function NewMockTestPage() {
             selectedIds={selectedIds}
             onToggle={toggleChapter}
           />
+          <label>
+            Number of questions (1–{MAX_TEST_QUESTIONS}; fewer if the chapters
+            don't have that many)
+            <input
+              type="number"
+              min={1}
+              max={MAX_TEST_QUESTIONS}
+              value={questionCount}
+              onChange={(e) => setQuestionCount(Number(e.target.value))}
+            />
+          </label>
           {error ? <p className="state state-error">{error}</p> : null}
           <button type="button" disabled={busy} onClick={handleCreate}>
             {busy ? 'Creating…' : 'Create mock test'}

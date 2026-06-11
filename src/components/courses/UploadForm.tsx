@@ -6,19 +6,26 @@ import {
 } from '../../services/courseService'
 import { validateMaterialFile } from '../../services/materialService'
 
+export interface UploadInput {
+  title: string
+  outputLanguage: string
+  files: File[]
+}
+
 interface UploadFormProps {
-  onSubmit: (input: {
-    title: string
-    outputLanguage: string
-    files: File[]
-  }) => Promise<void>
+  onSubmit: (input: UploadInput) => Promise<void>
+  // Prefill (e.g. a guest's stashed form after login); files included, since
+  // they only exist in memory and can't be re-set on the file input.
+  initial?: UploadInput
 }
 
 // Materials are uploaded once per course, at creation time.
-function UploadForm({ onSubmit }: UploadFormProps) {
-  const [title, setTitle] = useState('')
-  const [outputLanguage, setOutputLanguage] = useState('English')
-  const [files, setFiles] = useState<File[]>([])
+function UploadForm({ onSubmit, initial }: UploadFormProps) {
+  const [title, setTitle] = useState(initial?.title ?? '')
+  const [outputLanguage, setOutputLanguage] = useState(
+    initial?.outputLanguage ?? 'English',
+  )
+  const [files, setFiles] = useState<File[]>(initial?.files ?? [])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -76,6 +83,11 @@ function UploadForm({ onSubmit }: UploadFormProps) {
           onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
         />
       </label>
+      {files.length > 0 ? (
+        <p className="course-meta">
+          Ready to upload: {files.map((file) => file.name).join(', ')}
+        </p>
+      ) : null}
       {error ? <p className="state state-error">{error}</p> : null}
       <button type="submit" disabled={busy}>
         {busy ? 'Creating course…' : 'Generate course'}

@@ -2,12 +2,27 @@ import { Link } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
 import { listMyCourses } from '../services/courseService'
 import { listSavedCourses } from '../services/savedCourseService'
+import { getCourseProgress } from '../services/progressService'
+import type { CourseProgress } from '../services/progressService'
 import CourseCard from '../components/courses/CourseCard'
 import type { Course } from '../types/database'
 
+interface CourseList {
+  courses: Course[]
+  progress: Map<string, CourseProgress>
+}
+
+async function listWithProgress(
+  list: () => Promise<Course[]>,
+): Promise<CourseList> {
+  const courses = await list()
+  const progress = await getCourseProgress(courses.map((c) => c.id))
+  return { courses, progress }
+}
+
 interface CourseSectionProps {
   title: string
-  courses: Course[] | null
+  data: CourseList | null
   loading: boolean
   error: string | null
   reload: () => void
@@ -16,7 +31,7 @@ interface CourseSectionProps {
 
 function CourseSection({
   title,
-  courses,
+  data,
   loading,
   error,
   reload,
@@ -34,12 +49,16 @@ function CourseSection({
             Retry
           </button>
         </p>
-      ) : !courses || courses.length === 0 ? (
+      ) : !data || data.courses.length === 0 ? (
         <p className="state state-empty">{emptyText}</p>
       ) : (
         <div className="card-grid">
-          {courses.map((course) => (
-            <CourseCard key={course.id} course={course} />
+          {data.courses.map((course) => (
+            <CourseCard
+              key={course.id}
+              course={course}
+              progress={data.progress.get(course.id)}
+            />
           ))}
         </div>
       )}
@@ -48,8 +67,8 @@ function CourseSection({
 }
 
 function DashboardPage() {
-  const mine = useAsync(() => listMyCourses(), [])
-  const saved = useAsync(() => listSavedCourses(), [])
+  const mine = useAsync(() => listWithProgress(listMyCourses), [])
+  const saved = useAsync(() => listWithProgress(listSavedCourses), [])
 
   return (
     <div>
@@ -61,7 +80,7 @@ function DashboardPage() {
       </div>
       <CourseSection
         title="Created by you"
-        courses={mine.data}
+        data={mine.data}
         loading={mine.loading}
         error={mine.error}
         reload={mine.reload}
@@ -69,7 +88,7 @@ function DashboardPage() {
       />
       <CourseSection
         title="Saved from Explore"
-        courses={saved.data}
+        data={saved.data}
         loading={saved.loading}
         error={saved.error}
         reload={saved.reload}

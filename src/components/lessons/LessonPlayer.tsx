@@ -54,6 +54,12 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
 
   return (
     <div className="card lesson-player">
+      <progress
+        className="lesson-bar"
+        value={index}
+        max={questions.length}
+        aria-label="Lesson progress"
+      />
       <p className="lesson-progress">
         Question {index + 1} of {questions.length}
         {question.verified ? ' · verified against your material' : ''}

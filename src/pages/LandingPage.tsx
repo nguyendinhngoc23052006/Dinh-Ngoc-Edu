@@ -1,10 +1,18 @@
-import { Link } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useNavigate } from 'react-router-dom'
+import UploadForm from '../components/courses/UploadForm'
+import type { UploadInput } from '../components/courses/UploadForm'
+import { setPendingCourse } from '../lib/pendingCourse'
 
-// Public preview: shows what the app does and funnels visitors to log in
-// before they can actually generate a course.
+// Public teaser: the upload form works before logging in. Submitting stashes
+// the filled-in form and heads for /courses/new — RequireAuth bounces guests
+// through login first, and the stash means nothing has to be re-uploaded.
 function LandingPage() {
-  const { session } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleSubmit(input: UploadInput) {
+    setPendingCourse(input)
+    navigate('/courses/new')
+  }
 
   return (
     <section className="landing">
@@ -21,16 +29,11 @@ function LandingPage() {
         <li>Learn chapter by chapter, node by node.</li>
         <li>Generate mock tests from any chapters you pick.</li>
       </ol>
-      {session ? (
-        <Link className="cta" to="/courses/new">
-          Upload a file to generate your course
-        </Link>
-      ) : (
-        <p className="card">
-          <strong>Upload a file to generate your course</strong> — you'll need
-          to <Link to="/login">log in with your email</Link> first.
-        </p>
-      )}
+      <UploadForm onSubmit={handleSubmit} />
+      <p className="course-meta">
+        Not logged in yet? No problem — we'll ask you to log in after you hit
+        Generate, and your selection carries over.
+      </p>
     </section>
   )
 }
