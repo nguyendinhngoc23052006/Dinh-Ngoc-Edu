@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { Question } from '../../types/database'
-import { gradeQuestion } from '../../services/lessonService'
+import {
+  describeCorrectAnswer,
+  gradeQuestion,
+} from '../../services/lessonService'
 import type { QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from '../lessons/ChoiceQuestion'
 import FillBlankQuestion from '../lessons/FillBlankQuestion'
@@ -59,6 +62,23 @@ function MockTestRunner({
             </li>
           ))}
         </ul>
+        {score < questions.length ? (
+          <>
+            <h4>Review your mistakes</h4>
+            <ul className="mistake-list">
+              {questions.map((q, i) =>
+                correctByIndex[i] ? null : (
+                  <li key={q.id}>
+                    <p>{q.prompt}</p>
+                    <p className="state-correct">
+                      Correct answer: {describeCorrectAnswer(q)}
+                    </p>
+                  </li>
+                ),
+              )}
+            </ul>
+          </>
+        ) : null}
       </div>
     )
   }

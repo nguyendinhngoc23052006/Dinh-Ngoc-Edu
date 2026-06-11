@@ -18,12 +18,31 @@ export function validateCredentials(
   return null
 }
 
-export async function signUp(email: string, password: string): Promise<void> {
+// Returns true when the project requires email confirmation (no session yet),
+// so the form can say "check your inbox" instead of bouncing off RequireAuth.
+export async function signUp(
+  email: string,
+  password: string,
+): Promise<boolean> {
   const problem = validateCredentials(email, password)
   if (problem) throw new Error(problem)
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
+    // Without this, the confirmation link falls back to the project's Site
+    // URL (the localhost default on a fresh project) — a blank page.
+    options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+  })
+  if (error) throw new Error(error.message)
+  return data.session === null
+}
+
+// Google OAuth: no confirmation email, so it dodges the project-wide email
+// rate limit entirely. The browser leaves the app and comes back to returnTo.
+export async function signInWithGoogle(returnTo = '/dashboard'): Promise<void> {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: `${window.location.origin}${returnTo}` },
   })
   if (error) throw new Error(error.message)
 }

@@ -9,3 +9,7 @@
 - Remote cloud sessions (Claude Code on the web) have no `gh` CLI, so stop-check.sh always false-blocks the first stop even when a compliant PR exists; the loop guard then lets the second stop through. Verify the PR via the GitHub MCP tools instead.
 - eslint-plugin-react-hooks v7 also ships strict `set-state-in-effect` and `use-memo` rules: a generic fetch hook (src/hooks/useAsync.ts) needs targeted disables — moving the setState into a dynamically-depped useCallback just trips the next rule.
 - AI calls go through an OpenAI-compatible chat-completions endpoint chosen by Edge Function secrets (`AI_API_KEY`/`AI_BASE_URL`/`AI_MODEL`, default Gemini free tier) — swapping provider (incl. Anthropic's OpenAI-compat layer) is a secrets change, not a code change.
+- Supabase Storage object keys reject most non-ASCII characters ("Invalid key") — sanitize user-supplied file names into the key (`materialService.toStorageName`) and keep the original in the metadata row.
+- Supabase's built-in mailer allows only a few emails per hour for the WHOLE project, and the dashboard Site URL defaults to localhost:3000 — real signups need Google OAuth and/or custom SMTP, plus a correct Site URL/`emailRedirectTo`.
+- Free-tier AI keys are requests-per-minute bound: the question step batches one call per CHAPTER (`node_index` routing), ≤9 calls per course instead of ≤41.
+- A Vite SPA on Vercel 404s on hard reloads of deep links unless `vercel.json` rewrites all routes to `/index.html`.

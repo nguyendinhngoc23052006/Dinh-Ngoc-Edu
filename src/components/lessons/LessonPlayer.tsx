@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { Question } from '../../types/database'
-import { gradeQuestion } from '../../services/lessonService'
+import {
+  describeCorrectAnswer,
+  gradeQuestion,
+} from '../../services/lessonService'
 import type { QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
@@ -80,12 +83,28 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
         )
       ) : (
         <div className="feedback">
-          <p className={lastCorrect ? 'state-correct' : 'state-error'}>
-            {lastCorrect ? 'Correct!' : 'Not quite.'}
-          </p>
-          <button type="button" onClick={handleNext}>
-            {index + 1 < questions.length ? 'Next question' : 'See results'}
-          </button>
+          <p className="question-prompt">{question.prompt}</p>
+          <div
+            role="alert"
+            className={
+              lastCorrect
+                ? 'feedback-popup feedback-popup-correct'
+                : 'feedback-popup feedback-popup-wrong'
+            }
+          >
+            <p className="feedback-title">
+              {lastCorrect ? 'Correct!' : 'Not quite.'}
+            </p>
+            {lastCorrect ? null : (
+              <p>
+                Correct answer:{' '}
+                <strong>{describeCorrectAnswer(question)}</strong>
+              </p>
+            )}
+            <button type="button" onClick={handleNext}>
+              {index + 1 < questions.length ? 'Continue' : 'See results'}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -15,12 +15,12 @@ import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { strFromU8, unzipSync } from 'npm:fflate@0.8.2'
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1'
 import {
-  buildQuestionsPrompt,
+  buildChapterQuestionsPrompt,
   buildSyllabusPrompt,
   chunkText,
   extractXmlText,
   parseJsonLoose,
-  validateQuestions,
+  validateChapterQuestions,
   validateSyllabus,
   verifyQuestion,
 } from './pipeline.ts'
@@ -145,7 +145,9 @@ async function generate(
     const text = await extractMaterialsText(supabase, course.id)
     const chunks = chunkText(text.slice(0, MAX_SOURCE_CHARS))
     if (chunks.length === 0) {
-      throw new Error('No readable text found in the uploaded materials.')
+      throw new Error(
+        'No readable text found in the uploaded materials. Scanned or image-based PDFs have no text layer — re-export them as text-based PDFs (e.g. via Google Docs) and retry.',
+      )
     }
 
     const language = course.output_language
@@ -169,56 +171,55 @@ async function generate(
         .single()
       if (chapterError) throw new Error(chapterError.message)
 
-      for (const [nodeIndex, node] of chapter.nodes.entries()) {
-        const { data: nodeRow, error: nodeError } = await supabase
-          .from('nodes')
-          .insert({
+      const { data: nodeRows, error: nodesError } = await supabase
+        .from('nodes')
+        .insert(
+          chapter.nodes.map((node, nodeIndex) => ({
             course_id: course.id,
             chapter_id: (chapterRow as { id: string }).id,
             position: nodeIndex + 1,
             title: node.title,
-          })
-          .select('id')
-          .single()
-        if (nodeError) throw new Error(nodeError.message)
+          })),
+        )
+        .select('id, position')
+      if (nodesError) throw new Error(nodesError.message)
+      const nodeIds = (nodeRows as Array<{ id: string; position: number }>)
+        .sort((a, b) => a.position - b.position)
+        .map((row) => row.id)
 
-        const chunk = chunks[node.chunk_index] ?? chunks[0]
-        ensureTime(deadline)
-        let questions: GeneratedQuestion[] = []
-        try {
-          questions = validateQuestions(
-            parseJsonLoose(
-              await chat(
-                buildQuestionsPrompt(
-                  chapter.title,
-                  node.title,
-                  chunk,
-                  language,
-                ),
-              ),
-            ),
-          )
-        } catch {
-          // A node with no questions is better than failing the whole course.
-        }
-        if (questions.length > 0) {
-          const { error: questionsError } = await supabase
-            .from('questions')
-            .insert(
-              questions.map((question, index) => ({
-                course_id: course.id,
-                node_id: (nodeRow as { id: string }).id,
-                position: index + 1,
-                kind: question.kind,
-                prompt: question.prompt,
-                options: question.options,
-                answer: question.answer,
-                verified: verifyQuestion(question, chunk),
-              })),
-            )
-          if (questionsError) throw new Error(questionsError.message)
-          totalQuestions += questions.length
-        }
+      // One AI call per chapter (instead of one per node) keeps a full
+      // course within free-tier request-per-minute limits.
+      ensureTime(deadline)
+      let buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
+      try {
+        buckets = validateChapterQuestions(
+          parseJsonLoose(
+            await chat(buildChapterQuestionsPrompt(chapter, chunks, language)),
+          ),
+          chapter.nodes.length,
+        )
+      } catch {
+        // A chapter with no questions is better than failing the course.
+      }
+      const questionRows = buckets.flatMap((questions, nodeIndex) => {
+        const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
+        return questions.map((question, index) => ({
+          course_id: course.id,
+          node_id: nodeIds[nodeIndex],
+          position: index + 1,
+          kind: question.kind,
+          prompt: question.prompt,
+          options: question.options,
+          answer: question.answer,
+          verified: verifyQuestion(question, chunk),
+        }))
+      })
+      if (questionRows.length > 0) {
+        const { error: questionsError } = await supabase
+          .from('questions')
+          .insert(questionRows)
+        if (questionsError) throw new Error(questionsError.message)
+        totalQuestions += questionRows.length
       }
     }
     // Per-node AI failures are tolerated, but a course where every node came
@@ -282,10 +283,17 @@ async function extractFileText(
     return new TextDecoder().decode(bytes)
   }
   if (extension === 'pdf') {
-    const { text } = await extractText(await getDocumentProxy(bytes), {
-      mergePages: true,
-    })
-    return text
+    try {
+      const { text } = await extractText(await getDocumentProxy(bytes), {
+        mergePages: true,
+      })
+      if (text.trim() !== '') return text
+    } catch {
+      // Fall through to the readable error below.
+    }
+    throw new Error(
+      `Could not read any text from ${fileName}. If it is a scanned or image-based PDF, re-export it as a text-based PDF (e.g. open it in Google Docs and download as PDF), then retry.`,
+    )
   }
   if (extension === 'docx' || extension === 'pptx') {
     const entries = unzipSync(bytes)

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { gradeQuestion } from './lessonService'
+import { describeCorrectAnswer, gradeQuestion } from './lessonService'
 import type { Question } from '../types/database'
 
 vi.mock('../lib/supabaseClient', () => ({ supabase: {} }))
@@ -85,5 +85,33 @@ describe('gradeQuestion', () => {
     expect(gradeQuestion(q, { kind: 'choice', selectedIndexes: [] })).toBe(
       false,
     )
+  })
+})
+
+describe('describeCorrectAnswer', () => {
+  test('mcq: names the correct option', () => {
+    expect(describeCorrectAnswer(makeQuestion({}))).toBe('b')
+  })
+
+  test('mcq_multi: lists every correct option', () => {
+    const q = makeQuestion({
+      kind: 'mcq_multi',
+      answer: { correct_indexes: [0, 2] },
+    })
+    expect(describeCorrectAnswer(q)).toBe('a, c')
+  })
+
+  test('fill_blank: shows the first accepted answer', () => {
+    const q = makeQuestion({
+      kind: 'fill_blank',
+      options: [],
+      answer: { accepted: ['Mitochondria', 'mito'] },
+    })
+    expect(describeCorrectAnswer(q)).toBe('Mitochondria')
+  })
+
+  test('out-of-range indexes are skipped, never "undefined"', () => {
+    const q = makeQuestion({ answer: { correct_indexes: [9] } })
+    expect(describeCorrectAnswer(q)).toBe('')
   })
 })

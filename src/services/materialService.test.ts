@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { validateMaterialFile } from './materialService'
+import { toStorageName, validateMaterialFile } from './materialService'
 
 vi.mock('../lib/supabaseClient', () => ({ supabase: {} }))
 
@@ -33,5 +33,31 @@ describe('validateMaterialFile', () => {
     expect(
       validateMaterialFile({ name: 'notes.pdf', size: 21 * 1024 * 1024 }),
     ).toMatch(/20 MB/i)
+  })
+})
+
+describe('toStorageName', () => {
+  test('leaves plain ASCII names readable', () => {
+    expect(toStorageName('notes.pdf')).toMatch(/^[a-z0-9]+_notes\.pdf$/)
+  })
+
+  test('strips accents and spaces (storage rejects non-ASCII keys)', () => {
+    const name = toStorageName('Ôn tập cuối kỳ.pdf')
+    expect(name).toMatch(/^[A-Za-z0-9._-]+$/)
+    expect(name).toMatch(/\.pdf$/)
+  })
+
+  test('is deterministic so re-uploads stay idempotent', () => {
+    expect(toStorageName('Ôn tập.pdf')).toBe(toStorageName('Ôn tập.pdf'))
+  })
+
+  test('different originals that sanitize alike get different keys', () => {
+    expect(toStorageName('ôn tập.pdf')).not.toBe(toStorageName('ồn tắp.pdf'))
+  })
+
+  test('a fully non-ASCII name still produces a usable key', () => {
+    const name = toStorageName('考试.pdf')
+    expect(name).toMatch(/^[A-Za-z0-9._-]+$/)
+    expect(name).toMatch(/\.pdf$/)
   })
 })
