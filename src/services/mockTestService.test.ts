@@ -35,6 +35,11 @@ describe('validateNewMockTest', () => {
   test('rejects an empty chapter selection', () => {
     expect(validateNewMockTest('Dry run', [])).toMatch(/chapter/i)
   })
+
+  test('rejects an oversized chapter selection', () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `ch${i}`)
+    expect(validateNewMockTest('Dry run', ids)).toMatch(/at most/i)
+  })
 })
 
 describe('createMockTest', () => {
@@ -48,6 +53,7 @@ describe('createMockTest', () => {
   test('inserts the chosen chapters for the signed-in user', async () => {
     supabaseMock.reset([
       sessionResult('user-1'),
+      { data: [{ id: 'ch1' }, { id: 'ch2' }], error: null },
       { data: baseTest, error: null },
     ])
     const created = await createMockTest('c1', 'Dry run', ['ch1', 'ch2'])
@@ -59,6 +65,19 @@ describe('createMockTest', () => {
       title: 'Dry run',
       chapter_ids: ['ch1', 'ch2'],
     })
+  })
+
+  test('rejects chapters that do not belong to the course', async () => {
+    supabaseMock.reset([
+      sessionResult('user-1'),
+      { data: [{ id: 'ch1' }], error: null }, // ch2 not in this course
+    ])
+    await expect(
+      createMockTest('c1', 'Dry run', ['ch1', 'ch2']),
+    ).rejects.toThrow(/belong/i)
+    expect(
+      supabaseMock.calls.find((c) => c.path.endsWith('insert')),
+    ).toBeUndefined()
   })
 })
 

@@ -4,6 +4,8 @@ import { PAGE_SIZE } from './courseService'
 import type { MockTest, Question } from '../types/database'
 
 const MAX_TEST_QUESTIONS = 100
+const MAX_TEST_NODES = 500
+const MAX_TEST_CHAPTERS = 50
 
 // Returns a human-readable problem, or null when the input is usable.
 export function validateNewMockTest(
@@ -12,6 +14,9 @@ export function validateNewMockTest(
 ): string | null {
   if (title.trim().length === 0) return 'Give the mock test a title.'
   if (chapterIds.length === 0) return 'Pick at least one chapter.'
+  if (chapterIds.length > MAX_TEST_CHAPTERS) {
+    return `Pick at most ${MAX_TEST_CHAPTERS} chapters.`
+  }
   return null
 }
 
@@ -23,6 +28,19 @@ export async function createMockTest(
   const problem = validateNewMockTest(title, chapterIds)
   if (problem) throw new Error(problem)
   const ownerId = await requireUserId()
+
+  // chapter_ids is a plain uuid[] (no FK), so verify every chosen chapter
+  // really belongs to this course before storing the selection.
+  const { data: known, error: chaptersError } = await supabase
+    .from('chapters')
+    .select('id')
+    .eq('course_id', courseId)
+    .in('id', chapterIds)
+  if (chaptersError) throw new Error(chaptersError.message)
+  if (((known ?? []) as Array<{ id: string }>).length !== chapterIds.length) {
+    throw new Error('Every chapter must belong to this course.')
+  }
+
   const { data, error } = await supabase
     .from('mock_tests')
     .insert({
@@ -72,6 +90,7 @@ export async function getMockTestQuestions(
     .from('nodes')
     .select('id')
     .in('chapter_id', test.chapter_ids)
+    .limit(MAX_TEST_NODES)
   if (nodesError) throw new Error(nodesError.message)
   const nodeIds = ((nodes ?? []) as Array<{ id: string }>).map((n) => n.id)
   if (nodeIds.length === 0) return []

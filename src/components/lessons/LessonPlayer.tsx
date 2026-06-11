@@ -60,7 +60,11 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
       </p>
       {lastCorrect === null ? (
         question.kind === 'fill_blank' ? (
-          <FillBlankQuestion question={question} onSubmit={handleSubmit} />
+          <FillBlankQuestion
+            key={question.id}
+            question={question}
+            onSubmit={handleSubmit}
+          />
         ) : (
           <ChoiceQuestion
             key={question.id}

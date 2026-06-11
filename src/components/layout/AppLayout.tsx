@@ -7,7 +7,11 @@ function AppLayout() {
   const navigate = useNavigate()
 
   async function handleSignOut() {
-    await signOut()
+    try {
+      await signOut()
+    } catch {
+      // The local session is cleared even when the server call fails.
+    }
     navigate('/')
   }
 

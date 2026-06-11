@@ -5,3 +5,7 @@ when the change that taught it is reverted. The agent is read-only — the orche
 commits entries from the agent's "Memory candidates" report section.
 
 - The ~200-line file limit is a smell threshold, not a hard rule — flag as warn with a suggested split, blocker only when responsibilities are clearly mixed.
+- useAsync-style hooks centralize state but not rendering — grep for repeated `state-loading`/`state-error` JSX across pages, not just duplicated fetch logic.
+- Async click handlers that `await` a service write without try/catch (sign-out, complete-lesson) are a recurring missing-error-state pattern — check every component-triggered write.
+- "No Supabase in components" is verifiable with one grep over src/components + src/pages — cite the empty grep rather than asserting it.
+- When two services read the same table, compare their caps — one path capped at 500 while its sibling was unbounded (lessonService vs mockTestService nodes query).

@@ -79,12 +79,19 @@ create table public.course_materials (
 
 create index course_materials_course_id_idx
   on public.course_materials (course_id);
+-- owner_id is an RLS-filtered column; index it like any other filter.
+create index course_materials_owner_id_idx
+  on public.course_materials (owner_id);
 
 alter table public.course_materials enable row level security;
 
+-- with check also requires owning the course, so a material row can never be
+-- attached to someone else's course (the AI pipeline later reads by course).
 create policy "materials: owner only" on public.course_materials
   for all using (owner_id = (select auth.uid()))
-  with check (owner_id = (select auth.uid()));
+  with check (
+    owner_id = (select auth.uid()) and public.owns_course(course_id)
+  );
 
 -- ---------------------------------------------------------------------------
 -- chapters: ordered sections the AI splits a course into.
@@ -185,6 +192,10 @@ create table public.node_progress (
   primary key (user_id, node_id)
 );
 
+-- The composite PK only serves user_id-leading lookups; node-side access
+-- (FK cascade from nodes) needs its own index.
+create index node_progress_node_id_idx on public.node_progress (node_id);
+
 alter table public.node_progress enable row level security;
 
 create policy "progress: own rows only" on public.node_progress
@@ -259,6 +270,16 @@ create policy "materials bucket: owner reads" on storage.objects
   );
 create policy "materials bucket: owner uploads" on storage.objects
   for insert to authenticated with check (
+    bucket_id = 'course-materials'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+-- upload(..., { upsert: true }) overwrites via UPDATE, so the bucket needs an
+-- update policy too, not just insert.
+create policy "materials bucket: owner updates" on storage.objects
+  for update to authenticated using (
+    bucket_id = 'course-materials'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  ) with check (
     bucket_id = 'course-materials'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );

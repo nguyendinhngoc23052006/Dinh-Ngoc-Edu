@@ -10,6 +10,10 @@ export function validateMaterialFile(file: {
   name: string
   size: number
 }): string | null {
+  // The name becomes the last segment of the storage key — no path tricks.
+  if (file.name.includes('/') || file.name.includes('\\')) {
+    return 'File names must not contain slashes.'
+  }
   const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
   if (!ALLOWED_EXTENSIONS.includes(extension)) {
     return `Unsupported file type. Use: ${ALLOWED_EXTENSIONS.join(', ')}.`
