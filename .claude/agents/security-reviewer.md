@@ -18,8 +18,8 @@ Review every changed file against these four checks and flag violations:
    policies restricting users to their own rows.
 2. **Secret in client code.** Any service-role key, secret key, or other credential
    referenced outside server-only code (Edge Functions reading `Deno.env`). The browser
-   may see only the publishable key, read via `VITE_SUPABASE_PUBLISHABLE_KEY` with
-   `VITE_SUPABASE_ANON_KEY` fallback — never hardcoded.
+   may see only the publishable key, read via the `VITE_` names with the integration's
+   `NEXT_PUBLIC_` names as fallback — never hardcoded.
 3. **Unvalidated user input.** Any user-supplied value that reaches a query, mutation, or
    storage call without server-side validation in `src/services/`. Components must not be
    the only validation layer; never trust the client.
