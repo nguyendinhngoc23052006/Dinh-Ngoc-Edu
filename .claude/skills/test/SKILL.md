@@ -35,13 +35,18 @@ omitting it.
   it pass. If it passes immediately, it isn't testing the change.
 - Mock the Supabase client (or other boundary) with Vitest mocks; never fake a DB to
   pass, never require a secret. Nothing testable may need a prod-only secret.
+- **Type every mock with the generated row types from `src/types`** — a mock shaped by
+  hand can drift from the real schema and keep passing; a typed mock makes schema drift
+  fail `typecheck` on the same PR that changed the migration.
 - Assert on behavior (return values, thrown errors, calls made), not implementation
   details that refactors would break.
 
 ## Step 4 — Name and place for the CI gate
 
 Name files `<unit>.test.ts` and put each beside the code it tests (the existing pattern:
-`src/lib/supabaseClient.ts` ↔ `src/lib/supabaseClient.test.ts`). Vitest picks them up via
+`src/lib/supabaseClient.ts` ↔ `src/lib/supabaseClient.test.ts`). Name each test after the
+path it guards (`rejects unauthorized`, `idempotent on resubmit`) so coverage of the four
+unhappy paths is greppable, not a matter of trust. Vitest picks them up via
 `npm test`, which is the CI `tests` job — so every PR reruns them automatically. Don't
 add config, scripts, or folders for tests.
 

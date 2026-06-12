@@ -15,7 +15,10 @@ jobs:
           node-version: 'lts/*'
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm test -- --coverage 2>&1 | tee test-output.log
+      - name: Coverage summary
+        if: always()
+        run: tail -n 15 test-output.log >> "$GITHUB_STEP_SUMMARY"
 
   lint:
     runs-on: ubuntu-latest

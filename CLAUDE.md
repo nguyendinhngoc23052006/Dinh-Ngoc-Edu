@@ -89,6 +89,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 
 ## Quality gate
 - The sandbox has no DB/secrets — write mocked unit tests, run them before every PR; never fake a DB to pass.
+- Type every mock with the generated row types from `src/types` — schema drift must fail `typecheck`, never pass silently.
 - `lint`/`typecheck` script names are a CI contract (the GitHub workflow jobs call them, and the ruleset requires those jobs) — keep them; if you rename one, update the workflow and tell me to reselect it in the ruleset in the same PR.
 - Nothing testable may require a prod-only secret.
 - Keep builds reproducible: commit the lockfile; no unpinned `latest` ranges, no installing latest at runtime. Staying current is Dependabot's job — accept its version-bump PRs through the normal flow; track the current Node LTS.

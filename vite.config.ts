@@ -6,4 +6,11 @@ export default defineConfig({
   // The Supabase→Vercel integration injects preview vars under fixed
   // NEXT_PUBLIC_ names; Vite must expose them to the browser too.
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  test: {
+    coverage: {
+      // Signal for the human at review time (CI job summary), never a gate —
+      // thresholds breed test theater.
+      reporter: ['text-summary'],
+    },
+  },
 })

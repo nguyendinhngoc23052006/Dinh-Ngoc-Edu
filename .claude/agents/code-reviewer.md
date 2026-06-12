@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Use before every PR to check code quality. Proactively review the branch diff for duplication, oversized or mixed-responsibility files, components doing data access, and missing UI states before any PR is opened.
+description: Use before every PR to check code quality. Proactively review the branch diff for duplication, oversized or mixed-responsibility files, components doing data access, missing UI states, and changed service files lacking a sibling test change before any PR is opened.
 tools: Read, Grep, Glob
 ---
 
@@ -24,6 +24,9 @@ Review every changed file against these four checks and flag violations:
    (logic). Components render UI only.
 4. **Missing UI states.** Any data-driven view without loading, empty, error, and
    unauthorized handling.
+5. **Untested service changes.** A changed file in `src/services/` with no change to its
+   sibling `*.test.ts` in the same diff — the most common testing failure is the untested
+   change, not the bad test.
 
 Also note (warn, not blocker) speculative abstractions with a single caller and style
 that doesn't match the surrounding code.
