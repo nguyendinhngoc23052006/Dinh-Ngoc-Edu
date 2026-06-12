@@ -5,6 +5,7 @@ import {
   buildSyllabusPrompt,
   buildSystemPrompt,
   chunkText,
+  emptyNodeIndexes,
   languageReminder,
   matchesOutputLanguage,
   parseJsonLoose,
@@ -260,6 +261,27 @@ describe('validateChapterQuestions', () => {
 
   test('returns empty buckets per node for garbage instead of throwing', () => {
     expect(validateChapterQuestions('garbage', 3)).toEqual([[], [], []])
+  })
+})
+
+describe('emptyNodeIndexes', () => {
+  const question: GeneratedQuestion = {
+    kind: 'mcq',
+    prompt: 'Pick one',
+    options: ['a', 'b'],
+    answer: { correct_indexes: [0] },
+  }
+
+  test('names exactly the lessons the chapter answer left empty', () => {
+    expect(emptyNodeIndexes([[question], [], [question], []])).toEqual([1, 3])
+  })
+
+  test('is empty when every lesson got questions', () => {
+    expect(emptyNodeIndexes([[question], [question]])).toEqual([])
+  })
+
+  test('covers every lesson when the whole chapter failed to parse', () => {
+    expect(emptyNodeIndexes([[], [], []])).toEqual([0, 1, 2])
   })
 })
 

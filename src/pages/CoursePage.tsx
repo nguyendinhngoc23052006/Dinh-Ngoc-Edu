@@ -224,6 +224,26 @@ function CoursePage() {
           </p>
         )
       ) : null}
+      {course.status === 'ready' &&
+      chapters.some((c) => c.nodes.some((n) => n.question_count === 0)) ? (
+        <p className="state state-error">
+          Some lessons came out of generation without questions.
+          {isOwner ? (
+            <>
+              {' '}
+              Regenerating rebuilds the whole course (chapters, questions and
+              lesson progress) to fill them.{' '}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleStartGeneration}
+              >
+                Regenerate course
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {course.status === 'failed' ? (
         <p className="state state-error">
           Generation failed

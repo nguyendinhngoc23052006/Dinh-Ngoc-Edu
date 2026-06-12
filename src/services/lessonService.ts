@@ -5,8 +5,14 @@ const MAX_CHAPTERS = 100
 const MAX_NODES = 500
 const MAX_QUESTIONS_PER_NODE = 50
 
+// question_count lets the course page spot lessons that generation left
+// empty (the "ready but no questions" repair path).
+export interface LessonNodeWithCount extends LessonNode {
+  question_count: number
+}
+
 export interface ChapterWithNodes extends Chapter {
-  nodes: LessonNode[]
+  nodes: LessonNodeWithCount[]
 }
 
 // Loads a whole course's outline in two queries (no per-chapter round trips):
@@ -24,16 +30,19 @@ export async function getCourseContent(
 
   const { data: nodes, error: nodesError } = await supabase
     .from('nodes')
-    .select()
+    .select('*, questions(count)')
     .eq('course_id', courseId)
     .order('position', { ascending: true })
     .limit(MAX_NODES)
   if (nodesError) throw new Error(nodesError.message)
 
-  const byChapter = new Map<string, LessonNode[]>()
-  for (const node of (nodes ?? []) as LessonNode[]) {
+  const byChapter = new Map<string, LessonNodeWithCount[]>()
+  for (const row of (nodes ?? []) as Array<
+    LessonNode & { questions: Array<{ count: number }> }
+  >) {
+    const { questions, ...node } = row
     const list = byChapter.get(node.chapter_id) ?? []
-    list.push(node)
+    list.push({ ...node, question_count: questions[0]?.count ?? 0 })
     byChapter.set(node.chapter_id, list)
   }
   return ((chapters ?? []) as Chapter[]).map((chapter) => ({

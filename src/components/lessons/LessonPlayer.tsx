@@ -23,7 +23,8 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
   if (questions.length === 0) {
     return (
       <p className="state state-empty">
-        This lesson has no questions yet — generation may still be running.
+        This lesson has no questions — if generation has finished, the course
+        page offers the owner a Regenerate option to fill empty lessons.
       </p>
     )
   }
