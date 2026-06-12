@@ -154,6 +154,15 @@ export function validateChapterQuestions(
   return buckets
 }
 
+// After the chapter call: which lessons still have no questions (the model
+// omitted their node_index, or its answer was truncated/unparseable). These
+// get one smaller re-ask before the chapter is accepted.
+export function emptyNodeIndexes(buckets: GeneratedQuestion[][]): number[] {
+  return buckets.flatMap((bucket, index) =>
+    bucket.length === 0 ? [index] : [],
+  )
+}
+
 function validateQuestion(entry: unknown): GeneratedQuestion | null {
   if (!entry || typeof entry !== 'object') return null
   const raw = entry as Record<string, unknown>
