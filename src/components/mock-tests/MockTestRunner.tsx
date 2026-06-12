@@ -4,7 +4,7 @@ import {
   describeCorrectAnswer,
   gradeQuestion,
 } from '../../services/lessonService'
-import type { QuestionResponse } from '../../services/lessonService'
+import type { Grade, QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from '../lessons/ChoiceQuestion'
 import FillBlankQuestion from '../lessons/FillBlankQuestion'
 
@@ -26,7 +26,7 @@ function MockTestRunner({
   chapterTitleByNodeId,
 }: MockTestRunnerProps) {
   const [index, setIndex] = useState(0)
-  const [correctByIndex, setCorrectByIndex] = useState<boolean[]>([])
+  const [gradeByIndex, setGradeByIndex] = useState<Grade[]>([])
 
   if (questions.length === 0) {
     return (
@@ -38,13 +38,14 @@ function MockTestRunner({
 
   const question = questions[index]
   if (!question) {
-    const score = correctByIndex.filter(Boolean).length
+    // A near-miss on a typed answer counts toward the score, like in lessons.
+    const score = gradeByIndex.filter((grade) => grade !== 'incorrect').length
     const byChapter = new Map<string, ChapterScore>()
     questions.forEach((q, i) => {
       const title = chapterTitleByNodeId.get(q.node_id) ?? 'Other'
       const entry = byChapter.get(title) ?? { title, correct: 0, total: 0 }
       entry.total += 1
-      if (correctByIndex[i]) entry.correct += 1
+      if (gradeByIndex[i] !== 'incorrect') entry.correct += 1
       byChapter.set(title, entry)
     })
     return (
@@ -67,7 +68,7 @@ function MockTestRunner({
             <h4>Review your mistakes</h4>
             <ul className="mistake-list">
               {questions.map((q, i) =>
-                correctByIndex[i] ? null : (
+                gradeByIndex[i] !== 'incorrect' ? null : (
                   <li key={q.id}>
                     <p>{q.prompt}</p>
                     <p className="state-correct">
@@ -85,8 +86,8 @@ function MockTestRunner({
 
   function handleSubmit(response: QuestionResponse) {
     if (!question) return
-    const correct = gradeQuestion(question, response)
-    setCorrectByIndex((current) => [...current, correct])
+    const grade = gradeQuestion(question, response)
+    setGradeByIndex((current) => [...current, grade])
     setIndex((i) => i + 1)
   }
 

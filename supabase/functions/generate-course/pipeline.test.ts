@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'vitest'
+import { extractXmlText } from '../_shared/xml'
 import {
   buildChapterQuestionsPrompt,
+  buildSyllabusPrompt,
+  buildSystemPrompt,
   chunkText,
-  extractXmlText,
+  languageReminder,
+  matchesOutputLanguage,
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,
@@ -282,6 +286,42 @@ describe('buildChapterQuestionsPrompt', () => {
     // Two nodes share chunk 0; it must appear only once.
     expect(prompt.match(/chunk zero text/g)).toHaveLength(1)
     expect(prompt).toContain('chunk one text')
+  })
+
+  test('pins prompts and options to the output language', () => {
+    const prompt = buildChapterQuestionsPrompt(chapter, ['text'], 'Vietnamese')
+    expect(prompt).toContain('every prompt and every option in Vietnamese')
+  })
+})
+
+describe('language enforcement', () => {
+  test('syllabus prompt pins titles and summaries to the output language', () => {
+    const prompt = buildSyllabusPrompt(['some text'], 'Vietnamese')
+    expect(prompt).toContain('every title and summary in Vietnamese')
+  })
+
+  test('system prompt and reminder name the output language', () => {
+    expect(buildSystemPrompt('Vietnamese')).toContain(
+      'MUST be written in Vietnamese',
+    )
+    expect(languageReminder('Vietnamese')).toContain('Vietnamese')
+  })
+
+  test('detects English drift when Vietnamese was requested', () => {
+    expect(
+      matchesOutputLanguage('What is the powerhouse of the cell?', 'Vietnamese'),
+    ).toBe(false)
+  })
+
+  test('accepts real Vietnamese output', () => {
+    expect(
+      matchesOutputLanguage('Tế bào là đơn vị cơ bản của sự sống', 'Vietnamese'),
+    ).toBe(true)
+  })
+
+  test('never second-guesses languages it cannot detect', () => {
+    expect(matchesOutputLanguage('Plain English text', 'English')).toBe(true)
+    expect(matchesOutputLanguage('Plain English text', 'Japanese')).toBe(true)
   })
 })
 

@@ -5,6 +5,22 @@ the AI generates a Duolingo-style course (chapters → lesson nodes → verified
 questions) that later also feeds user-built mock tests. Courses are private to
 their owner unless shared as public; public courses can be saved by others.
 
+## Upload gates (`supabase/functions/extract-material`)
+
+Materials pass two gates before any AI runs:
+
+1. **Weight** — 10 MB per file and an extractable MIME type (pdf, txt, md,
+   docx, pptx), checked client-side for the message and enforced by the
+   `course-materials` bucket (`file_size_limit` + `allowed_mime_types`).
+2. **Convert** — right after upload, `uploadMaterial` invokes the
+   `extract-material` Edge Function (caller's JWT, synchronous), which pulls
+   the plain text out of the file and stores it as `<storage_path>.md` beside
+   the original. Outcome lands on the `course_materials` row
+   (`extract_status` ready/failed + `extract_error`, `extracted_path`,
+   `extracted_chars`). Unreadable files (scanned PDFs) fail here, immediately
+   — CoursePage shows the per-file reason — instead of minutes into a
+   generation run.
+
 ## AI pipeline (`supabase/functions/generate-course`)
 
 `createCourse` leaves the course in `pending` status; the frontend then
@@ -15,9 +31,10 @@ pipelines for one course. It answers 202 immediately and works in the
 background (`EdgeRuntime.waitUntil`, self-imposed 6-minute budget) while
 CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
 
-1. **Extract** — downloads the course's materials from storage and pulls
-   plain text out of txt/md (direct), pdf (`unpdf`), docx/pptx (`fflate`
-   unzip + XML strip).
+1. **Extract** — downloads each material's pre-extracted `.md` (see Upload
+   gates above); rows from before extraction-at-upload fall back to inline
+   parsing via `functions/_shared/extract.ts`. A material whose extraction
+   failed fails the run instantly, before any AI call.
 2. **Chunk** — slices the text into ~6k-char chunks on paragraph boundaries
    (`pipeline.ts`, pure and unit-tested).
 3. **Syllabus** — one AI call returns a strict-JSON chapter/node outline;
@@ -25,7 +42,10 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
 4. **Questions** — one AI call **per chapter** (not per node — a full course
    stays within free-tier request limits) writes mcq/mcq_multi/fill_blank
    questions for every lesson in that chapter, each tagged with its
-   `node_index`, in the course's output language.
+   `node_index`, in the course's output language. Every call carries a
+   system message pinning the output language, runs at temperature 0.2 in
+   JSON mode with a `max_tokens` cap, and is re-asked once if the answer
+   detectably drifted to the wrong language (Vietnamese diacritics check).
 5. **Enforce + verify** — malformed questions are dropped
    (`validateChapterQuestions`), and a question is marked `verified` only
    when its correct answer literally appears in the source chunk.

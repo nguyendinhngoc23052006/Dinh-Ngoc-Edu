@@ -4,8 +4,8 @@
 
 export const MAX_CHAPTERS = 8
 export const MAX_NODES_PER_CHAPTER = 5
-export const QUESTIONS_PER_NODE = 4
-const MAX_QUESTIONS_PER_NODE = 8
+export const QUESTIONS_PER_NODE = 6
+const MAX_QUESTIONS_PER_NODE = 12
 const MAX_OPTIONS = 6
 
 export interface SyllabusNode {
@@ -218,20 +218,34 @@ export function verifyQuestion(
   )
 }
 
-// docx/pptx text lives inside XML; strip the markup, keeping paragraph breaks.
-export function extractXmlText(xml: string): string {
-  return xml
-    .replace(/<\/(?:w:p|a:p)>/g, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#?\w+;/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ ?\n ?/g, '\n')
-    .trim()
+// One system message pins the output language on every call. The user prompts
+// are written in English, which pulls small models toward English output —
+// especially when the source material is in yet another language — so the
+// language rule is stated up front, per field, with the only exception named.
+export function buildSystemPrompt(outputLanguage: string): string {
+  return [
+    `You write educational content strictly in ${outputLanguage}.`,
+    `Every chapter title, summary, lesson title, question, option, and accepted answer MUST be written in ${outputLanguage}, even though these instructions are in English and even when the source material is in a different language.`,
+    `Only proper nouns, formulas, and technical terms quoted verbatim from the source may stay in their original language.`,
+    `Respond with JSON only — no prose, no code fences.`,
+  ].join(' ')
+}
+
+// Appended to the prompt on the single retry after a language-drift detection.
+export function languageReminder(outputLanguage: string): string {
+  return `\n\nIMPORTANT: your previous answer was not in ${outputLanguage}. Rewrite ALL text values in ${outputLanguage}.`
+}
+
+// Cheap post-check for the one language we can detect reliably: any real
+// Vietnamese text carries Vietnamese-specific letters (đ, ơ, ư, ă, â, ê, ô)
+// or tonal diacritics (Latin Extended Additional). Other languages pass —
+// no heuristic beats accepting the answer there.
+export function matchesOutputLanguage(
+  text: string,
+  outputLanguage: string,
+): boolean {
+  if (outputLanguage !== 'Vietnamese') return true
+  return /[đĐơƠưƯăĂêÊôÔâÂẠ-ỹ]/.test(text)
 }
 
 export function buildSyllabusPrompt(
@@ -246,7 +260,8 @@ export function buildSyllabusPrompt(
     `The materials were split into ${chunks.length} chunks, excerpted below.`,
     `Design a syllabus: at most ${MAX_CHAPTERS} chapters, each with 2-${MAX_NODES_PER_CHAPTER} short lessons ("nodes").`,
     `Each node names the chunk (by index) its content comes from.`,
-    `Respond with ONLY this JSON, all text in ${outputLanguage}:`,
+    `Write every title and summary in ${outputLanguage}, regardless of the materials' language.`,
+    `Respond with ONLY this JSON:`,
     `{"chapters":[{"title":"...","summary":"one sentence","nodes":[{"title":"...","chunk_index":0}]}]}`,
     '',
     excerpts,
@@ -279,6 +294,7 @@ export function buildChapterQuestionsPrompt(
     `Write exactly ${QUESTIONS_PER_NODE} questions per lesson. Base every question and answer ONLY on that lesson's source chunk below — never invent facts.`,
     `Mix the kinds: "mcq" (one correct option), "mcq_multi" (several correct options), "fill_blank" (the student types a missing word or phrase).`,
     `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give the accepted answers (short, copied from the source) and no options.`,
+    `Write every prompt and every option in ${outputLanguage}, regardless of the source chunk's language — a question in one language must never expect an answer in another.`,
     `Respond with ONLY this JSON (node_index says which lesson the question belongs to):`,
     `{"questions":[{"node_index":0,"kind":"mcq","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","prompt":"... ____ ...","accepted":["..."]}]}`,
     '',

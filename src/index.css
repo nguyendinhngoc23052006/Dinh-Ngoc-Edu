@@ -389,6 +389,16 @@ button:disabled {
   color: var(--green-dark);
 }
 
+.feedback-popup-partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.feedback-popup-partial button {
+  background: #d97706;
+  box-shadow: 0 2px 0 #92400e;
+}
+
 .feedback-popup-wrong {
   background: var(--red-soft);
   color: var(--red);

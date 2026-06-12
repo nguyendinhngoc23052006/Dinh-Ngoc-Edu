@@ -29,10 +29,16 @@ describe('validateMaterialFile', () => {
     )
   })
 
-  test('rejects files over 20 MB', () => {
+  test('rejects files over 10 MB', () => {
     expect(
-      validateMaterialFile({ name: 'notes.pdf', size: 21 * 1024 * 1024 }),
-    ).toMatch(/20 MB/i)
+      validateMaterialFile({ name: 'notes.pdf', size: 11 * 1024 * 1024 }),
+    ).toMatch(/10 MB/i)
+  })
+
+  test('accepts a file just under the 10 MB limit', () => {
+    expect(
+      validateMaterialFile({ name: 'notes.pdf', size: 10 * 1024 * 1024 }),
+    ).toBeNull()
   })
 })
 

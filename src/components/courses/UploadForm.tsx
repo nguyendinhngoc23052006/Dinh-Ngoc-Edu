@@ -35,7 +35,9 @@ function UploadForm({ onSubmit, initial }: UploadFormProps) {
       validateNewCourse(title, outputLanguage) ??
       (files.length === 0
         ? 'Upload at least one material file.'
-        : (files.map(validateMaterialFile).find((p) => p !== null) ?? null))
+        : files.length > 10
+          ? 'Upload at most 10 files per course.'
+          : (files.map(validateMaterialFile).find((p) => p !== null) ?? null))
     if (problem) {
       setError(problem)
       return
