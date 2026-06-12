@@ -4,8 +4,8 @@
 
 export const MAX_CHAPTERS = 8
 export const MAX_NODES_PER_CHAPTER = 5
-export const QUESTIONS_PER_NODE = 4
-const MAX_QUESTIONS_PER_NODE = 8
+export const QUESTIONS_PER_NODE = 6
+const MAX_QUESTIONS_PER_NODE = 12
 const MAX_OPTIONS = 6
 
 export interface SyllabusNode {

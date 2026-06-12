@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
-import { getNodeQuestions } from '../services/lessonService'
+import {
+  getNodeQuestions,
+  shuffleLessonQuestions,
+} from '../services/lessonService'
 import { completeNode } from '../services/progressService'
 import LessonPlayer from '../components/lessons/LessonPlayer'
 
@@ -10,6 +13,11 @@ function LessonPage() {
   const navigate = useNavigate()
   const state = useAsync(() => getNodeQuestions(nodeId), [nodeId])
   const [completeError, setCompleteError] = useState<string | null>(null)
+  // A fresh question and option order per take, fixed for the take's duration.
+  const questions = useMemo(
+    () => shuffleLessonQuestions(state.data ?? []),
+    [state.data],
+  )
 
   // "Finish lesson" stays clickable after a failure, so it doubles as retry.
   async function handleComplete() {
@@ -43,10 +51,7 @@ function LessonPage() {
           {completeError ? (
             <p className="state state-error">{completeError}</p>
           ) : null}
-          <LessonPlayer
-            questions={state.data ?? []}
-            onComplete={handleComplete}
-          />
+          <LessonPlayer questions={questions} onComplete={handleComplete} />
         </>
       )}
     </section>

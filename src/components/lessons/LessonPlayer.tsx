@@ -4,7 +4,7 @@ import {
   describeCorrectAnswer,
   gradeQuestion,
 } from '../../services/lessonService'
-import type { QuestionResponse } from '../../services/lessonService'
+import type { Grade, QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
 
@@ -17,7 +17,7 @@ interface LessonPlayerProps {
 // reports completion so the page can record progress.
 function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
   const [index, setIndex] = useState(0)
-  const [lastCorrect, setLastCorrect] = useState<boolean | null>(null)
+  const [lastGrade, setLastGrade] = useState<Grade | null>(null)
   const [score, setScore] = useState(0)
 
   if (questions.length === 0) {
@@ -45,13 +45,14 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
 
   function handleSubmit(response: QuestionResponse) {
     if (!question) return
-    const correct = gradeQuestion(question, response)
-    setLastCorrect(correct)
-    if (correct) setScore((s) => s + 1)
+    const grade = gradeQuestion(question, response)
+    setLastGrade(grade)
+    // A near-miss still shows the student knew the answer — count it.
+    if (grade !== 'incorrect') setScore((s) => s + 1)
   }
 
   function handleNext() {
-    setLastCorrect(null)
+    setLastGrade(null)
     setIndex((i) => i + 1)
   }
 
@@ -67,7 +68,7 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
         Question {index + 1} of {questions.length}
         {question.verified ? ' · verified against your material' : ''}
       </p>
-      {lastCorrect === null ? (
+      {lastGrade === null ? (
         question.kind === 'fill_blank' ? (
           <FillBlankQuestion
             key={question.id}
@@ -87,17 +88,23 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
           <div
             role="alert"
             className={
-              lastCorrect
+              lastGrade === 'correct'
                 ? 'feedback-popup feedback-popup-correct'
-                : 'feedback-popup feedback-popup-wrong'
+                : lastGrade === 'partial'
+                  ? 'feedback-popup feedback-popup-partial'
+                  : 'feedback-popup feedback-popup-wrong'
             }
           >
             <p className="feedback-title">
-              {lastCorrect ? 'Correct!' : 'Not quite.'}
+              {lastGrade === 'correct'
+                ? 'Correct!'
+                : lastGrade === 'partial'
+                  ? 'Close enough — partially correct!'
+                  : 'Not quite.'}
             </p>
-            {lastCorrect ? null : (
+            {lastGrade === 'correct' ? null : (
               <p>
-                Correct answer:{' '}
+                {lastGrade === 'partial' ? 'Exact answer: ' : 'Correct answer: '}
                 <strong>{describeCorrectAnswer(question)}</strong>
               </p>
             )}
