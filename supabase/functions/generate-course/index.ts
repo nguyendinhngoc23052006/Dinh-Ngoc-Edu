@@ -12,13 +12,14 @@
 //   AI_MODEL     optional — default gemini-2.5-flash
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { strFromU8, unzipSync } from 'npm:fflate@0.8.2'
-import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1'
+import { extractFileText } from '../_shared/extract.ts'
 import {
   buildChapterQuestionsPrompt,
   buildSyllabusPrompt,
+  buildSystemPrompt,
   chunkText,
-  extractXmlText,
+  languageReminder,
+  matchesOutputLanguage,
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,
@@ -159,7 +160,7 @@ async function generate(
     const language = course.output_language
     ensureTime(deadline)
     const syllabus = validateSyllabus(
-      parseJsonLoose(await chat(buildSyllabusPrompt(chunks, language))),
+      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language)),
       chunks.length,
     )
 
@@ -200,7 +201,10 @@ async function generate(
       try {
         buckets = validateChapterQuestions(
           parseJsonLoose(
-            await chat(buildChapterQuestionsPrompt(chapter, chunks, language)),
+            await chatInLanguage(
+              buildChapterQuestionsPrompt(chapter, chunks, language),
+              language,
+            ),
           ),
           chapter.nodes.length,
         )
@@ -255,16 +259,27 @@ async function extractMaterialsText(
 ): Promise<string> {
   const { data: materials, error } = await supabase
     .from('course_materials')
-    .select('file_name, storage_path')
+    .select('file_name, storage_path, extract_status, extract_error, extracted_path')
     .eq('course_id', courseId)
     .limit(100)
   if (error) throw new Error(error.message)
   const rows = (materials ?? []) as Array<{
     file_name: string
     storage_path: string
+    extract_status: string
+    extract_error: string | null
+    extracted_path: string | null
   }>
   if (rows.length === 0) {
     throw new Error('This course has no uploaded materials.')
+  }
+  // Fail fast (and free) on a material that already failed extraction at
+  // upload time, instead of burning AI calls on a course missing its source.
+  const broken = rows.find((row) => row.extract_status === 'failed')
+  if (broken) {
+    throw new Error(
+      broken.extract_error ?? `Could not read ${broken.file_name}.`,
+    )
   }
   const parts: string[] = []
   let totalChars = 0
@@ -272,63 +287,42 @@ async function extractMaterialsText(
     // Everything past the source cap gets discarded anyway — stop
     // downloading instead of buffering unused megabytes.
     if (totalChars >= MAX_SOURCE_CHARS) break
+    // Prefer the text extracted at upload time; rows from before
+    // extraction-at-upload existed ('pending', no extracted_path) fall back
+    // to parsing the original file here.
+    const path = material.extracted_path ?? material.storage_path
     const { data: blob, error: downloadError } = await supabase.storage
       .from('course-materials')
-      .download(material.storage_path)
+      .download(path)
     if (downloadError || !blob) {
       throw new Error(`Could not read ${material.file_name}.`)
     }
     const bytes = new Uint8Array(await blob.arrayBuffer())
-    const part = await extractFileText(material.file_name, bytes)
+    const part = material.extracted_path
+      ? new TextDecoder().decode(bytes)
+      : await extractFileText(material.file_name, bytes)
     totalChars += part.length
     parts.push(part)
   }
   return parts.join('\n\n')
 }
 
-async function extractFileText(
-  fileName: string,
-  bytes: Uint8Array,
+// One model call pinned to the output language by a system message, with a
+// single re-ask when the answer detectably drifted to the wrong language
+// (the known failure: English questions over Vietnamese materials).
+async function chatInLanguage(
+  prompt: string,
+  outputLanguage: string,
 ): Promise<string> {
-  const extension = fileName.split('.').pop()?.toLowerCase() ?? ''
-  if (extension === 'txt' || extension === 'md') {
-    return new TextDecoder().decode(bytes)
-  }
-  if (extension === 'pdf') {
-    try {
-      const { text } = await extractText(await getDocumentProxy(bytes), {
-        mergePages: true,
-      })
-      if (text.trim() !== '') return text
-    } catch {
-      // Fall through to the readable error below.
-    }
-    throw new Error(
-      `Could not read any text from ${fileName}. If it is a scanned or image-based PDF, re-export it as a text-based PDF (e.g. open it in Google Docs and download as PDF), then retry.`,
-    )
-  }
-  if (extension === 'docx' || extension === 'pptx') {
-    const entries = unzipSync(bytes)
-    const keys =
-      extension === 'docx'
-        ? ['word/document.xml']
-        : Object.keys(entries)
-            .filter((key) => /^ppt\/slides\/slide\d+\.xml$/.test(key))
-            .sort(
-              (a, b) =>
-                Number(a.replace(/\D/g, '')) - Number(b.replace(/\D/g, '')),
-            )
-    return keys
-      .filter((key) => entries[key])
-      .map((key) => extractXmlText(strFromU8(entries[key])))
-      .join('\n')
-  }
-  throw new Error(`Unsupported file type: ${fileName}`)
+  const system = buildSystemPrompt(outputLanguage)
+  const content = await chat(prompt, system)
+  if (matchesOutputLanguage(content, outputLanguage)) return content
+  return chat(prompt + languageReminder(outputLanguage), system)
 }
 
 // One call to an OpenAI-compatible chat completions endpoint, with a short
 // retry on rate limits — free-tier keys hit 429 routinely.
-async function chat(prompt: string): Promise<string> {
+async function chat(prompt: string, system: string): Promise<string> {
   const baseUrl = (
     Deno.env.get('AI_BASE_URL') ??
     'https://generativelanguage.googleapis.com/v1beta/openai'
@@ -343,8 +337,16 @@ async function chat(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.4,
-        messages: [{ role: 'user', content: prompt }],
+        // Low temperature + JSON mode + a hard output cap: the pipeline wants
+        // consistent, schema-shaped output at a bounded per-call cost, not
+        // creative variance.
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        max_tokens: 8192,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
       }),
     })
     if (response.ok) {

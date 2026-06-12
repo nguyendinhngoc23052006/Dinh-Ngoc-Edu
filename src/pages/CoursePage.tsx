@@ -9,6 +9,7 @@ import {
   setCourseVisibility,
 } from '../services/courseService'
 import { getCourseContent } from '../services/lessonService'
+import { listMaterials } from '../services/materialService'
 import { getCompletedNodeIds } from '../services/progressService'
 import { cloneCourse, saveCourse } from '../services/savedCourseService'
 import { listMyMockTests } from '../services/mockTestService'
@@ -37,16 +38,22 @@ function CoursePage() {
   const state = useAsync(async () => {
     const course = await getCourse(courseId)
     if (!course) return null
-    const [chapters, mockTests] = await Promise.all([
+    const owner = session?.user.id === course.owner_id
+    const [chapters, mockTests, materials] = await Promise.all([
       getCourseContent(courseId),
       session ? listMyMockTests(courseId) : Promise.resolve([]),
+      // Materials are owner-only (RLS) and only matter before the course is
+      // ready: a file that failed text extraction explains a stuck course.
+      owner && course.status !== 'ready'
+        ? listMaterials(courseId)
+        : Promise.resolve([]),
     ])
     const nodeIds = chapters.flatMap((c) => c.nodes.map((n) => n.id))
     // Guests have no progress rows; skip the query, render an untouched path.
     const completed = session
       ? await getCompletedNodeIds(nodeIds)
       : new Set<string>()
-    return { course, chapters, completed, mockTests }
+    return { course, chapters, completed, mockTests, materials }
   }, [courseId, session?.user.id])
 
   // While the AI pipeline runs, poll the status only (one PK lookup per
@@ -101,8 +108,11 @@ function CoursePage() {
     )
   }
 
-  const { course, chapters, completed, mockTests } = state.data
+  const { course, chapters, completed, mockTests, materials } = state.data
   const isOwner = session?.user.id === course.owner_id
+  const failedMaterials = materials.filter(
+    (material) => material.extract_status === 'failed',
+  )
 
   async function run(action: () => Promise<void>, failure: string) {
     setBusy(true)
@@ -178,6 +188,16 @@ function CoursePage() {
       <p className="course-meta">
         {course.output_language} · status: {course.status}
       </p>
+      {failedMaterials.length > 0 ? (
+        <p className="state state-error">
+          Some materials could not be read, so generation can't use them:{' '}
+          {failedMaterials
+            .map((m) => `${m.file_name} — ${m.extract_error ?? 'unreadable'}`)
+            .join('; ')}{' '}
+          Fix the file, then create a new course with it (materials are
+          uploaded once per course).
+        </p>
+      ) : null}
       {course.status === 'pending' ? (
         isOwner ? (
           <p className="state state-empty">

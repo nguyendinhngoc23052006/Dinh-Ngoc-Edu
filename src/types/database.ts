@@ -19,12 +19,18 @@ export interface Course {
   created_at: string
 }
 
+export type ExtractStatus = 'pending' | 'ready' | 'failed'
+
 export interface CourseMaterial {
   id: string
   course_id: string
   owner_id: string
   file_name: string
   storage_path: string
+  extract_status: ExtractStatus
+  extract_error: string | null
+  extracted_path: string | null
+  extracted_chars: number | null
   created_at: string
 }
 

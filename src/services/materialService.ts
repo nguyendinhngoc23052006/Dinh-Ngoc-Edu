@@ -1,9 +1,23 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
 import { requireUserId } from './authService'
 import type { CourseMaterial } from '../types/database'
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB
+// Mirrors the course-materials bucket's file_size_limit and allowed_mime_types
+// (migration 20260612090000) — this check is the friendly message, the bucket
+// is the enforcement.
+const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
 const ALLOWED_EXTENSIONS = ['pdf', 'txt', 'md', 'docx', 'pptx']
+
+// Browsers leave file.type empty for some extensions (.md notably); the bucket
+// rejects unknown MIME types, so the upload always states one by extension.
+const MIME_BY_EXTENSION: Record<string, string> = {
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
 
 // Returns a human-readable problem, or null when the file is acceptable.
 export function validateMaterialFile(file: {
@@ -19,7 +33,7 @@ export function validateMaterialFile(file: {
     return `Unsupported file type. Use: ${ALLOWED_EXTENSIONS.join(', ')}.`
   }
   if (file.size === 0) return 'The file is empty.'
-  if (file.size > MAX_FILE_BYTES) return 'Files must be 20 MB or smaller.'
+  if (file.size > MAX_FILE_BYTES) return 'Files must be 10 MB or smaller.'
   return null
 }
 
@@ -43,7 +57,9 @@ export function toStorageName(fileName: string): string {
 
 // Uploads to <user_id>/<course_id>/<storage_name> in the private
 // 'course-materials' bucket (the storage policies scope on that first
-// segment), then records the metadata row.
+// segment), records the metadata row, then runs text extraction so an
+// unreadable file (e.g. a scanned PDF) fails HERE, not minutes later inside
+// the AI generation run.
 export async function uploadMaterial(
   courseId: string,
   file: File,
@@ -52,10 +68,14 @@ export async function uploadMaterial(
   if (problem) throw new Error(problem)
   const ownerId = await requireUserId()
   const storagePath = `${ownerId}/${courseId}/${toStorageName(file.name)}`
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
 
   const { error: uploadError } = await supabase.storage
     .from('course-materials')
-    .upload(storagePath, file, { upsert: true })
+    .upload(storagePath, file, {
+      upsert: true,
+      contentType: MIME_BY_EXTENSION[extension],
+    })
   if (uploadError) throw new Error(uploadError.message)
 
   const { data, error } = await supabase
@@ -66,13 +86,36 @@ export async function uploadMaterial(
         owner_id: ownerId,
         file_name: file.name,
         storage_path: storagePath,
+        // A re-upload replaces the bytes; the previous extraction no longer
+        // describes them, so it runs again below.
+        extract_status: 'pending',
+        extract_error: null,
       },
       { onConflict: 'course_id,storage_path' },
     )
     .select()
     .single()
   if (error) throw new Error(error.message)
-  return data as CourseMaterial
+  const material = data as CourseMaterial
+
+  const { data: extracted, error: extractError } =
+    await supabase.functions.invoke('extract-material', {
+      body: { materialId: material.id },
+    })
+  if (extractError) {
+    if (extractError instanceof FunctionsHttpError) {
+      const detail = (await extractError.context.json().catch(() => null)) as {
+        error?: string
+      } | null
+      throw new Error(detail?.error ?? `Could not process ${file.name}.`)
+    }
+    throw new Error(`Could not process ${file.name}.`)
+  }
+  const outcome = extracted as { status?: string; error?: string } | null
+  if (outcome?.status === 'failed') {
+    throw new Error(outcome.error ?? `Could not process ${file.name}.`)
+  }
+  return material
 }
 
 export async function listMaterials(

@@ -390,6 +390,11 @@ enabled = true
 # The function needs the caller's identity (it writes with the user's JWT).
 verify_jwt = true
 
+[functions.extract-material]
+enabled = true
+# Same caller-JWT pattern as generate-course.
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327
