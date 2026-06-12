@@ -218,22 +218,6 @@ export function verifyQuestion(
   )
 }
 
-// docx/pptx text lives inside XML; strip the markup, keeping paragraph breaks.
-export function extractXmlText(xml: string): string {
-  return xml
-    .replace(/<\/(?:w:p|a:p)>/g, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#?\w+;/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ ?\n ?/g, '\n')
-    .trim()
-}
-
 // One system message pins the output language on every call. The user prompts
 // are written in English, which pulls small models toward English output —
 // especially when the source material is in yet another language — so the

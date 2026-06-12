@@ -261,6 +261,7 @@ async function extractMaterialsText(
     .from('course_materials')
     .select('file_name, storage_path, extract_status, extract_error, extracted_path')
     .eq('course_id', courseId)
+    .order('created_at', { ascending: true })
     .limit(100)
   if (error) throw new Error(error.message)
   const rows = (materials ?? []) as Array<{
@@ -289,8 +290,14 @@ async function extractMaterialsText(
     if (totalChars >= MAX_SOURCE_CHARS) break
     // Prefer the text extracted at upload time; rows from before
     // extraction-at-upload existed ('pending', no extracted_path) fall back
-    // to parsing the original file here.
-    const path = material.extracted_path ?? material.storage_path
+    // to parsing the original file here. The .md path is re-derived from
+    // storage_path rather than read from the (owner-writable) extracted_path
+    // column, so the column can never point this download anywhere else.
+    const extracted =
+      material.extract_status === 'ready' && material.extracted_path !== null
+    const path = extracted
+      ? `${material.storage_path}.md`
+      : material.storage_path
     const { data: blob, error: downloadError } = await supabase.storage
       .from('course-materials')
       .download(path)
@@ -298,7 +305,7 @@ async function extractMaterialsText(
       throw new Error(`Could not read ${material.file_name}.`)
     }
     const bytes = new Uint8Array(await blob.arrayBuffer())
-    const part = material.extracted_path
+    const part = extracted
       ? new TextDecoder().decode(bytes)
       : await extractFileText(material.file_name, bytes)
     totalChars += part.length

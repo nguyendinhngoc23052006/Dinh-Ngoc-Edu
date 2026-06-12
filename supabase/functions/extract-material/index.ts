@@ -56,9 +56,16 @@ Deno.serve(async (req) => {
   if (!material) return json({ error: 'Material not found.' }, 404)
 
   async function fail(message: string): Promise<Response> {
+    // Also clear any pointers from a previous successful run — the bytes have
+    // changed, so a stale extracted_path must not outlive its source.
     await supabase
       .from('course_materials')
-      .update({ extract_status: 'failed', extract_error: message.slice(0, 500) })
+      .update({
+        extract_status: 'failed',
+        extract_error: message.slice(0, 500),
+        extracted_path: null,
+        extracted_chars: null,
+      })
       .eq('id', materialId)
     return json({ status: 'failed', error: message }, 200)
   }
@@ -79,6 +86,8 @@ Deno.serve(async (req) => {
 
   let text: string
   try {
+    // Generation discards everything past its 200k-char source cap, so
+    // storing more than that per file would be pure dead weight.
     text = await extractFileText(
       material.file_name,
       new Uint8Array(await blob.arrayBuffer()),
@@ -93,6 +102,7 @@ Deno.serve(async (req) => {
   if (text.trim() === '') {
     return fail(`No readable text found in ${material.file_name}.`)
   }
+  text = text.slice(0, 200_000)
 
   // The .md lives beside the original under the same <user_id>/<course_id>/
   // prefix, so the existing owner-scoped storage policies cover it.

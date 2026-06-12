@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { extractXmlText } from '../_shared/xml'
 import {
   buildChapterQuestionsPrompt,
   buildSyllabusPrompt,
@@ -6,7 +7,6 @@ import {
   chunkText,
   languageReminder,
   matchesOutputLanguage,
-  extractXmlText,
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,

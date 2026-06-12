@@ -4,11 +4,14 @@
 
 import { strFromU8, unzipSync } from 'npm:fflate@0.8.2'
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1'
-import { extractXmlText } from '../generate-course/pipeline.ts'
+import { extractXmlText } from './xml.ts'
 
 // Mirrors the course-materials bucket's file_size_limit and the client check
 // in src/services/materialService.ts.
 export const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
+// The bucket limit caps COMPRESSED bytes; a crafted docx/pptx (zip bomb)
+// could still inflate to gigabytes in memory without this cap.
+const MAX_UNZIPPED_BYTES = 4 * MAX_FILE_BYTES
 
 export async function extractFileText(
   fileName: string,
@@ -33,6 +36,13 @@ export async function extractFileText(
   }
   if (extension === 'docx' || extension === 'pptx') {
     const entries = unzipSync(bytes)
+    const unzippedBytes = Object.values(entries).reduce(
+      (sum, entry) => sum + entry.length,
+      0,
+    )
+    if (unzippedBytes > MAX_UNZIPPED_BYTES) {
+      throw new Error(`${fileName} decompresses far beyond its file size.`)
+    }
     const keys =
       extension === 'docx'
         ? ['word/document.xml']
