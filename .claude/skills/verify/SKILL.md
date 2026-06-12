@@ -28,6 +28,12 @@ do not fix anything.
 Before telling the human to click anything, verify the preview deployment is wired to
 the PR's own Supabase preview branch, not production:
 
+- The PR's **Supabase Preview** check is green — *skipped* means no preview branch was
+  created and the preview has NO database credentials.
+- The preview page renders the app, not the "This deployment failed to start /
+  missing Supabase config" text. Either failure → route the human to the connection
+  fix: relink Supabase↔Vercel, then **close and reopen the PR** (env sync fires only
+  at PR-open).
 - The client reads `VITE_SUPABASE_URL` from env (never hardcoded) — confirm in code.
 - Confirm the preview deployment's env points at the preview branch's URL (project ref
   differs from production's).

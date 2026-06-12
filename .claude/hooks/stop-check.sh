@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Stop/SubagentStop hook: block task completion (exit 2, reason on stderr)
-# unless the PR self-check is fully ticked AND memory was updated this task
-# (or the PR states "no new lesson"). Runs only at task end, never on writes.
+# unless the committed .claude/pr-body.md carries the fully ticked Self-check
+# AND memory was updated this task (or pr-body.md states "no new lesson").
+# Verifies git + filesystem ONLY — never gh or the network: cloud sandboxes
+# may lack both, and a hook that can't read its evidence false-blocks forever.
 set -u
 input=$(cat)
 
@@ -13,29 +15,32 @@ fi
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
-# Only police task end on claude/* work branches; plain Q&A sessions on main
-# have no PR to verify.
+# Only police task end on claude/* work branches.
 branch=$(git branch --show-current 2>/dev/null)
 case "$branch" in claude/*) ;; *) exit 0 ;; esac
 
 fail() { echo "$1" >&2; exit 2; }
 
-body=""
-if command -v gh >/dev/null 2>&1; then
-  body=$(gh pr view "$branch" --json body -q .body 2>/dev/null)
-fi
-if [ -z "$body" ]; then
-  fail "Blocked: no open PR found for branch '$branch' (or gh CLI unavailable). A task ends with ONE PR into main carrying the completed '## Self-check' checklist."
+base=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)
+
+# Q&A passthrough: no commits ahead of main and a clean tree means no work
+# product exists to police (a discussion/verification session).
+ahead=$(git rev-list --count "$base"..HEAD 2>/dev/null || echo 0)
+dirty=$(git status --porcelain 2>/dev/null)
+if [ "$ahead" = "0" ] && [ -z "$dirty" ]; then
+  exit 0
 fi
 
-printf '%s' "$body" | grep -q '^## Self-check' \
-  || fail "Blocked: the PR description is missing the '## Self-check' heading. Add the checklist from CLAUDE.md, completed."
-printf '%s' "$body" | grep -q -- '- \[ \]' \
-  && fail "Blocked: the PR self-check still has unticked boxes. Do the work each unticked item names, then tick it ('- [x]')."
+body_file=".claude/pr-body.md"
+[ -f "$body_file" ] || fail "Blocked: work exists on '$branch' but $body_file is missing. Write the PR description there FIRST (with the completed '## Self-check'), open the PR from it, then stop."
+
+grep -q '^## Self-check' "$body_file" \
+  || fail "Blocked: $body_file is missing the '## Self-check' heading. Add the checklist from CLAUDE.md, completed."
+grep -q -- '- \[ \]' "$body_file" \
+  && fail "Blocked: the Self-check in $body_file has unticked boxes. Do the work each unticked item names, then tick it ('- [x]')."
 
 # Memory check: a memory file changed this task (committed on the branch or
-# still in the working tree), or the PR explicitly states "no new lesson".
-base=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)
+# still in the working tree), or pr-body.md explicitly states "no new lesson".
 changed=$(
   git diff --name-only "$base" HEAD 2>/dev/null
   git status --porcelain 2>/dev/null | awk '{print $NF}'
@@ -45,6 +50,6 @@ changed=$(
 if printf '%s\n' "$changed" | grep -Eq '(^|/)MEMORY\.md$|.+/CLAUDE\.md$|\.memory\.md$'; then
   exit 0
 fi
-printf '%s' "$body" | grep -qi 'no new lesson' && exit 0
+grep -qi 'no new lesson' "$body_file" && exit 0
 
-fail "Blocked: no memory file (MEMORY.md, a folder CLAUDE.md, or an agent *.memory.md) was modified this task. Record the lesson in the right tier, or state 'no new lesson' in the PR description."
+fail "Blocked: no memory file (MEMORY.md, a folder CLAUDE.md, or an agent *.memory.md) was modified this task. Record the lesson in the right tier, or state 'no new lesson' in $body_file."
