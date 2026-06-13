@@ -1,0 +1,66 @@
+name: uptime
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe /health and file an issue if it is down
+        uses: actions/github-script@v7
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        with:
+          script: |
+            const base = process.env.PRODUCTION_URL
+            if (!base) {
+              core.info('PRODUCTION_URL is unset — nothing to monitor. Exiting green.')
+              return
+            }
+
+            let healthy = false
+            let detail = ''
+            try {
+              const res = await fetch(`${base.replace(/\/$/, '')}/health`)
+              const body = (await res.text()).trim()
+              healthy = res.ok && body.toLowerCase() === 'ok'
+              detail = `HTTP ${res.status}, body: ${body.slice(0, 200)}`
+            } catch (error) {
+              detail = `fetch failed: ${error}`
+            }
+            if (healthy) {
+              core.info('Health OK.')
+              return
+            }
+
+            const title = 'uptime: /health failing'
+            const note = `Health check failed at ${new Date().toISOString()}.\n\n${detail}`
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'uptime',
+            })
+            const existing = open.data.find((issue) => issue.title === title)
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: note,
+              })
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: note,
+                labels: ['uptime'],
+              })
+            }
