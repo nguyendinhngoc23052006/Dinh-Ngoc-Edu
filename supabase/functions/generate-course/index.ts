@@ -264,6 +264,7 @@ async function generate(
           node_id: nodeIds[nodeIndex],
           position: index + 1,
           kind: question.kind,
+          difficulty: question.difficulty,
           prompt: question.prompt,
           options: question.options,
           answer: question.answer,

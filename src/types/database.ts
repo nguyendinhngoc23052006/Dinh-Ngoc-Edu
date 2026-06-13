@@ -7,6 +7,8 @@ export type CourseStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi'
 
+export type QuestionDifficulty = 'easy' | 'medium' | 'hard'
+
 export interface Course {
   id: string
   owner_id: string
@@ -65,6 +67,7 @@ export interface Question {
   node_id: string
   position: number
   kind: QuestionKind
+  difficulty: QuestionDifficulty
   prompt: string
   options: string[]
   answer: QuestionAnswer

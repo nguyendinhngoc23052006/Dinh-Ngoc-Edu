@@ -169,22 +169,71 @@ describe('validateChapterQuestions', () => {
     expect(buckets[0]).toEqual([
       {
         kind: 'mcq',
+        difficulty: 'medium',
         prompt: 'Pick one',
         options: ['a', 'b', 'c'],
         answer: { correct_indexes: [1] },
       },
       {
         kind: 'mcq_multi',
+        difficulty: 'medium',
         prompt: 'Pick many',
         options: ['a', 'b'],
         answer: { correct_indexes: [0, 1] },
       },
       {
         kind: 'fill_blank',
+        difficulty: 'medium',
         prompt: 'The ____ rises',
         options: [],
         answer: { accepted: ['sun'] },
       },
+    ])
+  })
+
+  test('keeps a valid difficulty tag and defaults an invalid one to medium', () => {
+    const buckets = validateChapterQuestions(
+      {
+        questions: [
+          {
+            node_index: 0,
+            kind: 'mcq',
+            difficulty: 'hard',
+            prompt: 'Synthesize',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+          {
+            node_index: 0,
+            kind: 'fill_blank',
+            difficulty: 'easy',
+            prompt: 'The ____ rises',
+            accepted: ['sun'],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            difficulty: 'impossible',
+            prompt: 'Garbled tag',
+            options: ['a', 'b'],
+            correct_indexes: [1],
+          },
+          {
+            node_index: 0,
+            kind: 'mcq',
+            prompt: 'No tag at all',
+            options: ['a', 'b'],
+            correct_indexes: [0],
+          },
+        ],
+      },
+      1,
+    )
+    expect(buckets[0].map((q) => q.difficulty)).toEqual([
+      'hard',
+      'easy',
+      'medium',
+      'medium',
     ])
   })
 
@@ -267,6 +316,7 @@ describe('validateChapterQuestions', () => {
 describe('emptyNodeIndexes', () => {
   const question: GeneratedQuestion = {
     kind: 'mcq',
+    difficulty: 'medium',
     prompt: 'Pick one',
     options: ['a', 'b'],
     answer: { correct_indexes: [0] },
@@ -313,6 +363,12 @@ describe('buildChapterQuestionsPrompt', () => {
   test('pins prompts and options to the output language', () => {
     const prompt = buildChapterQuestionsPrompt(chapter, ['text'], 'Vietnamese')
     expect(prompt).toContain('every prompt and every option in Vietnamese')
+  })
+
+  test('asks the model to ground difficulty in the material', () => {
+    const prompt = buildChapterQuestionsPrompt(chapter, ['text'], 'English')
+    expect(prompt).toContain('"difficulty"')
+    expect(prompt).toMatch(/Let the material decide the mix/i)
   })
 })
 
@@ -378,6 +434,7 @@ describe('verifyQuestion', () => {
   test('verifies an mcq whose correct option appears in the source', () => {
     const question: GeneratedQuestion = {
       kind: 'mcq',
+      difficulty: 'easy',
       prompt: 'What is the powerhouse?',
       options: ['Mitochondria', 'Nucleus'],
       answer: { correct_indexes: [0] },
@@ -388,6 +445,7 @@ describe('verifyQuestion', () => {
   test('flags an mcq whose correct option was hallucinated', () => {
     const question: GeneratedQuestion = {
       kind: 'mcq',
+      difficulty: 'easy',
       prompt: 'What is the powerhouse?',
       options: ['Ribosome', 'Nucleus'],
       answer: { correct_indexes: [0] },
@@ -398,6 +456,7 @@ describe('verifyQuestion', () => {
   test('verifies a fill_blank when any accepted answer is in the source', () => {
     const question: GeneratedQuestion = {
       kind: 'fill_blank',
+      difficulty: 'hard',
       prompt: 'The ____ is the powerhouse',
       options: [],
       answer: { accepted: ['golgi', 'MITOCHONDRIA'] },

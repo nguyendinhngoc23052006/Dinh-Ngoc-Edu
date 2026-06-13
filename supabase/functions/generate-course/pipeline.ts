@@ -19,11 +19,23 @@ export interface SyllabusChapter {
   nodes: SyllabusNode[]
 }
 
+export type Difficulty = 'easy' | 'medium' | 'hard'
+
 export interface GeneratedQuestion {
   kind: 'mcq' | 'mcq_multi' | 'fill_blank'
+  difficulty: Difficulty
   prompt: string
   options: string[]
   answer: { correct_indexes?: number[]; accepted?: string[] }
+}
+
+// The AI tags each question's difficulty; anything unrecognized falls back to
+// 'medium' so a missing or garbled tag never drops an otherwise-good question.
+const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard']
+function toDifficulty(value: unknown): Difficulty {
+  return typeof value === 'string' && (DIFFICULTIES as readonly string[]).includes(value)
+    ? (value as Difficulty)
+    : 'medium'
 }
 
 // Slices the extracted text into model-sized chunks on paragraph boundaries.
@@ -171,13 +183,14 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
   const prompt =
     typeof raw.prompt === 'string' ? raw.prompt.trim().slice(0, 1000) : ''
   if (!prompt) return null
+  const difficulty = toDifficulty(raw.difficulty)
   if (raw.kind === 'fill_blank') {
     const accepted = (Array.isArray(raw.accepted) ? raw.accepted : [])
       .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
       .map((a) => a.trim().slice(0, 300))
       .slice(0, 10)
     if (accepted.length === 0) return null
-    return { kind: 'fill_blank', prompt, options: [], answer: { accepted } }
+    return { kind: 'fill_blank', difficulty, prompt, options: [], answer: { accepted } }
   }
   if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
   const options = (Array.isArray(raw.options) ? raw.options : [])
@@ -196,6 +209,7 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
   if (raw.kind === 'mcq_multi' && correct.length === 0) return null
   return {
     kind: raw.kind,
+    difficulty,
     prompt,
     options,
     answer: { correct_indexes: correct.sort((a, b) => a - b) },
@@ -316,9 +330,10 @@ export function buildChapterQuestionsPrompt(
     `Write exactly ${QUESTIONS_PER_NODE} questions per lesson. Base every question and answer ONLY on that lesson's source chunk below — never invent facts.`,
     `Mix the kinds: "mcq" (one correct option), "mcq_multi" (several correct options), "fill_blank" (the student types a missing word or phrase).`,
     `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give the accepted answers (short, copied from the source) and no options.`,
+    `Tag every question with "difficulty": "easy", "medium", or "hard", judged from the source itself — recalling a single stated fact is "easy", applying or connecting ideas is "medium", multi-step reasoning or synthesis is "hard". Let the material decide the mix: do not make every question the same difficulty, and do not force hard questions onto simple material.`,
     `Write every prompt and every option in ${outputLanguage}, regardless of the source chunk's language — a question in one language must never expect an answer in another.`,
     `Respond with ONLY this JSON (node_index says which lesson the question belongs to):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","prompt":"... ____ ...","accepted":["..."]}]}`,
+    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","difficulty":"hard","prompt":"... ____ ...","accepted":["..."]}]}`,
     '',
     sources,
   ].join('\n')

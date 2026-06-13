@@ -67,6 +67,9 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
       />
       <p className="lesson-progress">
         Question {index + 1} of {questions.length}
+        <span className={`difficulty-badge difficulty-${question.difficulty}`}>
+          {question.difficulty}
+        </span>
         {question.verified ? ' · verified against your material' : ''}
       </p>
       {lastGrade === null ? (
