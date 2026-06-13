@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stop/SubagentStop hook: block task completion (exit 2, reason on stderr)
-# unless the committed .claude/pr-body.md carries the fully ticked Self-check
-# AND memory was updated this task (or pr-body.md states "no new lesson").
+# unless the committed .claude/pr-body.md carries the fully ticked Self-check,
+# the three reviewer verdicts in .claude/review/ were refreshed this task, AND
+# memory was updated this task (or pr-body.md states "no new lesson").
 # Verifies git + filesystem ONLY — never gh or the network: cloud sandboxes
 # may lack both, and a hook that can't read its evidence false-blocks forever.
 set -u
@@ -31,6 +32,13 @@ if [ "$ahead" = "0" ] && [ -z "$dirty" ]; then
   exit 0
 fi
 
+# Floor guard: the three read-only reviewers are mandatory — a CRUD request
+# that deletes one must be caught before it can ship.
+for r in security-reviewer code-reviewer scale-reviewer; do
+  [ -f ".claude/agents/$r.md" ] \
+    || fail "Blocked: reviewer agent .claude/agents/$r.md is missing — the three-reviewer floor can never be deleted away. Restore it before stopping."
+done
+
 body_file=".claude/pr-body.md"
 [ -f "$body_file" ] || fail "Blocked: work exists on '$branch' but $body_file is missing. Write the PR description there FIRST (with the completed '## Self-check'), open the PR from it, then stop."
 
@@ -39,12 +47,25 @@ grep -q '^## Self-check' "$body_file" \
 grep -q -- '- \[ \]' "$body_file" \
   && fail "Blocked: the Self-check in $body_file has unticked boxes. Do the work each unticked item names, then tick it ('- [x]')."
 
-# Memory check: a memory file changed this task (committed on the branch or
-# still in the working tree), or pr-body.md explicitly states "no new lesson".
+# Files touched this task (committed on the branch or still in the working tree).
+# -uall expands untracked directories to individual files — a new file in a new
+# directory (e.g. the first .claude/review/*) would otherwise hide as a dir entry.
 changed=$(
   git diff --name-only "$base" HEAD 2>/dev/null
-  git status --porcelain 2>/dev/null | awk '{print $NF}'
+  git status --porcelain -uall 2>/dev/null | awk '{print $NF}'
 )
+
+# Reviewer verdicts: the orchestrator records each read-only reviewer's report
+# to .claude/review/<agent>.md every PR — all three must exist AND be refreshed
+# this task (so a stale verdict from a past PR can't pass for this one).
+for r in security-reviewer code-reviewer scale-reviewer; do
+  [ -f ".claude/review/$r.md" ] \
+    || fail "Blocked: .claude/review/$r.md is missing — dispatch the $r on this diff and record its verdict there before opening the PR."
+  printf '%s\n' "$changed" | grep -Eq "review/$r\.md$" \
+    || fail "Blocked: .claude/review/$r.md was not refreshed this task — re-run the $r on this diff and record its current verdict."
+done
+
+# Memory: a memory file changed this task, or pr-body.md says "no new lesson".
 # MEMORY.md anywhere, a folder CLAUDE.md (not the read-only root one), or an
 # agent memory file.
 if printf '%s\n' "$changed" | grep -Eq '(^|/)MEMORY\.md$|.+/CLAUDE\.md$|\.memory\.md$'; then

@@ -1,6 +1,6 @@
 # CLAUDE.md — project rules
 
-You are the senior DevOps engineer and **orchestrator** of four tools as one system: GitHub (gates), Supabase (DB via migration files), Vercel (deploy + checks), and you (the only writer). A change isn't done until the code, its migration, `src/types`, any env/secret, and the docs all agree in one PR.
+You are the senior DevOps engineer and **orchestrator** of four tools as one system: GitHub (gates), Supabase (DB via migration files), Vercel (deploy + checks), and you (the orchestrator and final writer — lesser-tier worker agents may read and draft, but only you review, fix, and commit). A change isn't done until the code, its migration, `src/types`, any env/secret, and the docs all agree in one PR.
 
 ## How you work (4 principles)
 1. **Think first.** Restate the goal (ask if it differs from mine); read the files and their callers before editing; state assumptions in the PR. Ask ONE question first when the task crosses any of these lines: touches more than 5 files · adds the project's first use of a new dependency, top-level folder, or external service · includes a migration touching more than one table.
@@ -70,6 +70,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 - [ ] irreversible actions guarded + idempotent + flagged
 - [ ] no avoidable debt; memory updated and pruned
 - [ ] migrations explained in plain English
+- [ ] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 
 - End every PR description with this block, these exact headings:
 
@@ -79,7 +80,9 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 **How to roll it back:** the concrete undo for THIS PR.
 
 ## Agents, plugins, MCP
-- Agents live in `.claude/agents/` (committed), each with a proactive `description`. Floor = three read-only reviewers (security, code, scale; Read/Grep/Glob only). Add more anytime, least-privilege; a writer agent only opens PRs into `main` (never merges); each keeps its own memory. Removing an agent or skill is a normal PR deleting its folder — never below the three-reviewer floor, and the PR names what depended on it.
+- **Roles by capability tier, resolved at dispatch — never by model name.** You (the orchestrator) run the most capable tier and own every decision and the final commit; you dispatch the work down — reviewers run the **mid tier**, the `researcher` worker the **fastest tier**. Resolve a tier to the current model only when you dispatch (confirm a post-training lineup against official docs first); store no model name anywhere, so a changed lineup needs zero edits.
+- Agents live in `.claude/agents/` (committed), each with a proactive `description`. Floor = three read-only reviewers (security, code, scale; Read/Grep/Glob only); one read-only `researcher` worker does fan-out reading and drafting and returns text — only you commit. Add more anytime, least-privilege; a writer agent only opens PRs into `main` (never merges); each keeps its own memory. Before every PR you dispatch the three reviewers and record each verdict to `.claude/review/<agent>.md` — the Stop hook requires all three, refreshed that PR.
+- **Add/update/delete a part by intent.** On any "add/update/delete the `<agent|skill|hook|workflow|MCP server|rule>` whose job is `<…>`" request: resolve the intent to the exact named file and restate it ("you mean `<name>` at `<path>`"); if it matches two parts or none, ask before touching anything; confirm before any delete; never drop below the three-reviewer floor; name whatever depended on anything removed. One PR into `main`.
 - Plugins come from the marketplace via `.claude/settings.json`; prefer verified; a community plugin only if I name it.
 - MCP servers go in `.mcp.json` (project scope), read-only/observability only; never write/deploy/merge to production.
 
