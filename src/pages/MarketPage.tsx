@@ -8,18 +8,23 @@ import {
   listOwnedCosmeticIds,
   purchaseCosmetic,
 } from '../services/cosmeticsService'
-import type { Cosmetic } from '../types/database'
+import { buyFood, listFood, listMyFood } from '../services/foodService'
+import type { Cosmetic, Food } from '../types/database'
 
 function MarketPage() {
   const { profile, refresh } = useProfile()
   const catalog = useAsync(() => listCosmetics(), [])
   const ownership = useAsync(() => listOwnedCosmeticIds(), [])
+  const foodCatalog = useAsync(() => listFood(), [])
+  const inventory = useAsync(() => listMyFood(), [])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const credits = profile?.credits ?? 0
   const cosmetics = catalog.data ?? []
   const owned = ownership.data ?? new Set<string>()
+  const foods = foodCatalog.data ?? []
+  const stock = inventory.data ?? new Map<string, number>()
 
   // Price 0 items are usable without buying; everything else needs ownership.
   const isUnlocked = (item: Cosmetic) => item.price === 0 || owned.has(item.id)
@@ -56,6 +61,14 @@ function MarketPage() {
   function unequip(item: Cosmetic) {
     return run(item.id, async () => {
       await equipCosmetic(item.kind, null)
+      refresh()
+    })
+  }
+
+  function buyOne(item: Food) {
+    return run(item.id, async () => {
+      await buyFood(item.id, 1)
+      inventory.reload()
       refresh()
     })
   }
@@ -157,6 +170,47 @@ function MarketPage() {
       {error ? <p className="state state-error">{error}</p> : null}
       {section('theme', 'Themes', 'Recolor the whole app — homepage and courses.')}
       {section('pet', 'Pets', 'A companion that walks around while you study.')}
+      <section className="market-section">
+        <h2>Food</h2>
+        <p className="market-blurb">
+          Buy food, then feed it to your pets on the{' '}
+          <Link to="/pets">Pets</Link> page to hatch and grow them.
+        </p>
+        {foodCatalog.loading ? (
+          <p className="state state-loading">Loading food…</p>
+        ) : foodCatalog.error ? (
+          <p className="state state-error">{foodCatalog.error}</p>
+        ) : (
+          <div className="market-grid">
+            {foods.map((item) => {
+              const have = stock.get(item.id) ?? 0
+              const busy = busyId === item.id
+              return (
+                <div key={item.id} className="card market-card">
+                  <div className="pet-preview">{item.sprite}</div>
+                  <h3>{item.name}</h3>
+                  <p className="market-desc">{item.description}</p>
+                  <p className="market-price">
+                    ⭐ {item.price} · +{item.xp_value} xp
+                  </p>
+                  <p className="food-owned">Owned: {have}</p>
+                  <button
+                    type="button"
+                    disabled={busy || credits < item.price}
+                    onClick={() => buyOne(item)}
+                  >
+                    {busy
+                      ? 'Working…'
+                      : credits < item.price
+                        ? 'Not enough credits'
+                        : 'Buy'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
     </section>
   )
 }

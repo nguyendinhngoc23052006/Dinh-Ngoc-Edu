@@ -30,6 +30,7 @@ function AppLayout() {
           {loading ? null : session ? (
             <>
               <NavLink to="/market">Market</NavLink>
+              <NavLink to="/pets">Pets</NavLink>
               <NavLink to="/settings">Settings</NavLink>
               {profile ? (
                 <Link to="/market" className="credit-badge" title="Your credits">

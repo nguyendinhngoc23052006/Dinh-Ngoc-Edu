@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { supabaseMock } from '../test/supabaseMock'
 import {
   adoptPet,
+  feedPet,
   hatchPet,
   listMyPets,
   listSpecies,
@@ -99,12 +100,34 @@ describe('setActivePet', () => {
   })
 })
 
+describe('feedPet', () => {
+  test('calls the feed RPC with pet, food and quantity', async () => {
+    const fed = { ...egg, xp: 70 }
+    supabaseMock.reset([{ data: fed, error: null }])
+    expect(await feedPet('p1', 'food-berry', 5)).toEqual(fed)
+    const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
+    expect(rpc?.args).toEqual([
+      'feed_pet',
+      { p_pet_id: 'p1', p_food_id: 'food-berry', p_qty: 5 },
+    ])
+  })
+
+  test('passes the RPC error message through (e.g. not enough food)', async () => {
+    supabaseMock.reset([
+      { data: null, error: { message: 'You do not have that much food.' } },
+    ])
+    await expect(feedPet('p1', 'food-berry', 5)).rejects.toThrow(
+      /do not have that much food/,
+    )
+  })
+})
+
 describe('releasePet', () => {
-  test('deletes the pet by id', async () => {
+  test('calls the release RPC with the pet id', async () => {
     supabaseMock.reset([{ data: null, error: null }])
     await releasePet('p3')
-    const del = supabaseMock.calls.find((c) => c.path.endsWith('eq'))
-    expect(del?.args).toEqual(['id', 'p3'])
+    const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
+    expect(rpc?.args).toEqual(['release_pet', { p_pet_id: 'p3' }])
   })
 
   test('surfaces database errors', async () => {

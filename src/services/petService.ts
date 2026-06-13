@@ -49,9 +49,26 @@ export async function setActivePet(petId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// Release (permanently delete) a pet to free a storage slot. RLS scopes the
-// delete to the caller's own rows.
+// Spend owned food to add xp to a pet. The RPC checks the inventory and adds
+// xp_value * qty atomically, returning the updated pet. Throws a readable
+// message ("You do not have that much food.") the UI can show as-is.
+export async function feedPet(
+  petId: string,
+  foodId: string,
+  qty: number,
+): Promise<Pet> {
+  const { data, error } = await supabase.rpc('feed_pet', {
+    p_pet_id: petId,
+    p_food_id: foodId,
+    p_qty: qty,
+  })
+  if (error) throw new Error(error.message)
+  return data as Pet
+}
+
+// Release (permanently delete) a pet to free a storage slot. The RPC also
+// promotes another pet into the active slot if the released one was active.
 export async function releasePet(petId: string): Promise<void> {
-  const { error } = await supabase.from('pets').delete().eq('id', petId)
+  const { error } = await supabase.rpc('release_pet', { p_pet_id: petId })
   if (error) throw new Error(error.message)
 }
