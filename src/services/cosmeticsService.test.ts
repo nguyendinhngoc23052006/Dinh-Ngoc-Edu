@@ -57,13 +57,13 @@ describe('equipCosmetic', () => {
     ])
   })
 
-  test('clears a slot with null', async () => {
+  test('clears the slot with null', async () => {
     supabaseMock.reset([{ data: null, error: null }])
-    await equipCosmetic('pet', null)
+    await equipCosmetic('theme', null)
     const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
     expect(rpc?.args).toEqual([
       'equip_cosmetic',
-      { p_kind: 'pet', p_cosmetic_id: null },
+      { p_kind: 'theme', p_cosmetic_id: null },
     ])
   })
 })

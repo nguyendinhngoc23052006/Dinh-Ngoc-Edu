@@ -110,8 +110,6 @@ export interface Profile {
   // Whether the on-screen pet shows encouragement messages.
   pet_cheers_enabled: boolean
   equipped_theme: string | null
-  // Vestigial: the on-screen pet now comes from the pets table, not a cosmetic.
-  equipped_pet: string | null
   // Lifetime count of pets raised to a hatch (flavour/history).
   pets_hatched: number
   created_at: string
@@ -169,7 +167,9 @@ export interface UserFood {
   qty: number
 }
 
-export type CosmeticKind = 'theme' | 'pet'
+// Pets were retired (they come from the pets table now); themes are the only
+// cosmetic kind left.
+export type CosmeticKind = 'theme'
 
 export interface Cosmetic {
   id: string
@@ -177,7 +177,7 @@ export interface Cosmetic {
   name: string
   description: string
   price: number
-  // theme: CSS variable name → value; pet: { sprite: '🐱' }.
+  // CSS variable name → value, plus a `dimension` token that re-skins the map.
   data: Record<string, string>
   sort: number
   created_at: string
