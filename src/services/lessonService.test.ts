@@ -15,6 +15,7 @@ function makeQuestion(overrides: Partial<Question>): Question {
     node_id: 'n1',
     position: 1,
     kind: 'mcq',
+    difficulty: 'medium',
     prompt: 'Pick one',
     options: ['a', 'b', 'c'],
     answer: { correct_indexes: [1] },

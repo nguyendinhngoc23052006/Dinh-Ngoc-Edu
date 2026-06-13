@@ -345,6 +345,34 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+/* AI-assigned, material-grounded difficulty tag, shown per question. */
+.difficulty-badge {
+  display: inline-block;
+  margin: 0 0.4rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.difficulty-easy {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.difficulty-medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.difficulty-hard {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 .question-prompt {
   font-weight: 600;
 }

@@ -1,26 +1,27 @@
-Fix mixed-language course generation: detect a foreign language leaking into a course's questions, not just a wholly wrong-language answer.
+Phase 2/7: AI-assigned, material-grounded question difficulty.
 
-**Goal (restated):** an English (or any non-Vietnamese) course must never contain stray Vietnamese in a question/option/answer — the reported "Vietnamese in an English international-investment course" bug. Acceptable only when the course's own language is that language.
+**Goal (restated):** a question's difficulty should reflect the material it came from — not always easy, not always hard. The AI now tags each question `easy`/`medium`/`hard`, judged from its source chunk, and the lesson UI shows the tag.
 
-**Root cause:** the generation post-check `matchesOutputLanguage` (in `generate-course/pipeline.ts`) only verified that Vietnamese was *present* when the course language *was* Vietnamese. For every other language it returned `true` unconditionally, so a Vietnamese phrase copied from source material into an English course was never detected and the existing one-time re-ask never fired.
+**What this does:**
+- New `questions.difficulty` column (`text not null default 'medium'`, checked `easy|medium|hard`). Additive with a default, so every existing row stays valid; no RLS change (questions already inherit their course's visibility policies).
+- The chapter-questions prompt now asks the model to tag each question's difficulty *from the source* — recall of a stated fact = easy, applying/connecting ideas = medium, multi-step reasoning/synthesis = hard — and explicitly tells it to let the material set the mix rather than forcing a uniform or artificially-spread difficulty.
+- The pipeline validates the tag (`toDifficulty`): a missing or garbled value falls back to `medium` so a bad tag never drops an otherwise-good question. Difficulty is persisted on insert.
+- The lesson player shows a colored difficulty badge per question.
+- `clone_course()` is replaced (fix-forward) to copy the new column — it uses an explicit column list, so without this a cloned course would silently reset every question to `medium`.
 
-**Fix:** make the check bidirectional. Vietnamese is still the only language with a character set we can detect reliably, so it is the only one policed — but now both ways: a Vietnamese course must contain Vietnamese, and a non-Vietnamese course must *not*. A mismatch triggers the same single re-ask already in `chatInLanguage`. The detection set is narrowed to characters unique to Vietnamese (`đ ơ ư` + the tonal block U+1EA0–U+1EF9); `ă â ê ô` are excluded so Romanian/French/Portuguese courses (which share those letters) are not falsely flagged. The re-ask reminder now tells the model to translate foreign phrases rather than copy them verbatim — the actual mechanism of the leak.
-
-**Assumptions:** no schema, no migration, no app behavior change — this is generation-pipeline logic only, fully covered by the existing Vitest suite (`pipeline.test.ts`) with no Deno toolchain. Language pairs neither of which is Vietnamese (e.g. English↔French) remain undetectable by any cheap heuristic and still pass, as before; this PR fixes the one pair we can detect, which is the one you hit.
-
-**This is Phase 1 of the agreed 7-phase roadmap** (language fix → AI difficulty → calculation questions → credits engine → theme market → pet market → homepage overhaul). One PR per phase; the rest follow after you merge this.
+**Assumptions:** difficulty is informational for now (it does not change grading or question order); it becomes the input to the Phase 4 credit-prize calculation. `src/types/database.ts` is updated in lockstep (`QuestionDifficulty` + `Question.difficulty`). All question reads use `.select()` (all columns), so the column propagates to the lesson player and mock tests with no query changes.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches (no migration in this PR)
-- [x] tests/lint/typecheck green; happy AND unhappy paths exercised (113/113; new tests: Vietnamese leak into English/French flagged, clean English/Japanese pass, shared accents ă/â/ê/ô in Romanian/French NOT flagged, real Vietnamese still accepted, English drift in a Vietnamese course still flagged, reminder says "translate")
+- [x] ≤ 1 migration, UTC-timestamped latest (20260613042200); new tables have RLS (no new table; additive column on an RLS-protected table); src/types matches
+- [x] tests/lint/typecheck green; happy AND unhappy paths exercised (115/115; new tests: valid tag kept, invalid/missing tag → medium, prompt grounds difficulty in material; existing fixtures updated for the new field)
 - [x] scripts still named exactly `lint` and `typecheck`
 - [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
 - [x] irreversible actions guarded + idempotent + flagged (none in this PR)
-- [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English (no migration)
+- [x] no avoidable debt; memory updated and pruned (clone_course explicit-column gotcha recorded in supabase/CLAUDE.md)
+- [x] migrations explained in plain English
 
 ## For you
-**What changed:** course generation now catches a foreign language leaking *into* a course (Vietnamese inside an English course), not only a whole answer in the wrong language — it re-asks the model once to translate the stray text, using a Vietnamese-unique character set so French/Romanian/Portuguese courses aren't misflagged.
-**What you do next:** review the preview, then merge — no env, secret, or dashboard action needed. To sanity-check, generate an English course from Vietnamese-language material and confirm the questions come back fully in English. (Detection relies on Vietnamese-specific characters, so an English↔French mix would not be caught — out of scope for this fix.)
-**How to roll it back:** revert this PR on GitHub; `matchesOutputLanguage` returns to one-directional Vietnamese-only detection and the leak reappears. No data migration to undo.
+**What changed:** each generated question now carries an AI-judged difficulty (easy/medium/hard) based on its source material, shown as a badge in the lesson player; the clone function was updated so copied courses keep their difficulties.
+**What you do next:** review the preview, then merge — no env or secret action needed. The migration runs first on the PR's preview DB; to sanity-check, generate a course and confirm questions show a mix of difficulty badges that fits the material. (Old courses generated before this PR show `medium` for every question — expected, since their rows predate the tag.)
+**How to roll it back:** revert this PR on GitHub, then add a fix-forward migration dropping the column (`alter table public.questions drop column difficulty;`) and restoring `clone_course`'s prior column list — a merged migration can't be un-run, so the column is removed by a new migration, not by reverting the file.
