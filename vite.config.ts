@@ -7,6 +7,14 @@ export default defineConfig({
   // NEXT_PUBLIC_ names; Vite must expose them to the browser too.
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   test: {
+    // Edge Function code imports Deno npm: specifiers; alias them to the same
+    // packages (dev mirrors pinned to the SAME versions as the npm: strings in
+    // supabase/functions — keep them in lockstep) so vitest can test the pure
+    // extraction logic without Deno.
+    alias: {
+      'npm:fflate@0.8.2': 'fflate',
+      'npm:unpdf@0.12.1': 'unpdf',
+    },
     coverage: {
       // Signal for the human at review time (CI job summary), never a gate —
       // thresholds breed test theater.
