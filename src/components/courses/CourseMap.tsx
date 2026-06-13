@@ -59,6 +59,11 @@ function CourseMap({ courseId, chapters, completedNodeIds }: CourseMapProps) {
                       </span>
                       {next ? <span className="node-start">START</span> : null}
                       <span className="node-label">{node.title}</span>
+                      {node.credit_prize > 0 && !done ? (
+                        <span className="node-prize" title="Credits for a flawless run">
+                          ⭐ {node.credit_prize}
+                        </span>
+                      ) : null}
                     </Link>
                   </li>
                 )

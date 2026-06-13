@@ -1,11 +1,13 @@
 // Row types mirroring supabase/migrations/20260610213500_core_schema.sql.
 // Keep in lockstep with the migration in the same PR.
 
+import type { CalcSpec } from '../../supabase/functions/_shared/calc'
+
 export type Visibility = 'private' | 'public'
 
 export type CourseStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
-export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi'
+export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi' | 'calc'
 
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard'
 
@@ -51,6 +53,8 @@ export interface LessonNode {
   chapter_id: string
   position: number
   title: string
+  // Credits awarded the first time the lesson is finished with no mistakes.
+  credit_prize: number
   created_at: string
 }
 
@@ -71,6 +75,8 @@ export interface Question {
   prompt: string
   options: string[]
   answer: QuestionAnswer
+  // Only set for kind 'calc': the formula + variables the UI rolls each take.
+  calc: CalcSpec | null
   verified: boolean
   created_at: string
 }
@@ -94,5 +100,28 @@ export interface MockTest {
 export interface SavedCourse {
   user_id: string
   course_id: string
+  created_at: string
+}
+
+export interface Profile {
+  user_id: string
+  credits: number
+  pet_enabled: boolean
+  equipped_theme: string | null
+  equipped_pet: string | null
+  created_at: string
+}
+
+export type CosmeticKind = 'theme' | 'pet'
+
+export interface Cosmetic {
+  id: string
+  kind: CosmeticKind
+  name: string
+  description: string
+  price: number
+  // theme: CSS variable name → value; pet: { sprite: '🐱' }.
+  data: Record<string, string>
+  sort: number
   created_at: string
 }

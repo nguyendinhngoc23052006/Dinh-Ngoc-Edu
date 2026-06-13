@@ -20,6 +20,7 @@ import {
   chunkText,
   emptyNodeIndexes,
   languageReminder,
+  lessonCreditPrize,
   matchesOutputLanguage,
   parseJsonLoose,
   validateChapterQuestions,
@@ -268,6 +269,7 @@ async function generate(
           prompt: question.prompt,
           options: question.options,
           answer: question.answer,
+          calc: question.calc ?? null,
           verified: verifyQuestion(question, chunk),
         }))
       })
@@ -277,6 +279,19 @@ async function generate(
           .insert(questionRows)
         if (questionsError) throw new Error(questionsError.message)
         totalQuestions += questionRows.length
+      }
+
+      // Mark each lesson's credit prize from how hard its questions turned out
+      // (easy=1, medium=2, hard=3, summed) — the AI's difficulty calls decide
+      // what a flawless run is worth.
+      for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
+        const prize = lessonCreditPrize(nodeQuestions)
+        if (prize > 0) {
+          await supabase
+            .from('nodes')
+            .update({ credit_prize: prize })
+            .eq('id', nodeIds[nodeIndex])
+        }
       }
     }
     // Per-node AI failures are tolerated, but a course where every node came

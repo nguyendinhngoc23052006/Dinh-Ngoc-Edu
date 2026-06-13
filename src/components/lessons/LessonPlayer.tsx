@@ -1,24 +1,37 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { computeExpected } from '../../../supabase/functions/_shared/calc'
 import type { Question } from '../../types/database'
 import {
   describeCorrectAnswer,
   gradeQuestion,
+  toSubmission,
 } from '../../services/lessonService'
-import type { Grade, QuestionResponse } from '../../services/lessonService'
+import type {
+  Grade,
+  LessonSubmission,
+  QuestionResponse,
+} from '../../services/lessonService'
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
+import CalcQuestion from './CalcQuestion'
 
 interface LessonPlayerProps {
   questions: Question[]
-  onComplete: () => void
+  onComplete: (responses: LessonSubmission[]) => void
+  submitting?: boolean
 }
 
-// Walks the node's questions one at a time with instant feedback, then
-// reports completion so the page can record progress.
-function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
+// Walks the node's questions one at a time with instant feedback, collecting
+// each answer by value, then hands the set to the page to record completion
+// and award credit (re-graded server-side).
+function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) {
   const [index, setIndex] = useState(0)
   const [lastGrade, setLastGrade] = useState<Grade | null>(null)
+  const [lastResponse, setLastResponse] = useState<QuestionResponse | null>(null)
   const [score, setScore] = useState(0)
+  // Answers accumulate in a ref so re-renders don't reset them; only the final
+  // submit reads them.
+  const responses = useRef<LessonSubmission[]>([])
 
   if (questions.length === 0) {
     return (
@@ -37,8 +50,12 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
         <p>
           You got {score} of {questions.length} right.
         </p>
-        <button type="button" onClick={onComplete}>
-          Finish lesson
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => onComplete(responses.current)}
+        >
+          {submitting ? 'Saving…' : 'Finish lesson'}
         </button>
       </div>
     )
@@ -48,14 +65,24 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
     if (!question) return
     const grade = gradeQuestion(question, response)
     setLastGrade(grade)
+    setLastResponse(response)
+    responses.current.push(toSubmission(question, response))
     // A near-miss still shows the student knew the answer — count it.
     if (grade !== 'incorrect') setScore((s) => s + 1)
   }
 
   function handleNext() {
     setLastGrade(null)
+    setLastResponse(null)
     setIndex((i) => i + 1)
   }
+
+  // calc answers depend on the values rolled for this take, so the correct
+  // value comes from the response, not a fixed key on the question.
+  const correctAnswerText =
+    question.kind === 'calc' && lastResponse?.kind === 'calc' && question.calc
+      ? String(computeExpected(question.calc, lastResponse.values))
+      : describeCorrectAnswer(question)
 
   return (
     <div className="card lesson-player">
@@ -73,7 +100,13 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
         {question.verified ? ' · verified against your material' : ''}
       </p>
       {lastGrade === null ? (
-        question.kind === 'fill_blank' ? (
+        question.kind === 'calc' ? (
+          <CalcQuestion
+            key={question.id}
+            question={question}
+            onSubmit={handleSubmit}
+          />
+        ) : question.kind === 'fill_blank' ? (
           <FillBlankQuestion
             key={question.id}
             question={question}
@@ -109,7 +142,7 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
             {lastGrade === 'correct' ? null : (
               <p>
                 {lastGrade === 'partial' ? 'Exact answer: ' : 'Correct answer: '}
-                <strong>{describeCorrectAnswer(question)}</strong>
+                <strong>{correctAnswerText}</strong>
               </p>
             )}
             <button type="button" onClick={handleNext}>

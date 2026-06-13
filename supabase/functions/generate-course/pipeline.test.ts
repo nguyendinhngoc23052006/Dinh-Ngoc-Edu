@@ -7,6 +7,7 @@ import {
   chunkText,
   emptyNodeIndexes,
   languageReminder,
+  lessonCreditPrize,
   matchesOutputLanguage,
   parseJsonLoose,
   validateChapterQuestions,
@@ -425,6 +426,24 @@ describe('language enforcement', () => {
 
   test('reminder tells the model to translate, not copy, foreign phrases', () => {
     expect(languageReminder('English')).toMatch(/translate/i)
+  })
+})
+
+describe('lessonCreditPrize', () => {
+  const q = (difficulty: GeneratedQuestion['difficulty']): GeneratedQuestion => ({
+    kind: 'mcq',
+    difficulty,
+    prompt: 'Pick one',
+    options: ['a', 'b'],
+    answer: { correct_indexes: [0] },
+  })
+
+  test('sums difficulty weights (easy=1, medium=2, hard=3)', () => {
+    expect(lessonCreditPrize([q('easy'), q('medium'), q('hard')])).toBe(6)
+  })
+
+  test('is 0 for a lesson with no questions', () => {
+    expect(lessonCreditPrize([])).toBe(0)
   })
 })
 

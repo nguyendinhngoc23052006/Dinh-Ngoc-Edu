@@ -1,34 +1,45 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
+import { useProfile } from '../hooks/profileContext'
 import {
+  completeLesson,
   getNodeQuestions,
   shuffleLessonQuestions,
 } from '../services/lessonService'
-import { completeNode } from '../services/progressService'
+import type {
+  LessonResult,
+  LessonSubmission,
+} from '../services/lessonService'
 import LessonPlayer from '../components/lessons/LessonPlayer'
 
 function LessonPage() {
   const { courseId = '', nodeId = '' } = useParams()
-  const navigate = useNavigate()
+  const { refresh } = useProfile()
   const state = useAsync(() => getNodeQuestions(nodeId), [nodeId])
   const [completeError, setCompleteError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<LessonResult | null>(null)
   // A fresh question and option order per take, fixed for the take's duration.
   const questions = useMemo(
     () => shuffleLessonQuestions(state.data ?? []),
     [state.data],
   )
 
-  // "Finish lesson" stays clickable after a failure, so it doubles as retry.
-  async function handleComplete() {
+  async function handleComplete(responses: LessonSubmission[]) {
     setCompleteError(null)
+    setSubmitting(true)
     try {
-      await completeNode(nodeId)
-      navigate(`/courses/${courseId}`)
+      const outcome = await completeLesson(nodeId, responses)
+      setResult(outcome)
+      // The balance changed if credit was awarded — refresh the nav badge.
+      if (outcome.creditAwarded > 0) refresh()
     } catch (cause) {
       setCompleteError(
         cause instanceof Error ? cause.message : 'Could not save progress.',
       )
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -46,12 +57,32 @@ function LessonPage() {
             Retry
           </button>
         </p>
+      ) : result ? (
+        <div className="card lesson-result">
+          <h2>{result.flawless ? 'Flawless! 🎉' : 'Lesson complete'}</h2>
+          {result.creditAwarded > 0 ? (
+            <p className="credit-earned">
+              You earned <strong>{result.creditAwarded}</strong> credits.
+            </p>
+          ) : result.flawless ? (
+            <p>You already earned this lesson's credits.</p>
+          ) : (
+            <p>Finish with no mistakes to earn this lesson's credits.</p>
+          )}
+          <Link className="button-link" to={`/courses/${courseId}`}>
+            Back to course
+          </Link>
+        </div>
       ) : (
         <>
           {completeError ? (
             <p className="state state-error">{completeError}</p>
           ) : null}
-          <LessonPlayer questions={questions} onComplete={handleComplete} />
+          <LessonPlayer
+            questions={questions}
+            onComplete={handleComplete}
+            submitting={submitting}
+          />
         </>
       )}
     </section>
