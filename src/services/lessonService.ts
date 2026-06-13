@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
 import { gradeCalc } from '../../supabase/functions/_shared/calc'
+import type { SubmittedAnswer } from '../../supabase/functions/_shared/grade'
 import type { Chapter, LessonNode, Question } from '../types/database'
 
 const MAX_CHAPTERS = 100
@@ -69,6 +70,59 @@ export type QuestionResponse =
   | { kind: 'calc'; values: Record<string, number>; answer: number }
 
 export type Grade = 'correct' | 'partial' | 'incorrect'
+
+export interface LessonSubmission {
+  questionId: string
+  answer: SubmittedAnswer
+}
+
+export interface LessonResult {
+  completed: boolean
+  flawless: boolean
+  creditAwarded: number
+  balance: number
+}
+
+// Converts a graded UI response into the by-value answer the server re-grades
+// (option TEXTS, not shuffled indexes), so the credit check can't be fooled by
+// the client and survives option shuffling.
+export function toSubmission(
+  question: Question,
+  response: QuestionResponse,
+): LessonSubmission {
+  if (response.kind === 'choice') {
+    return {
+      questionId: question.id,
+      answer: {
+        kind: 'choice',
+        selected: response.selectedIndexes.map(
+          (index) => question.options[index] ?? '',
+        ),
+      },
+    }
+  }
+  if (response.kind === 'calc') {
+    return {
+      questionId: question.id,
+      answer: { kind: 'calc', values: response.values, answer: response.answer },
+    }
+  }
+  return { questionId: question.id, answer: { kind: 'text', text: response.text } }
+}
+
+// Records completion and awards the lesson's credit prize when every answer is
+// correct. All real grading-for-credit happens server-side in the Edge
+// Function; this only carries the by-value answers there.
+export async function completeLesson(
+  nodeId: string,
+  responses: LessonSubmission[],
+): Promise<LessonResult> {
+  const { data, error } = await supabase.functions.invoke('complete-lesson', {
+    body: { nodeId, responses },
+  })
+  if (error) throw new Error(error.message)
+  return data as LessonResult
+}
 
 function normalizeText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ')

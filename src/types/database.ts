@@ -53,6 +53,8 @@ export interface LessonNode {
   chapter_id: string
   position: number
   title: string
+  // Credits awarded the first time the lesson is finished with no mistakes.
+  credit_prize: number
   created_at: string
 }
 
@@ -98,5 +100,14 @@ export interface MockTest {
 export interface SavedCourse {
   user_id: string
   course_id: string
+  created_at: string
+}
+
+export interface Profile {
+  user_id: string
+  credits: number
+  pet_enabled: boolean
+  equipped_theme: string | null
+  equipped_pet: string | null
   created_at: string
 }

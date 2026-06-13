@@ -1,18 +1,9 @@
 import { supabase } from '../lib/supabaseClient'
-import { requireUserId } from './authService'
 
-// Upsert with ignoreDuplicates keeps completion idempotent: finishing a
-// lesson twice never errors and never bumps completed_at.
-export async function completeNode(nodeId: string): Promise<void> {
-  const userId = await requireUserId()
-  const { error } = await supabase
-    .from('node_progress')
-    .upsert(
-      { user_id: userId, node_id: nodeId },
-      { onConflict: 'user_id,node_id', ignoreDuplicates: true },
-    )
-  if (error) throw new Error(error.message)
-}
+// Lesson completion (and the credit award for a flawless run) is recorded by
+// the complete-lesson Edge Function — see lessonService.completeLesson — so the
+// balance can only be moved by trusted, re-grading server code. This module
+// keeps the read-side progress queries the dashboard and course map use.
 
 const MAX_PROGRESS_NODES = 2000
 

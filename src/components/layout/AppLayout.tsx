@@ -1,9 +1,11 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useProfile } from '../../hooks/profileContext'
 import { signOut } from '../../services/authService'
 
 function AppLayout() {
   const { session, loading } = useAuth()
+  const { profile } = useProfile()
   const navigate = useNavigate()
 
   async function handleSignOut() {
@@ -25,9 +27,16 @@ function AppLayout() {
           <NavLink to="/explore">Explore</NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
           {loading ? null : session ? (
-            <button type="button" onClick={handleSignOut}>
-              Log out
-            </button>
+            <>
+              {profile ? (
+                <span className="credit-badge" title="Your credits">
+                  ⭐ {profile.credits}
+                </span>
+              ) : null}
+              <button type="button" onClick={handleSignOut}>
+                Log out
+              </button>
+            </>
           ) : (
             <NavLink to="/login">Log in</NavLink>
           )}

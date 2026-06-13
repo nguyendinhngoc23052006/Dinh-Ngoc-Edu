@@ -43,6 +43,14 @@ function toDifficulty(value: unknown): Difficulty {
     : 'medium'
 }
 
+// A lesson's credit prize is the sum of its questions' difficulty weights —
+// the AI's per-question difficulty calls roll up into how much a flawless run
+// is worth, so harder lessons pay more.
+const DIFFICULTY_WEIGHT: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 }
+export function lessonCreditPrize(questions: GeneratedQuestion[]): number {
+  return questions.reduce((sum, q) => sum + DIFFICULTY_WEIGHT[q.difficulty], 0)
+}
+
 // Slices the extracted text into model-sized chunks on paragraph boundaries.
 // The syllabus step assigns each node a chunk_index, and the question step
 // sends only that chunk back — that's how a long upload fits a small model.

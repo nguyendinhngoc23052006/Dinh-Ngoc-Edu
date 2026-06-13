@@ -345,6 +345,36 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.credit-badge {
+  font-weight: 700;
+  color: var(--green-dark);
+  background: var(--green-soft);
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.lesson-result {
+  text-align: center;
+}
+
+.credit-earned {
+  font-size: 1.2rem;
+  color: var(--green-dark);
+}
+
+.button-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  background: var(--green);
+  color: #fff;
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 2px 0 var(--green-dark);
+}
+
 /* AI-assigned, material-grounded difficulty tag, shown per question. */
 .difficulty-badge {
   display: inline-block;
