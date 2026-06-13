@@ -180,19 +180,106 @@ button:disabled {
 
 /* ---- Landing ---- */
 
-.landing h1 {
-  font-size: 2.3rem;
-  margin-bottom: 0.25rem;
+.hero {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 1.5rem;
+  align-items: stretch;
+  margin: -1.5rem -1.5rem 1.5rem;
+  padding: 2.5rem 1.5rem;
+  background:
+    radial-gradient(
+      1200px 400px at 10% -10%,
+      var(--green-soft),
+      transparent
+    ),
+    linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+  color: #fff;
 }
 
-.landing > p:first-of-type {
+.hero-copy {
+  align-self: center;
+}
+
+.hero-kicker {
+  display: inline-block;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.hero-copy h1 {
+  font-size: 2.6rem;
+  line-height: 1.1;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.hero-copy > p {
   font-size: 1.1rem;
-  color: var(--muted);
-  max-width: 40rem;
+  max-width: 34rem;
+  opacity: 0.95;
+}
+
+.hero-points {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.hero-points li {
+  font-weight: 600;
+}
+
+.hero-card {
+  margin: 0;
+  color: var(--ink);
+}
+
+.hero-card h2 {
+  margin-top: 0;
+}
+
+.landing-steps {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
 }
 
 .landing-steps li {
-  margin-bottom: 0.35rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  font-weight: 600;
+}
+
+.landing-steps li span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .hero-copy h1 {
+    font-size: 2rem;
+  }
 }
 
 /* ---- Auth ---- */
@@ -320,6 +407,12 @@ button:disabled {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--muted);
+}
+
+.node-prize {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--green-dark);
 }
 
 /* ---- Lesson player ---- */

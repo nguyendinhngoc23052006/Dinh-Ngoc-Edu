@@ -16,24 +16,46 @@ function LandingPage() {
 
   return (
     <section className="landing">
-      <h1>Cram smarter, not longer.</h1>
-      <p>
-        Upload your subject's materials once, pick a language, and get a
-        Duolingo-style course back: chapters, bite-size lessons, and questions
-        verified against your own notes. When you're ready, build mock tests
-        from the chapters you choose.
-      </p>
+      <div className="hero">
+        <div className="hero-copy">
+          <span className="hero-kicker">Last Minute</span>
+          <h1>Turn your notes into a game you can win.</h1>
+          <p>
+            Upload your materials, pick a language, and get a Duolingo-style
+            course back — chapters, bite-size lessons, and questions graded
+            against your own notes. Ace a lesson, earn credits, and spend them
+            on themes and a study pet.
+          </p>
+          <ul className="hero-points">
+            <li>🎯 Difficulty set by your material, not guessed</li>
+            <li>🧮 Calculation drills with fresh numbers every time</li>
+            <li>⭐ Earn credits for flawless lessons</li>
+            <li>🎨 Themes &amp; 🐉 pets to make studying yours</li>
+          </ul>
+        </div>
+        <div className="hero-card card">
+          <h2>Start in 30 seconds</h2>
+          <UploadForm onSubmit={handleSubmit} />
+          <p className="course-meta">
+            Not logged in? We'll ask after you hit Generate — your selection
+            carries over.
+          </p>
+        </div>
+      </div>
       <ol className="landing-steps">
-        <li>Upload your lecture notes, slides, or readings.</li>
-        <li>Choose the language you want to study in.</li>
-        <li>Learn chapter by chapter, node by node.</li>
-        <li>Generate mock tests from any chapters you pick.</li>
+        <li>
+          <span>1</span> Upload notes, slides, or readings.
+        </li>
+        <li>
+          <span>2</span> Pick the language you'll study in.
+        </li>
+        <li>
+          <span>3</span> Learn chapter by chapter, lesson by lesson.
+        </li>
+        <li>
+          <span>4</span> Build mock tests from any chapters.
+        </li>
       </ol>
-      <UploadForm onSubmit={handleSubmit} />
-      <p className="course-meta">
-        Not logged in yet? No problem — we'll ask you to log in after you hit
-        Generate, and your selection carries over.
-      </p>
     </section>
   )
 }
