@@ -132,14 +132,17 @@ export interface Species {
   created_at: string
 }
 
-// The signed-in user's one pet. An egg has species_id null; a hatched pet
-// always carries a species. The evolution form is derived from xp (see
-// src/lib/petProgress.ts), never stored.
-export interface UserPet {
+// One of the signed-in user's pets (≤ 3 in storage, at most one active). An
+// egg has species_id null; a hatched pet always carries a species. The
+// evolution form is derived from xp (see src/lib/petProgress.ts), never stored.
+export interface Pet {
+  id: string
   user_id: string
   stage: PetStage
   species_id: string | null
   xp: number
+  // The single on-screen companion (at most one true per user).
+  is_active: boolean
   hatched_at: string | null
   created_at: string
 }

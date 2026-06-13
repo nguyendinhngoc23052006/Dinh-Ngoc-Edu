@@ -1,13 +1,16 @@
 import { supabase } from '../lib/supabaseClient'
-import type { Species, UserPet } from '../types/database'
+import type { Pet, Species } from '../types/database'
 
-// The signed-in user's one pet (egg or hatched). RLS scopes the row to the
-// caller; the row is created by the signup trigger, so a migrated account
-// always has one. Returns null when logged out / not yet provisioned.
-export async function getMyPet(): Promise<UserPet | null> {
-  const { data, error } = await supabase.from('user_pet').select().maybeSingle()
+// The signed-in user's pets — their storage (≤ 3). RLS scopes the rows to the
+// caller; oldest first for a stable display. Bounded by definition.
+export async function listMyPets(): Promise<Pet[]> {
+  const { data, error } = await supabase
+    .from('pets')
+    .select()
+    .order('created_at', { ascending: true })
+    .limit(3)
   if (error) throw new Error(error.message)
-  return (data as UserPet | null) ?? null
+  return (data ?? []) as Pet[]
 }
 
 // The species catalog (all hatchable creatures). Small, static, world-readable;
@@ -22,12 +25,33 @@ export async function listSpecies(): Promise<Species[]> {
   return (data ?? []) as Species[]
 }
 
-// Hatch the egg: the RPC rolls a random species (weighted by rarity) and flips
+// Adopt a new egg. The RPC refuses past three pets ("Your storage is full…"),
+// throwing a readable message the UI can show as-is. Returns the new pet row.
+export async function adoptPet(): Promise<Pet> {
+  const { data, error } = await supabase.rpc('adopt_pet')
+  if (error) throw new Error(error.message)
+  return data as Pet
+}
+
+// Hatch an egg: the RPC rolls a random species (weighted by rarity) and flips
 // the pet to hatched atomically, server-side. Throws a readable message ("The
 // egg is not ready to hatch yet.", "Your pet has already hatched.") the UI can
 // show as-is. Returns the updated pet row.
-export async function hatchPet(): Promise<UserPet> {
-  const { data, error } = await supabase.rpc('hatch_pet')
+export async function hatchPet(petId: string): Promise<Pet> {
+  const { data, error } = await supabase.rpc('hatch_pet', { p_pet_id: petId })
   if (error) throw new Error(error.message)
-  return data as UserPet
+  return data as Pet
+}
+
+// Make this pet the single on-screen companion (clears any other active flag).
+export async function setActivePet(petId: string): Promise<void> {
+  const { error } = await supabase.rpc('set_active_pet', { p_pet_id: petId })
+  if (error) throw new Error(error.message)
+}
+
+// Release (permanently delete) a pet to free a storage slot. RLS scopes the
+// delete to the caller's own rows.
+export async function releasePet(petId: string): Promise<void> {
+  const { error } = await supabase.from('pets').delete().eq('id', petId)
+  if (error) throw new Error(error.message)
 }
