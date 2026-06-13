@@ -341,9 +341,34 @@ describe('language enforcement', () => {
     ).toBe(true)
   })
 
-  test('never second-guesses languages it cannot detect', () => {
+  test('flags Vietnamese leaking into a non-Vietnamese course', () => {
+    // The reported bug: a Vietnamese phrase inside an English course.
+    expect(
+      matchesOutputLanguage('What is lãi suất on the investment?', 'English'),
+    ).toBe(false)
+    expect(
+      matchesOutputLanguage('Quelle est la đòn bẩy tài chính?', 'French'),
+    ).toBe(false)
+  })
+
+  test('passes clean non-Vietnamese output', () => {
     expect(matchesOutputLanguage('Plain English text', 'English')).toBe(true)
     expect(matchesOutputLanguage('Plain English text', 'Japanese')).toBe(true)
+  })
+
+  test('does not mistake shared accents (ă â ê ô) for Vietnamese', () => {
+    // Romanian/French/Portuguese share these letters — a course in one of them
+    // must not be flagged as contaminated.
+    expect(matchesOutputLanguage('Acesta este â test în română', 'Romanian')).toBe(
+      true,
+    )
+    expect(matchesOutputLanguage('Le marché financier français', 'French')).toBe(
+      true,
+    )
+  })
+
+  test('reminder tells the model to translate, not copy, foreign phrases', () => {
+    expect(languageReminder('English')).toMatch(/translate/i)
   })
 })
 

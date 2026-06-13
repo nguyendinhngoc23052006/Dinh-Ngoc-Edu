@@ -241,20 +241,33 @@ export function buildSystemPrompt(outputLanguage: string): string {
 }
 
 // Appended to the prompt on the single retry after a language-drift detection.
+// Covers both failures the post-check catches: a wrong-language answer, and an
+// answer that mixed in stray text from another language (the reported bug — a
+// Vietnamese phrase inside an English course).
 export function languageReminder(outputLanguage: string): string {
-  return `\n\nIMPORTANT: your previous answer was not in ${outputLanguage}. Rewrite ALL text values in ${outputLanguage}.`
+  return `\n\nIMPORTANT: your previous answer contained text that was not in ${outputLanguage}. Every value must be written in ${outputLanguage}. Translate any word or phrase that is in another language — do not copy phrases from the source material in their original language.`
 }
 
-// Cheap post-check for the one language we can detect reliably: any real
-// Vietnamese text carries Vietnamese-specific letters (đ, ơ, ư, ă, â, ê, ô)
-// or tonal diacritics (Latin Extended Additional). Other languages pass —
-// no heuristic beats accepting the answer there.
+// Characters unique to Vietnamese among Latin-script languages: đ, ơ, ư and the
+// tonal-stacked vowels (Latin Extended Additional, U+1EA0–U+1EF9). ă/â/ê/ô are
+// deliberately excluded — Romanian, French, and Portuguese use them too, so
+// they are not a reliable Vietnamese signal in either direction.
+const VIETNAMESE_CHARS = /[đĐơƠưƯẠ-ỹ]/
+
+// Cheap bidirectional post-check for the one language we can detect reliably.
+// Vietnamese is the only language with a distinctive character set we can spot,
+// so it is the only one we police — but we police it BOTH ways:
+//   • a Vietnamese course must actually contain Vietnamese, and
+//   • a non-Vietnamese course must NOT contain Vietnamese (the reported bug:
+//     a Vietnamese phrase leaking into an English/other-language course).
+// Mismatch triggers the single re-ask in chatInLanguage. Pairs of other
+// languages we cannot detect still pass — no heuristic beats accepting there.
 export function matchesOutputLanguage(
   text: string,
   outputLanguage: string,
 ): boolean {
-  if (outputLanguage !== 'Vietnamese') return true
-  return /[đĐơƠưƯăĂêÊôÔâÂẠ-ỹ]/.test(text)
+  const hasVietnamese = VIETNAMESE_CHARS.test(text)
+  return outputLanguage === 'Vietnamese' ? hasVietnamese : !hasVietnamese
 }
 
 export function buildSyllabusPrompt(
