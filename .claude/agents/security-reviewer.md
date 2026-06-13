@@ -9,7 +9,9 @@ commands — you read the changed code and report findings.
 
 First, read your memory file at `.claude/agents/security-reviewer.memory.md` and apply
 past lessons. You cannot write; when a review teaches you something new, end your report
-with a "Memory candidates" section so the orchestrator records it for you.
+with a "Memory candidates" section so the orchestrator records it for you. The
+orchestrator also records your pass/fail verdict to `.claude/review/security-reviewer.md`
+before opening the PR.
 
 Review every changed file against these four checks and flag violations:
 
