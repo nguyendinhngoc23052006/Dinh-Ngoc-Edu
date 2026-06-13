@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { computeExpected } from '../../../supabase/functions/_shared/calc'
 import type { Question } from '../../types/database'
 import {
   describeCorrectAnswer,
@@ -7,6 +8,7 @@ import {
 import type { Grade, QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
+import CalcQuestion from './CalcQuestion'
 
 interface LessonPlayerProps {
   questions: Question[]
@@ -18,6 +20,7 @@ interface LessonPlayerProps {
 function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
   const [index, setIndex] = useState(0)
   const [lastGrade, setLastGrade] = useState<Grade | null>(null)
+  const [lastResponse, setLastResponse] = useState<QuestionResponse | null>(null)
   const [score, setScore] = useState(0)
 
   if (questions.length === 0) {
@@ -48,14 +51,23 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
     if (!question) return
     const grade = gradeQuestion(question, response)
     setLastGrade(grade)
+    setLastResponse(response)
     // A near-miss still shows the student knew the answer — count it.
     if (grade !== 'incorrect') setScore((s) => s + 1)
   }
 
   function handleNext() {
     setLastGrade(null)
+    setLastResponse(null)
     setIndex((i) => i + 1)
   }
+
+  // calc answers depend on the values rolled for this take, so the correct
+  // value comes from the response, not a fixed key on the question.
+  const correctAnswerText =
+    question.kind === 'calc' && lastResponse?.kind === 'calc' && question.calc
+      ? String(computeExpected(question.calc, lastResponse.values))
+      : describeCorrectAnswer(question)
 
   return (
     <div className="card lesson-player">
@@ -73,7 +85,13 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
         {question.verified ? ' · verified against your material' : ''}
       </p>
       {lastGrade === null ? (
-        question.kind === 'fill_blank' ? (
+        question.kind === 'calc' ? (
+          <CalcQuestion
+            key={question.id}
+            question={question}
+            onSubmit={handleSubmit}
+          />
+        ) : question.kind === 'fill_blank' ? (
           <FillBlankQuestion
             key={question.id}
             question={question}
@@ -109,7 +127,7 @@ function LessonPlayer({ questions, onComplete }: LessonPlayerProps) {
             {lastGrade === 'correct' ? null : (
               <p>
                 {lastGrade === 'partial' ? 'Exact answer: ' : 'Correct answer: '}
-                <strong>{describeCorrectAnswer(question)}</strong>
+                <strong>{correctAnswerText}</strong>
               </p>
             )}
             <button type="button" onClick={handleNext}>

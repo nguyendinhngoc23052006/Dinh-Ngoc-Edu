@@ -1,11 +1,13 @@
 // Row types mirroring supabase/migrations/20260610213500_core_schema.sql.
 // Keep in lockstep with the migration in the same PR.
 
+import type { CalcSpec } from '../../supabase/functions/_shared/calc'
+
 export type Visibility = 'private' | 'public'
 
 export type CourseStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
-export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi'
+export type QuestionKind = 'mcq' | 'fill_blank' | 'mcq_multi' | 'calc'
 
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard'
 
@@ -71,6 +73,8 @@ export interface Question {
   prompt: string
   options: string[]
   answer: QuestionAnswer
+  // Only set for kind 'calc': the formula + variables the UI rolls each take.
+  calc: CalcSpec | null
   verified: boolean
   created_at: string
 }

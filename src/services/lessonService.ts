@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { gradeCalc } from '../../supabase/functions/_shared/calc'
 import type { Chapter, LessonNode, Question } from '../types/database'
 
 const MAX_CHAPTERS = 100
@@ -65,6 +66,7 @@ export async function getNodeQuestions(nodeId: string): Promise<Question[]> {
 export type QuestionResponse =
   | { kind: 'choice'; selectedIndexes: number[] }
   | { kind: 'text'; text: string }
+  | { kind: 'calc'; values: Record<string, number>; answer: number }
 
 export type Grade = 'correct' | 'partial' | 'incorrect'
 
@@ -107,6 +109,12 @@ export function gradeQuestion(
   question: Question,
   response: QuestionResponse,
 ): Grade {
+  if (question.kind === 'calc') {
+    if (response.kind !== 'calc' || !question.calc) return 'incorrect'
+    return gradeCalc(question.calc, response.values, response.answer)
+      ? 'correct'
+      : 'incorrect'
+  }
   if (question.kind === 'fill_blank') {
     if (response.kind !== 'text') return 'incorrect'
     const given = normalizeText(response.text)
@@ -134,7 +142,9 @@ export function shuffleLessonQuestions(
 ): Question[] {
   const shuffled = shuffle(questions, random)
   return shuffled.map((question) => {
-    if (question.kind === 'fill_blank') return question
+    // Only choice questions have options to reorder; fill_blank and calc carry
+    // no options, so they pass through untouched.
+    if (question.kind === 'fill_blank' || question.kind === 'calc') return question
     const order = shuffle(
       question.options.map((_, index) => index),
       random,

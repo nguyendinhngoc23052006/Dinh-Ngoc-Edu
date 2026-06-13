@@ -268,6 +268,7 @@ async function generate(
           prompt: question.prompt,
           options: question.options,
           answer: question.answer,
+          calc: question.calc ?? null,
           verified: verifyQuestion(question, chunk),
         }))
       })

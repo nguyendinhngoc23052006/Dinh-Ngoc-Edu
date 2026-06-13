@@ -19,6 +19,7 @@ function makeQuestion(overrides: Partial<Question>): Question {
     prompt: 'Pick one',
     options: ['a', 'b', 'c'],
     answer: { correct_indexes: [1] },
+    calc: null,
     verified: true,
     created_at: '2026-06-10T00:00:00Z',
     ...overrides,
@@ -38,6 +39,27 @@ describe('gradeQuestion', () => {
     expect(gradeQuestion(q, { kind: 'choice', selectedIndexes: [0] })).toBe(
       'incorrect',
     )
+  })
+
+  test('calc: typed answer is graded against the formula and values', () => {
+    const q = makeQuestion({
+      kind: 'calc',
+      options: [],
+      answer: {},
+      calc: {
+        variables: [{ name: 'x', min: 1, max: 9, decimals: 0 }],
+        formula: 'x * 2',
+        prompt_template: 'Double {x}',
+        decimals: 0,
+        tolerance: 0,
+      },
+    })
+    expect(
+      gradeQuestion(q, { kind: 'calc', values: { x: 4 }, answer: 8 }),
+    ).toBe('correct')
+    expect(
+      gradeQuestion(q, { kind: 'calc', values: { x: 4 }, answer: 9 }),
+    ).toBe('incorrect')
   })
 
   test('mcq_multi: selection order does not matter', () => {

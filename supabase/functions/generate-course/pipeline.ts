@@ -19,14 +19,19 @@ export interface SyllabusChapter {
   nodes: SyllabusNode[]
 }
 
+import { validateCalcSpec } from '../_shared/calc.ts'
+import type { CalcSpec } from '../_shared/calc.ts'
+
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
 export interface GeneratedQuestion {
-  kind: 'mcq' | 'mcq_multi' | 'fill_blank'
+  kind: 'mcq' | 'mcq_multi' | 'fill_blank' | 'calc'
   difficulty: Difficulty
   prompt: string
   options: string[]
   answer: { correct_indexes?: number[]; accepted?: string[] }
+  // Present only for kind 'calc'.
+  calc?: CalcSpec
 }
 
 // The AI tags each question's difficulty; anything unrecognized falls back to
@@ -192,6 +197,11 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
     if (accepted.length === 0) return null
     return { kind: 'fill_blank', difficulty, prompt, options: [], answer: { accepted } }
   }
+  if (raw.kind === 'calc') {
+    const calc = validateCalcSpec(raw.calc)
+    if (!calc) return null
+    return { kind: 'calc', difficulty, prompt, options: [], answer: {}, calc }
+  }
   if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
   const options = (Array.isArray(raw.options) ? raw.options : [])
     .filter((o): o is string => typeof o === 'string' && o.trim() !== '')
@@ -226,6 +236,9 @@ export function verifyQuestion(
   question: GeneratedQuestion,
   sourceText: string,
 ): boolean {
+  // A calc question's answer is computed from its formula, not quoted from the
+  // text, so "verified" means it carries a usable formula spec.
+  if (question.kind === 'calc') return question.calc != null
   const source = normalize(sourceText)
   if (question.kind === 'fill_blank') {
     const accepted = question.answer.accepted ?? []
@@ -330,10 +343,11 @@ export function buildChapterQuestionsPrompt(
     `Write exactly ${QUESTIONS_PER_NODE} questions per lesson. Base every question and answer ONLY on that lesson's source chunk below — never invent facts.`,
     `Mix the kinds: "mcq" (one correct option), "mcq_multi" (several correct options), "fill_blank" (the student types a missing word or phrase).`,
     `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give the accepted answers (short, copied from the source) and no options.`,
+    `Only when the source states a formula or numeric relationship, you MAY use kind "calc": give a short "prompt" instruction and a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" over ONLY those names (operators + - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance" for the answer. Use realistic ranges from the material. Never invent a calc question when the source has no formula.`,
     `Tag every question with "difficulty": "easy", "medium", or "hard", judged from the source itself — recalling a single stated fact is "easy", applying or connecting ideas is "medium", multi-step reasoning or synthesis is "hard". Let the material decide the mix: do not make every question the same difficulty, and do not force hard questions onto simple material.`,
     `Write every prompt and every option in ${outputLanguage}, regardless of the source chunk's language — a question in one language must never expect an answer in another.`,
     `Respond with ONLY this JSON (node_index says which lesson the question belongs to):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","difficulty":"hard","prompt":"... ____ ...","accepted":["..."]}]}`,
+    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","difficulty":"hard","prompt":"... ____ ...","accepted":["..."]},{"node_index":0,"kind":"calc","difficulty":"medium","prompt":"Compute the simple interest.","calc":{"variables":[{"name":"P","min":1000,"max":5000,"decimals":0},{"name":"r","min":1,"max":10,"decimals":0},{"name":"t","min":1,"max":5,"decimals":0}],"formula":"P*r*t/100","prompt_template":"Principal {P} at {r}% for {t} years — interest?","decimals":2,"tolerance":0.01}}]}`,
     '',
     sources,
   ].join('\n')

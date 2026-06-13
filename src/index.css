@@ -377,6 +377,15 @@ button:disabled {
   font-weight: 600;
 }
 
+/* The filled-in numeric statement of a calculation question. */
+.calc-statement {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--green-soft);
+  border-radius: var(--radius);
+  font-size: 1.05rem;
+}
+
 /* Duolingo-style result sheet: slides over the bottom of the screen. */
 .feedback-popup {
   position: fixed;
