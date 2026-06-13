@@ -56,15 +56,19 @@ Deno.serve(async (req) => {
     return json({ error: 'nodeId is required.' }, 400)
   }
   const rawResponses = (body as { responses?: unknown }).responses
-  const submissions: Submission[] = Array.isArray(rawResponses)
-    ? (rawResponses as Submission[]).filter(
-        (item) =>
-          item &&
-          typeof item.questionId === 'string' &&
-          item.answer != null &&
-          typeof item.answer === 'object',
-      )
-    : []
+  // Cap before iterating — the array is client-supplied; a lesson has ≤50
+  // questions, so anything beyond that is noise we won't match anyway.
+  const submissions: Submission[] = (
+    Array.isArray(rawResponses) ? (rawResponses as Submission[]) : []
+  )
+    .slice(0, 100)
+    .filter(
+      (item) =>
+        item &&
+        typeof item.questionId === 'string' &&
+        item.answer != null &&
+        typeof item.answer === 'object',
+    )
 
   const admin = createClient(
     url,

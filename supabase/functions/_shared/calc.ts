@@ -231,7 +231,13 @@ export function gradeCalc(
   answer: number,
 ): boolean {
   if (!Number.isFinite(answer)) return false
-  return Math.abs(answer - computeExpected(spec, values)) <= spec.tolerance
+  // Values come from the client and could be tampered (e.g. a missing
+  // variable), which would make evaluate() throw — a wrong answer, not a crash.
+  try {
+    return Math.abs(answer - computeExpected(spec, values)) <= spec.tolerance
+  } catch {
+    return false
+  }
 }
 
 const VARIABLE_NAME = /^[A-Za-z][A-Za-z0-9_]*$/

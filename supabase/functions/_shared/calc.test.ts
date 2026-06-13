@@ -93,6 +93,11 @@ describe('gradeCalc', () => {
   test('rejects a non-finite answer', () => {
     expect(gradeCalc(interestSpec, { P: 1000, r: 5, t: 2 }, NaN)).toBe(false)
   })
+
+  test('returns false (never throws) when values are missing a variable', () => {
+    // A tampered/short submission must not crash the server re-grade.
+    expect(gradeCalc(interestSpec, { P: 1000 }, 100)).toBe(false)
+  })
 })
 
 describe('validateCalcSpec', () => {
