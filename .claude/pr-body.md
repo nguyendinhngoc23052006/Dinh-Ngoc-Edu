@@ -1,48 +1,38 @@
-# Pet system — PR 2: food, feeding, and the Pets page
+# Pet system — PR 3: on-screen pet, encouragement, retire legacy cosmetics
 
-Builds the feeding loop on top of PR 1's pets. Users buy **food** with credits
-into an inventory, then spend it to **feed** pets — raising xp until an egg is
-ready to hatch and, later, until a pet evolves. Adds a `/pets` page to manage
-the storage of up to three (adopt, feed, hatch, set-active, release) and a Food
-section in the Market.
+The pet comes to life. The user's **active** pet (from the `pets` table) now
+walks along the bottom of every page, showing its egg or evolved-form sprite,
+and a hatched pet occasionally throws out an **encouragement** message. The
+legacy "buy a pet emoji" cosmetic is retired — the companion is the living pet
+now, not a purchase.
 
 ## What's in this PR
-- **`food` catalog** (world-readable, 3 tiers: Berry / Hearty Meal / Royal
-  Feast) — each tier cheaper per xp than the last.
-- **`user_food`** inventory (one row per owned food, qty). Read-only to the
-  owner; qty changes only inside the RPCs.
-- **RPCs** (all `SECURITY DEFINER`, authenticated, server-validated):
-  - `buy_food(food_id, qty)` — re-derives cost, locks the balance, deducts, adds
-    to the stockpile. Returns the new balance.
-  - `feed_pet(pet_id, food_id, qty)` — checks owned quantity (row-locked, no
-    double-spend), adds `xp_value * qty` to an owned pet.
-  - `release_pet(pet_id)` — replaces PR 1's client-side delete; deletes an owned
-    pet and **auto-promotes** the oldest remaining pet into the active slot so
-    you're never left with pets but none on screen. The old `pets` delete policy
-    is dropped (release is RPC-only now).
-- **`/pets` page** — storage of ≤3 with adopt (disabled at full), per-pet sprite
-  (egg or evolved form), rarity badge, an xp progress bar (`petProgress`), a
-  Hatch button when ready, feed buttons per owned food, set-active, and release
-  (with a confirm). Full loading / empty / error states, including the secondary
-  loads' errors.
-- **Market Food section** mirroring the existing card pattern; shows owned qty.
-- `foodService` + `petService` (feed/release) + a pure `petProgress()` helper,
-  all unit-tested.
+- **On-screen pet** — `CosmeticsLayer` renders the active pet (egg → species
+  form, derived from xp) instead of the old equipped cosmetic. Refetches when
+  the user changes or hatches a pet. Still gated by the `pet_enabled` toggle, and
+  the theme-recolor logic is unchanged.
+- **Encouragement** — a hatched pet shows a random optimistic line (Vietnamese,
+  in `src/lib/petCheers.ts`) every ~25s for a few seconds, on a self-cleaning
+  timer. Silenced by a new toggle (or when the pet is off, or while it's an egg).
+- **New setting** — `profiles.pet_cheers_enabled` (client-writable like
+  `pet_enabled`, via an additive column grant) with a Settings checkbox.
+- **Retire legacy pets** — migration clears `equipped_pet` and deletes the
+  `kind='pet'` cosmetics (ownership rows cascade away); the Market loses its Pets
+  section and now points users to the `/pets` page for pets.
+- `getActivePet` (petService) + `setPetCheersEnabled` (profileService) + the
+  cheers picker, all unit-tested.
 
 ## Migration in plain English
-Adds a `food` price list and a `user_food` "what you own" table. Adds three
-server functions: buy food (spend credits, can't overspend or get it free), feed
-a pet (spend your food for xp, can't spend food you don't have or feed someone
-else's pet), and release a pet (delete one of yours and move another onto the
-screen). Removes the old direct-delete permission on pets so releasing always
-goes through that function.
+Adds one preference column (whether the pet cheers you on) that the user can flip
+themselves, and removes the old buyable pet items — the on-screen pet is now the
+living one from the pets table, so the old equipped-pet slot is cleared and those
+catalog items (and anyone's ownership of them) are deleted.
 
 ## Abuse cases blocked
-- Can't get free/cheap food or overspend (server re-derives cost; balance locked).
-- Can't feed food you don't own or double-spend it on retry-within-a-tick
-  (inventory row locked; quantity checked).
-- Can't feed/release another user's pet (ownership checked in every RPC).
-- Can't write your own inventory qty or credits (no insert/update RLS policy).
+- The new column grant is column-scoped (`update (pet_cheers_enabled)`), additive
+  to the existing `pet_enabled` grant — credits, equipped slots, and pet xp stay
+  server-only; a client still can't write them.
+- `getActivePet` is RLS-scoped to the caller's own pets.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -55,29 +45,33 @@ goes through that function.
 - [x] migrations explained in plain English
 
 Notes on the boxes:
-- **Tests**: `foodService.test.ts`, updated `petService.test.ts` (feed + release
-  RPCs), and `petProgress.test.ts` (`petProgress` bands) — 29 new/changed assertions
-  green; full suite passes except the pre-existing `fflate` failure in
-  `extract.test.ts` (also fails on `main`, unrelated).
-- **Irreversible/idempotent**: release is permanent but owner-scoped and
-  auto-promotes; feed/buy are row-locked against concurrent double-spend.
-  **Debt I'm leaving:** like the existing `purchase_cosmetic`, `buy_food`/`feed_pet`
-  are not idempotent against a *lost-response retry* (an additive upsert re-applies
-  the spend). Accepted because it's in-app currency bounded by the user's own
-  balance, and matching one RPC but not the others would be inconsistent; the
-  fix-when-needed (a client idempotency key + unique ledger row) is recorded in
-  `MEMORY.md`. Flagging for a `tech-debt` issue if you want it tracked.
-- **Memory**: added the spend-RPC retry-idempotency note to `MEMORY.md`.
+- **Migration** adds no table (just a column) — RLS line N/A; the column is
+  covered by the existing profiles RLS, with a column-scoped update grant.
+- **Tests**: `petCheers.test.ts`, `petService.test.ts` (getActivePet), and
+  `profileService.test.ts` (setPetCheersEnabled + updated literal) green; typecheck,
+  lint, and `vite build` all pass; full suite passes except the pre-existing
+  `fflate` failure in `extract.test.ts` (also fails on `main`, unrelated).
+- **Idempotent**: the retirement migration is safe to re-run (the deletes simply
+  match nothing the second time; the equipped_pet clear is conditional).
+- **Debt I'm leaving:** the `equipped_pet` column and the `'pet'` branch of
+  `equip_cosmetic` are now unused (no pet rows reach them). Left in place because
+  dropping them is a behaviour-preserving structural change that should stand
+  alone as a small follow-up migration, not ride this feature PR. Flag if you want
+  a `tech-debt` issue.
+- **Memory**: recorded two code-review lessons (single-use render-helper after a
+  section is removed; single-slot timer leak-freedom) in the reviewer sidecar.
 
 ## For you
-**What changed:** Added a food catalog + inventory, the buy/feed/release server
-logic, a `/pets` page to raise your menagerie, and a Food section in the Market.
+**What changed:** Your active pet now walks on every page (egg or evolved form),
+a hatched pet cheers you on, you can silence the cheers in Settings, and the old
+buyable pet emojis are gone (replaced by the living pet on the Pets page).
 
 **What you do next:** Review the preview, confirm the migration applies on the
-preview DB, then log in and try the loop: buy food → feed an egg to 100 xp →
-hatch → keep feeding to evolve; adopt/release to test the 3-slot cap and the
-auto-promote. No env/secret action needed.
+preview DB, then log in: with a hatched active pet you should see it walking and
+the occasional message; toggle "Encouragement" and "Study pet" in Settings to
+confirm they take effect. No env/secret action needed.
 
-**How to roll it back:** Revert this PR. The migration adds two tables and three
-functions and drops one policy; reverting restores the prior state (pets still
-exist from PR 1, just without food/feeding, and the client delete policy returns).
+**How to roll it back:** Revert this PR to restore the previous on-screen pet
+code and the Market Pets section. Note: the deleted pet cosmetics and the cleared
+`equipped_pet` values are data changes — reverting the code won't recreate them;
+re-seeding would need a small follow-up migration (fix-forward, as usual).
