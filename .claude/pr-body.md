@@ -1,28 +1,90 @@
-Two operational fixes, requested together and shipped as one PR on the single branch I'm allowed to push.
+# Pet system — PR 1: foundation (egg, species, storage of 3, hatch roll)
 
-## What's in it
-1. **Fix the broken "Finish lesson" button.** Pressing *Finish lesson* failed with **"Failed to send a request to the Edge Function"** at any score. Root cause: the `complete-lesson` Edge Function was never declared in `supabase/config.toml`, and the Supabase→GitHub integration deploys **only declared functions** — so the function existed in the repo but was never deployed to the project. Invoking a non-existent function returns a CORS-less error the browser reports as `FunctionsFetchError`. The function code was already correct; the fix is a one-block `[functions.complete-lesson]` declaration (matching the two existing functions, `verify_jwt = true`). On this PR's preview branch the function deploys, so the fix is testable before merge; on merge it deploys to production.
-2. **Add the production uptime monitor (pipeline step 8.4).** A permanent `GET /health` endpoint plus `.github/workflows/uptime.yml`:
-   - Because this is a Vite SPA (no server routes), `/health` is a **Vercel Edge Function** at `api/health.ts`, reached via a new `vercel.json` rewrite (`/health → /api/health`, placed before the catch-all). It makes one round-trip to Supabase Auth (`/auth/v1/health`, no app tables) and returns the plain text `ok` — so the monitor checks the real app→database path on your Vercel domain, exactly as the guide specifies.
-   - `uptime.yml` runs every 30 minutes, reads the `PRODUCTION_URL` Actions variable, **no-ops (stays green) when it's unset**, and otherwise fetches `${PRODUCTION_URL}/health` and opens — or updates, never duplicates — an issue titled `uptime: /health failing`.
-   - `tsconfig.json` now includes `api/` so the new endpoint is typechecked; the endpoint reads the public Production env via the same two-prefix fallback as the browser client (no secret).
+First slice of the egg→hatch→evolve pet system. **Purely additive and not yet
+user-visible**: it adds the data model and the server-side hatch roll, with no
+UI wired up. The existing emoji "pet" cosmetics keep working untouched and are
+retired in a later PR, when the on-screen pet is rewritten to render these rows
+— so there is never a visual gap.
 
-This branch was rebased onto current `main` (PR #24's seeded-login fix), so it merges cleanly.
+## The model
+Each user keeps a small **menagerie**: up to **3 pets** in storage, exactly
+**one active** (the companion that walks on screen). A pet starts as an egg,
+hatches into a random species, and evolves through three forms as it gains xp.
+To adopt a new egg at full storage you must first **release** one.
 
-## Constitution
-At your request, this PR also adds the guide's `/health`-protection rule to the repo `CLAUDE.md` under **## Quality gate** — `/health is a permanent route; never remove or rename it — the uptime workflow depends on it` — bringing the repo constitution in line with the canonical version in the pipeline guide.
+## What's in this PR
+- `species` catalog (world-readable): name, rarity, drop `weight`, three
+  evolution sprites. Seeded with 9 creatures across the five rarities, weights
+  summing to 100 so they read as drop rates (common 60% / rare 24% / epic 10% /
+  legendary 4% / mythical 2%).
+- `pets`: up to 3 rows per user. `xp` only grows; the evolution form (1/2/3) is
+  **derived** from xp in `src/lib/petProgress.ts`, never stored. `is_active`
+  marks the single companion, hard-enforced by a partial unique index.
+- `profiles.pets_hatched`: lifetime hatch counter.
+- RPCs (all `SECURITY DEFINER`, authenticated only):
+  - `adopt_pet()` — new egg; refuses past 3; serialized by a `for update` lock on
+    the caller's profile row so concurrent adopts can't exceed the cap.
+  - `hatch_pet(p_pet_id)` — server-side **weighted-random** species roll on an
+    owned, ready (xp ≥ 100) egg; row-locked + idempotent (can't re-roll).
+  - `set_active_pet(p_pet_id)` — clear others, set this one active.
+- `pets` RLS: read + **release (delete)** your own rows; no insert/update policy,
+  so xp/stage/species/active change only through the RPCs above.
+- Signup trigger `handle_new_user` updated (fix-forward) to also create a starter
+  egg (active); existing users backfilled.
+- `src/services/petService.ts` (`listMyPets`, `listSpecies`, `adoptPet`,
+  `hatchPet`, `setActivePet`, `releasePet`) + `src/lib/petProgress.ts` (pure
+  thresholds) + `src/types` updates, all tested.
+
+## Migration in plain English
+Adds a `species` lookup table and a `pets` table (max three per person), plus a
+`pets_hatched` counter on profiles. Replaces the signup trigger so new accounts
+get a starter egg, and backfills an egg for current accounts. Adds three
+functions — adopt (make a new egg, capped at three), hatch (randomly turn a
+ready egg into a creature), and set-active (choose which one walks on screen) —
+all running on the server so the count, the randomness, and the single-active
+rule can't be gamed.
+
+## Abuse cases blocked
+- Can't own more than 3 (count + per-user lock in `adopt_pet`).
+- Can't pick the rarity / re-roll (server-side weighted draw, idempotent hatch).
+- Can't have two on screen (partial unique index on active).
+- Can't set xp/stage/active directly (no insert/update RLS policy; RPCs only).
+- Can only release / read your **own** pets (RLS scoped to `auth.uid()`).
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches (no migration in this PR — config + workflow + endpoint only)
-- [x] tests/lint/typecheck green; happy AND unhappy paths exercised (153 tests pass; `/health` returns `ok` on a reachable DB and `503` when config is missing or Supabase is unreachable; `uptime.yml` no-ops on unset `PRODUCTION_URL` and de-dupes the issue)
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
+- [x] tests/lint/typecheck green; happy AND unhappy paths exercised
 - [x] scripts still named exactly `lint` and `typecheck`
-- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code (`/health` uses the public publishable key only)
-- [x] irreversible actions guarded + idempotent + flagged (the monitor only opens/updates a single issue, never duplicates; no state-changing app action added)
-- [x] no avoidable debt; memory updated and pruned (supabase/CLAUDE.md gets the function-declaration rule; MEMORY.md gets the `/health` Edge-Function pattern)
-- [x] migrations explained in plain English (n/a — no migration)
+- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
+- [x] irreversible actions guarded + idempotent + flagged
+- [x] no avoidable debt; memory updated and pruned
+- [x] migrations explained in plain English
+
+Notes on the boxes:
+- **Tests**: `petProgress.test.ts` (threshold boundaries) + `petService.test.ts`
+  (list/adopt/hatch/set-active/release, each with success, RPC-arg assertions,
+  and an error path) all green; full suite passes except a pre-existing `fflate`
+  import failure in `extract.test.ts` that also fails on `main` (unrelated, left
+  untouched).
+- **Irreversible/idempotent**: hatching is one-way per egg (`stage` check + row
+  lock); releasing is a permanent but owner-scoped delete of low-stakes data;
+  trigger/backfill/seed inserts use `on conflict do nothing` where applicable.
+- **Memory**: no new lesson — reviewers confirmed this reuses recorded patterns
+  (SECURITY DEFINER child writes, revoke-PUBLIC + grant-authenticated, partial
+  unique index for a single-active invariant, lock-to-serialize a per-user cap).
 
 ## For you
-**What changed:** finishing a lesson works again (the credit-awarding Edge Function is now actually deployed), production gains a 30-minute uptime check that files a GitHub issue if the live site can't reach its database, and the repo `CLAUDE.md` now protects `/health`.
-**What you do next:** review the preview, then merge. To confirm fix #1 on the preview, generate a course and press *Finish lesson* — it should no longer error. For the monitor to run against production, set the Actions variable **Settings → Secrets and variables → Actions → Variables → New repository variable** → name `PRODUCTION_URL`, value your production URL (until then the workflow stays green and idle, by design). After merge you can also trigger it manually via **Actions → uptime → Run workflow**.
-**How to roll it back:** revert this PR on GitHub. Removing the `[functions.complete-lesson]` block stops the function deploying again; deleting `api/health.ts`, the `vercel.json` rewrite line, and `uptime.yml` removes the monitor; the `CLAUDE.md` line drops with the revert. No schema or data changes, so nothing to un-migrate.
+**What changed:** Added the pet data model (`species`, a `pets` storage of up to
+three with one active, `profiles.pets_hatched`), the adopt/hatch/set-active
+server logic, and gave every user a starter egg — all backend-only, with
+read-only services and tests; nothing on screen changes yet.
+
+**What you do next:** Review the preview, confirm the migration applies cleanly
+on the preview DB, then merge. No env/secret action needed. (Feeding, the
+storage UI, the on-screen pet, and the map "dimensions" arrive in later PRs.)
+
+**How to roll it back:** Revert this PR. The migration only adds two tables, a
+column, three functions, and replaces a trigger body; reverting drops them. No
+data outside this feature is touched, and the live emoji-pet cosmetics are
+untouched by this PR.

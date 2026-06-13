@@ -17,6 +17,7 @@ describe('getMyProfile', () => {
       pet_enabled: true,
       equipped_theme: null,
       equipped_pet: null,
+      pets_hatched: 0,
       created_at: '2026-06-13T00:00:00Z',
     }
     supabaseMock.reset([{ data: profile, error: null }])
