@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/profileContext'
 import { signOut } from '../../services/authService'
+import CosmeticsLayer from './CosmeticsLayer'
 
 function AppLayout() {
   const { session, loading } = useAuth()
@@ -28,10 +29,12 @@ function AppLayout() {
           <NavLink to="/dashboard">Dashboard</NavLink>
           {loading ? null : session ? (
             <>
+              <NavLink to="/market">Market</NavLink>
+              <NavLink to="/settings">Settings</NavLink>
               {profile ? (
-                <span className="credit-badge" title="Your credits">
+                <Link to="/market" className="credit-badge" title="Your credits">
                   ⭐ {profile.credits}
-                </span>
+                </Link>
               ) : null}
               <button type="button" onClick={handleSignOut}>
                 Log out
@@ -45,6 +48,7 @@ function AppLayout() {
       <main className="app-main">
         <Outlet />
       </main>
+      <CosmeticsLayer />
     </div>
   )
 }

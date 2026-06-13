@@ -11,6 +11,8 @@ import CoursePage from './pages/CoursePage'
 import LessonPage from './pages/LessonPage'
 import NewMockTestPage from './pages/NewMockTestPage'
 import MockTestPage from './pages/MockTestPage'
+import MarketPage from './pages/MarketPage'
+import SettingsPage from './pages/SettingsPage'
 
 function App() {
   return (
@@ -26,6 +28,8 @@ function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/courses/new" element={<NewCoursePage />} />
+              <Route path="/market" element={<MarketPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route
                 path="/courses/:courseId/nodes/:nodeId"
                 element={<LessonPage />}

@@ -111,3 +111,17 @@ export interface Profile {
   equipped_pet: string | null
   created_at: string
 }
+
+export type CosmeticKind = 'theme' | 'pet'
+
+export interface Cosmetic {
+  id: string
+  kind: CosmeticKind
+  name: string
+  description: string
+  price: number
+  // theme: CSS variable name → value; pet: { sprite: '🐱' }.
+  data: Record<string, string>
+  sort: number
+  created_at: string
+}
