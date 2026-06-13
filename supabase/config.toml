@@ -395,6 +395,13 @@ enabled = true
 # Same caller-JWT pattern as generate-course.
 verify_jwt = true
 
+[functions.complete-lesson]
+enabled = true
+# Caller's JWT establishes who they are; the function re-grades and awards with
+# the service role. Without this block the GitHub integration never deploys the
+# function, so invoking it fails with "Failed to send a request to the Edge Function".
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327
