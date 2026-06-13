@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { supabaseMock } from '../test/supabaseMock'
-import { getMyProfile, setPetEnabled } from './profileService'
+import {
+  getMyProfile,
+  setPetCheersEnabled,
+  setPetEnabled,
+} from './profileService'
 
 vi.mock('../lib/supabaseClient', async () => {
   const { supabaseMock } = await import('../test/supabaseMock')
@@ -15,6 +19,7 @@ describe('getMyProfile', () => {
       user_id: 'u1',
       credits: 12,
       pet_enabled: true,
+      pet_cheers_enabled: true,
       equipped_theme: null,
       equipped_pet: null,
       pets_hatched: 0,
@@ -41,5 +46,19 @@ describe('setPetEnabled', () => {
   test('surfaces database errors', async () => {
     supabaseMock.reset([{ data: null, error: { message: 'denied' } }])
     await expect(setPetEnabled(true)).rejects.toThrow(/denied/)
+  })
+})
+
+describe('setPetCheersEnabled', () => {
+  test('updates only the cheers preference', async () => {
+    supabaseMock.reset([{ data: null, error: null }])
+    await setPetCheersEnabled(false)
+    const update = supabaseMock.calls.find((c) => c.path.endsWith('update'))
+    expect(update?.args[0]).toEqual({ pet_cheers_enabled: false })
+  })
+
+  test('surfaces database errors', async () => {
+    supabaseMock.reset([{ data: null, error: { message: 'denied' } }])
+    await expect(setPetCheersEnabled(true)).rejects.toThrow(/denied/)
   })
 })

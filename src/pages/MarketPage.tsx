@@ -28,8 +28,6 @@ function MarketPage() {
 
   // Price 0 items are usable without buying; everything else needs ownership.
   const isUnlocked = (item: Cosmetic) => item.price === 0 || owned.has(item.id)
-  const equippedId = (item: Cosmetic) =>
-    item.kind === 'theme' ? profile?.equipped_theme : profile?.equipped_pet
 
   async function run(id: string, action: () => Promise<void>) {
     setBusyId(id)
@@ -87,34 +85,30 @@ function MarketPage() {
     )
   }
 
-  const section = (kind: 'theme' | 'pet', title: string, blurb: string) => (
+  const themes = (
     <section className="market-section">
-      <h2>{title}</h2>
-      <p className="market-blurb">{blurb}</p>
+      <h2>Themes</h2>
+      <p className="market-blurb">Recolor the whole app — homepage and courses.</p>
       <div className="market-grid">
         {cosmetics
-          .filter((item) => item.kind === kind)
+          .filter((item) => item.kind === 'theme')
           .map((item) => {
             const unlocked = isUnlocked(item)
-            const equipped = equippedId(item) === item.id
+            const equipped = profile?.equipped_theme === item.id
             const busy = busyId === item.id
             return (
               <div key={item.id} className="card market-card">
-                {item.kind === 'theme' ? (
-                  <div
-                    className="theme-swatch"
-                    style={{
-                      background: item.data['--bg'],
-                      borderColor: item.data['--green'],
-                    }}
-                  >
-                    <span style={{ background: item.data['--green'] }} />
-                    <span style={{ background: item.data['--green-soft'] }} />
-                    <span style={{ background: item.data['--ink'] }} />
-                  </div>
-                ) : (
-                  <div className="pet-preview">{item.data.sprite}</div>
-                )}
+                <div
+                  className="theme-swatch"
+                  style={{
+                    background: item.data['--bg'],
+                    borderColor: item.data['--green'],
+                  }}
+                >
+                  <span style={{ background: item.data['--green'] }} />
+                  <span style={{ background: item.data['--green-soft'] }} />
+                  <span style={{ background: item.data['--ink'] }} />
+                </div>
                 <h3>{item.name}</h3>
                 <p className="market-desc">{item.description}</p>
                 <p className="market-price">
@@ -168,8 +162,7 @@ function MarketPage() {
         <Link to="/settings">Settings</Link> lets you turn the pet off.
       </p>
       {error ? <p className="state state-error">{error}</p> : null}
-      {section('theme', 'Themes', 'Recolor the whole app — homepage and courses.')}
-      {section('pet', 'Pets', 'A companion that walks around while you study.')}
+      {themes}
       <section className="market-section">
         <h2>Food</h2>
         <p className="market-blurb">

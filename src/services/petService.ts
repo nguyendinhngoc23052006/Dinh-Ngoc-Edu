@@ -13,6 +13,18 @@ export async function listMyPets(): Promise<Pet[]> {
   return (data ?? []) as Pet[]
 }
 
+// The caller's active pet — the single on-screen companion — or null if none.
+// The partial unique index guarantees at most one active row.
+export async function getActivePet(): Promise<Pet | null> {
+  const { data, error } = await supabase
+    .from('pets')
+    .select()
+    .eq('is_active', true)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as Pet | null) ?? null
+}
+
 // The species catalog (all hatchable creatures). Small, static, world-readable;
 // ordered for display and bounded (seeded by migration).
 export async function listSpecies(): Promise<Species[]> {

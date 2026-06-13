@@ -15,3 +15,5 @@ commits entries from the agent's "Memory candidates" report section.
 - A batching refactor (per-node → per-chapter AI call) tends to strand the old validator as a dead export with passing tests — grep the new entry point's imports against every pipeline export.
 - Docs naming internal functions drift in the same PR that renames the code path — check identifiers in changed docs against the diff.
 - Double-submit in quiz flows is safe when the next question mounts with a disabled submit (empty selection/text) — verify that invariant rather than demanding a busy flag.
+- After deleting a page section, re-check whether a surviving `section(...)`-style render helper still has ≥2 callers; a now-single-use parameterized helper should be inlined (PR #29 inlined Themes after the Pets section was removed).
+- For a timer effect that overwrites a single `hideTimer` slot each interval tick, confirm the interval period exceeds the timeout duration — if so it's leak-free (CosmeticsLayer: 25s interval > 6s show).

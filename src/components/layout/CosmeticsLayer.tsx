@@ -1,7 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAsync } from '../../hooks/useAsync'
 import { useProfile } from '../../hooks/profileContext'
+import { petForm } from '../../lib/petProgress'
+import { pickCheer } from '../../lib/petCheers'
 import { listCosmetics } from '../../services/cosmeticsService'
+import { getActivePet, listSpecies } from '../../services/petService'
+import type { Pet, Species } from '../../types/database'
 
 // Every CSS variable a theme may override; cleared before applying a theme so
 // switching away from one that set extras (e.g. Midnight's --muted/--line)
@@ -16,12 +20,32 @@ const THEME_VARS = [
   '--line',
 ]
 
+const CHEER_EVERY_MS = 25000
+const CHEER_SHOW_MS = 6000
+
+// The sprite for a pet: an egg, or its species' form for the current xp.
+function spriteFor(pet: Pet, species: Species | undefined): string {
+  if (pet.stage === 'egg' || !species) return '🥚'
+  const form = petForm(pet.xp)
+  if (form === 3) return species.form3_sprite
+  if (form === 2) return species.form2_sprite
+  return species.form1_sprite
+}
+
 // Applies the equipped theme to the whole app (so the homepage and every course
-// recolor) and renders the equipped pet walking along the bottom while the user
-// studies. One catalog fetch backs both. Renders nothing visible but the pet.
+// recolor) and renders the user's ACTIVE pet (from the pets table) walking along
+// the bottom, occasionally throwing out an encouragement. Renders nothing
+// visible but the pet.
 function CosmeticsLayer() {
   const { profile } = useProfile()
   const catalog = useAsync(() => listCosmetics(), [])
+  // Refetch the companion when the user changes or hatches one (pets_hatched
+  // bumps on hatch and triggers a profile refresh).
+  const activePet = useAsync(
+    () => getActivePet(),
+    [profile?.user_id, profile?.pets_hatched],
+  )
+  const species = useAsync(() => listSpecies(), [])
   const cosmetics = catalog.data ?? []
 
   const theme = cosmetics.find(
@@ -39,14 +63,40 @@ function CosmeticsLayer() {
     }
   }, [themeData])
 
-  const pet = cosmetics.find(
-    (item) => item.kind === 'pet' && item.id === profile?.equipped_pet,
-  )
-  const sprite = profile?.pet_enabled ? pet?.data.sprite : undefined
+  const pet = activePet.data
+  const sp = pet?.species_id
+    ? (species.data ?? []).find((s) => s.id === pet.species_id)
+    : undefined
+  const sprite = pet && profile?.pet_enabled ? spriteFor(pet, sp) : undefined
+
+  // Cheers only from a hatched companion (an egg stays silent), and only when
+  // the user hasn't turned them off.
+  const cheersOn =
+    !!sprite &&
+    pet?.stage === 'hatched' &&
+    (profile?.pet_cheers_enabled ?? true)
+  const [cheer, setCheer] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!cheersOn) return
+    let last: string | undefined
+    let hideTimer = 0
+    const interval = window.setInterval(() => {
+      last = pickCheer(last)
+      setCheer(last)
+      hideTimer = window.setTimeout(() => setCheer(null), CHEER_SHOW_MS)
+    }, CHEER_EVERY_MS)
+    return () => {
+      window.clearInterval(interval)
+      window.clearTimeout(hideTimer)
+    }
+  }, [cheersOn])
+
   if (!sprite) return null
 
   return (
     <div className="pet-companion" aria-hidden="true">
+      {cheersOn && cheer ? <span className="pet-cheer">{cheer}</span> : null}
       <span className="pet-sprite">{sprite}</span>
     </div>
   )

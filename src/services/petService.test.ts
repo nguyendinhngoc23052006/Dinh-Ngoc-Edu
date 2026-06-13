@@ -3,6 +3,7 @@ import { supabaseMock } from '../test/supabaseMock'
 import {
   adoptPet,
   feedPet,
+  getActivePet,
   hatchPet,
   listMyPets,
   listSpecies,
@@ -37,6 +38,23 @@ describe('listMyPets', () => {
   test('surfaces database errors', async () => {
     supabaseMock.reset([{ data: null, error: { message: 'denied' } }])
     await expect(listMyPets()).rejects.toThrow(/denied/)
+  })
+})
+
+describe('getActivePet', () => {
+  test('returns the active pet (RLS scopes it to the caller)', async () => {
+    supabaseMock.reset([{ data: egg, error: null }])
+    expect(await getActivePet()).toEqual(egg)
+  })
+
+  test('returns null when there is no active pet', async () => {
+    supabaseMock.reset([{ data: null, error: null }])
+    expect(await getActivePet()).toBeNull()
+  })
+
+  test('surfaces database errors', async () => {
+    supabaseMock.reset([{ data: null, error: { message: 'denied' } }])
+    await expect(getActivePet()).rejects.toThrow(/denied/)
   })
 })
 

@@ -107,7 +107,10 @@ export interface Profile {
   user_id: string
   credits: number
   pet_enabled: boolean
+  // Whether the on-screen pet shows encouragement messages.
+  pet_cheers_enabled: boolean
   equipped_theme: string | null
+  // Vestigial: the on-screen pet now comes from the pets table, not a cosmetic.
   equipped_pet: string | null
   // Lifetime count of pets raised to a hatch (flavour/history).
   pets_hatched: number
