@@ -109,6 +109,38 @@ export interface Profile {
   pet_enabled: boolean
   equipped_theme: string | null
   equipped_pet: string | null
+  // Lifetime count of pets raised to a hatch (flavour/history).
+  pets_hatched: number
+  created_at: string
+}
+
+export type PetRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythical'
+
+export type PetStage = 'egg' | 'hatched'
+
+// A catalog entry: a hatchable creature with three evolution sprites. weight
+// is the relative hatch drop rate (rarer species carry a smaller weight).
+export interface Species {
+  id: string
+  name: string
+  rarity: PetRarity
+  weight: number
+  form1_sprite: string
+  form2_sprite: string
+  form3_sprite: string
+  sort: number
+  created_at: string
+}
+
+// The signed-in user's one pet. An egg has species_id null; a hatched pet
+// always carries a species. The evolution form is derived from xp (see
+// src/lib/petProgress.ts), never stored.
+export interface UserPet {
+  user_id: string
+  stage: PetStage
+  species_id: string | null
+  xp: number
+  hatched_at: string | null
   created_at: string
 }
 
