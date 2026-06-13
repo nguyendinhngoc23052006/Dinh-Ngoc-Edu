@@ -9,6 +9,7 @@ import {
   purchaseCosmetic,
 } from '../services/cosmeticsService'
 import { buyFood, listFood, listMyFood } from '../services/foodService'
+import { dimensionLabel } from '../lib/dimensions'
 import type { Cosmetic, Food } from '../types/database'
 
 function MarketPage() {
@@ -88,7 +89,9 @@ function MarketPage() {
   const themes = (
     <section className="market-section">
       <h2>Themes</h2>
-      <p className="market-blurb">Recolor the whole app — homepage and courses.</p>
+      <p className="market-blurb">
+        Recolor the whole app and turn your course map into a themed world.
+      </p>
       <div className="market-grid">
         {cosmetics
           .filter((item) => item.kind === 'theme')
@@ -111,6 +114,11 @@ function MarketPage() {
                 </div>
                 <h3>{item.name}</h3>
                 <p className="market-desc">{item.description}</p>
+                {dimensionLabel(item.data.dimension) ? (
+                  <p className="market-dimension">
+                    🗺️ {dimensionLabel(item.data.dimension)} map
+                  </p>
+                ) : null}
                 <p className="market-price">
                   {item.price === 0 ? 'Free' : `⭐ ${item.price}`}
                 </p>
