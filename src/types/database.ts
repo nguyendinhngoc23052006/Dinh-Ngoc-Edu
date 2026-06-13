@@ -147,6 +147,25 @@ export interface Pet {
   created_at: string
 }
 
+// A food tier: bought with credits, spent to feed a pet for xp_value xp each.
+export interface Food {
+  id: string
+  name: string
+  description: string
+  price: number
+  xp_value: number
+  sprite: string
+  sort: number
+  created_at: string
+}
+
+// A row of the user's food stockpile (qty of one food they own).
+export interface UserFood {
+  user_id: string
+  food_id: string
+  qty: number
+}
+
 export type CosmeticKind = 'theme' | 'pet'
 
 export interface Cosmetic {
