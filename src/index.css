@@ -415,6 +415,93 @@ button:disabled {
   color: var(--green-dark);
 }
 
+/* ---- Theme dimensions: re-skin the course map into a themed world ---- */
+/* Driven by <html data-dimension="..."> set from the equipped theme. */
+
+[data-dimension] .course-map {
+  padding: 0.5rem 0.75rem 1.5rem;
+  border-radius: var(--radius);
+  background-size: cover;
+}
+
+/* A decorative scenery strip at the top of each themed map. */
+[data-dimension] .course-map::before {
+  display: block;
+  text-align: center;
+  font-size: 1.5rem;
+  letter-spacing: 0.5rem;
+  padding: 0.6rem 0 0.2rem;
+}
+
+/* Solid, themed connectors instead of the default grey dots. */
+[data-dimension] .node-step + .node-step::before {
+  border-left-style: solid;
+  border-color: var(--green);
+}
+
+/* A glowing ring around every node so the path reads as "magical". */
+[data-dimension] .node-circle {
+  border: 3px solid rgba(255, 255, 255, 0.65);
+}
+
+/* Meadow (Classic) — soft greens. */
+[data-dimension='meadow'] .course-map {
+  background: linear-gradient(180deg, #eaf7e6, #f6fbf2);
+}
+[data-dimension='meadow'] .course-map::before {
+  content: '🌿 🌳 🌸 🌳 🌿';
+}
+
+/* Volcano (Sunset) — dark rock and embers. */
+[data-dimension='volcano'] .course-map {
+  background: linear-gradient(180deg, #3a0d0d, #7c2d12);
+}
+[data-dimension='volcano'] .course-map::before {
+  content: '🌋 🔥 🪨 🔥 🌋';
+}
+[data-dimension='volcano'] .node-label {
+  color: #fde68a;
+}
+
+/* Tide (Ocean) — bright shallows. */
+[data-dimension='tide'] .course-map {
+  background: linear-gradient(180deg, #cdeffd, #eaf7ff);
+}
+[data-dimension='tide'] .course-map::before {
+  content: '🌊 🐚 🐠 🐚 🌊';
+}
+
+/* Twilight (Grape) — deep purples. */
+[data-dimension='twilight'] .course-map {
+  background: linear-gradient(180deg, #2e1065, #4c1d95);
+}
+[data-dimension='twilight'] .course-map::before {
+  content: '🌙 ✨ 🔮 ✨ 🌙';
+}
+[data-dimension='twilight'] .node-label {
+  color: #e9d5ff;
+}
+
+/* Cosmos (Midnight) — starfield. */
+[data-dimension='cosmos'] .course-map {
+  background: radial-gradient(circle at 20% 10%, #1e293b, #0f172a);
+}
+[data-dimension='cosmos'] .course-map::before {
+  content: '🪐 ⭐ 🌠 ⭐ 🪐';
+}
+[data-dimension='cosmos'] .node-label {
+  color: #cbd5e1;
+}
+[data-dimension='cosmos'] .node-circle {
+  box-shadow: 0 0 12px #38bdf8, 0 4px 0 #1e3a8a;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-dimension] .node-next .node-circle {
+    animation: pet-bob 0.8s ease-in-out infinite alternate;
+  }
+}
+
 /* ---- Lesson player ---- */
 
 .options,
@@ -620,10 +707,26 @@ button:disabled {
   box-shadow: inset 0 0 0 2px var(--red);
 }
 
+.market-dimension {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--green-dark);
+  margin: 0;
+}
+
 .setting-row {
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
+}
+
+.setting-row select {
+  margin-left: auto;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
 }
 
 /* ---- Walking pet companion ---- */

@@ -56,10 +56,18 @@ function CosmeticsLayer() {
   useEffect(() => {
     const root = document.documentElement
     for (const name of THEME_VARS) root.style.removeProperty(name)
+    // data carries CSS-variable colors plus a non-CSS `dimension` token; apply
+    // only the `--` vars to :root and route the token to a data attribute that
+    // the course-map CSS re-skins from.
     if (themeData) {
       for (const [name, value] of Object.entries(themeData)) {
-        root.style.setProperty(name, value)
+        if (name.startsWith('--')) root.style.setProperty(name, value)
       }
+    }
+    if (themeData?.dimension) {
+      root.setAttribute('data-dimension', themeData.dimension)
+    } else {
+      root.removeAttribute('data-dimension')
     }
   }, [themeData])
 
