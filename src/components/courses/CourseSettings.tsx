@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import ConfirmDialog from '../ui/ConfirmDialog'
 
 interface CourseSettingsProps {
   title: string
@@ -17,20 +18,11 @@ function CourseSettings({
   onDelete,
 }: CourseSettingsProps) {
   const [draft, setDraft] = useState(title)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   function handleRename(event: FormEvent) {
     event.preventDefault()
     onRename(draft)
-  }
-
-  function handleDelete() {
-    if (
-      window.confirm(
-        'Delete this course? Its lessons, questions, progress, and mock tests go with it.',
-      )
-    ) {
-      onDelete()
-    }
   }
 
   return (
@@ -51,10 +43,22 @@ function CourseSettings({
         type="button"
         className="danger"
         disabled={busy}
-        onClick={handleDelete}
+        onClick={() => setConfirmOpen(true)}
       >
         Delete course
       </button>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete this course?"
+        message="Its lessons, questions, progress, and mock tests go with it. This cannot be undone."
+        confirmLabel="Delete"
+        busy={busy}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          onDelete()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </details>
   )
 }
