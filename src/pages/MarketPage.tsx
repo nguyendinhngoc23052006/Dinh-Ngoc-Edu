@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
+import { useIdempotencyKeys } from '../hooks/useIdempotencyKeys'
 import { useProfile } from '../hooks/profileContext'
 import {
   equipCosmetic,
@@ -20,6 +21,9 @@ function MarketPage() {
   const inventory = useAsync(() => listMyFood(), [])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Stable idempotency keys for the purchases below, so a retry after a lost
+  // response can't double-charge.
+  const { keyFor, clearKey } = useIdempotencyKeys()
 
   const credits = profile?.credits ?? 0
   const cosmetics = catalog.data ?? []
@@ -43,8 +47,10 @@ function MarketPage() {
   }
 
   function buy(item: Cosmetic) {
+    const id = `cosmetic:${item.id}`
     return run(item.id, async () => {
-      await purchaseCosmetic(item.id)
+      await purchaseCosmetic(item.id, keyFor(id))
+      clearKey(id)
       ownership.reload()
       refresh()
     })
@@ -65,8 +71,10 @@ function MarketPage() {
   }
 
   function buyOne(item: Food) {
+    const id = `food:${item.id}`
     return run(item.id, async () => {
-      await buyFood(item.id, 1)
+      await buyFood(item.id, 1, keyFor(id))
+      clearKey(id)
       inventory.reload()
       refresh()
     })

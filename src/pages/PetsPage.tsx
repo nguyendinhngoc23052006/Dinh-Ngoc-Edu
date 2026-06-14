@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import PetSprite from '../components/pet/PetSprite'
 import { useAsync } from '../hooks/useAsync'
+import { useIdempotencyKeys } from '../hooks/useIdempotencyKeys'
 import { useProfile } from '../hooks/profileContext'
 import { eggReady, petForm, petProgress } from '../lib/petProgress'
 import { listFood, listMyFood } from '../services/foodService'
@@ -44,6 +45,9 @@ function PetsPage() {
   const [error, setError] = useState<string | null>(null)
   // The pet awaiting a release confirmation in the centered modal.
   const [pendingRelease, setPendingRelease] = useState<Pet | null>(null)
+  // Stable idempotency keys for feeding, so a retry after a lost response can't
+  // double-spend the food.
+  const { keyFor, clearKey } = useIdempotencyKeys()
 
   const myPets = pets.data ?? []
   const speciesById = new Map((species.data ?? []).map((s) => [s.id, s]))
@@ -85,12 +89,15 @@ function PetsPage() {
       pets.reload()
     })
 
-  const feed = (pet: Pet, foodId: string) =>
-    run(`${pet.id}:${foodId}`, async () => {
-      await feedPet(pet.id, foodId, 1)
+  const feed = (pet: Pet, foodId: string) => {
+    const id = `feed:${pet.id}:${foodId}`
+    return run(`${pet.id}:${foodId}`, async () => {
+      await feedPet(pet.id, foodId, 1, keyFor(id))
+      clearKey(id)
       pets.reload()
       inventory.reload()
     })
+  }
 
   const confirmRelease = () => {
     const pet = pendingRelease

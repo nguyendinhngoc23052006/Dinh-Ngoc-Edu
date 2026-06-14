@@ -122,11 +122,16 @@ describe('feedPet', () => {
   test('calls the feed RPC with pet, food and quantity', async () => {
     const fed = { ...egg, xp: 70 }
     supabaseMock.reset([{ data: fed, error: null }])
-    expect(await feedPet('p1', 'food-berry', 5)).toEqual(fed)
+    expect(await feedPet('p1', 'food-berry', 5, 'key-1')).toEqual(fed)
     const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
     expect(rpc?.args).toEqual([
       'feed_pet',
-      { p_pet_id: 'p1', p_food_id: 'food-berry', p_qty: 5 },
+      {
+        p_pet_id: 'p1',
+        p_food_id: 'food-berry',
+        p_qty: 5,
+        p_idempotency_key: 'key-1',
+      },
     ])
   })
 
@@ -134,7 +139,7 @@ describe('feedPet', () => {
     supabaseMock.reset([
       { data: null, error: { message: 'You do not have that much food.' } },
     ])
-    await expect(feedPet('p1', 'food-berry', 5)).rejects.toThrow(
+    await expect(feedPet('p1', 'food-berry', 5, 'key-2')).rejects.toThrow(
       /do not have that much food/,
     )
   })

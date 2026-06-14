@@ -1,22 +1,17 @@
-# code-reviewer verdict — calc questions in the mock-test runner
+# code-reviewer verdict — idempotent credit spends
 
-**Verdict: PASS.** One WARN raised, consciously declined with rationale below.
+**Verdict: PASS.** No code-quality findings introduced.
 
-- **Duplication removed.** The previously inline correct-answer logic (calc →
-  `computeExpected`, else `describeCorrectAnswer`) is now centralized in
-  `correctAnswerText(question, response?)` in `lessonService.ts`, called by both
-  `LessonPlayer` and `MockTestRunner`. No inline copies remain in `src/components/`.
-- **Dispatch orders match.** Both players now dispatch `calc` → `fill_blank` →
-  choice in the same order.
-- **No components doing data access.** Both runners take questions as props; no
-  Supabase calls added.
-- **UI states intact.** `MockTestRunner` keeps empty / in-progress / results
-  states; loading & error stay at the page level that owns the fetch.
-- **Service change has a sibling test change.** `lessonService.test.ts` adds a
-  `correctAnswerText` block (calc-with-response, calc-without-response, non-calc
-  fallback).
+- **Hook abstraction justified.** `useIdempotencyKeys` has exactly two callers
+  (MarketPage `buy`/`buyOne`, PetsPage `feed`) — the second-real-use threshold.
+- **No components doing data access.** All Supabase calls stay in `src/services/`.
+- **UI states intact.** Market and Pets keep loading / error / per-action /
+  empty states; the per-action `busyId` already disables buttons in flight.
+- **Service changes have sibling test changes.** All three service tests now
+  pass a key and assert `p_idempotency_key` in the RPC args.
+- **Retry-dedup semantics correct.** `clearKey` runs only after a successful
+  `await`; a throw skips it, so the key survives for retry and a replay is a
+  no-op server-side. On success the key rotates so the next action charges.
 
-**WARN (declined):** `describeCorrectAnswer` is now only called by
-`correctAnswerText` within the same file and by its own tests. Kept exported
-because it has dedicated, valuable direct test coverage (testing the inner
-function in isolation rather than only through the outer one). Not a dead export.
+Pre-existing (not this diff): MarketPage/PetsPage were already >200 lines; this
+PR adds ~6 lines each (import + hook call), not the cause.

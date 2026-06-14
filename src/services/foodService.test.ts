@@ -50,15 +50,20 @@ describe('listMyFood', () => {
 describe('buyFood', () => {
   test('calls the buy RPC and returns the new balance', async () => {
     supabaseMock.reset([{ data: 80, error: null }])
-    expect(await buyFood('food-meal', 2)).toBe(80)
+    expect(await buyFood('food-meal', 2, 'key-1')).toBe(80)
     const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
-    expect(rpc?.args).toEqual(['buy_food', { p_food_id: 'food-meal', p_qty: 2 }])
+    expect(rpc?.args).toEqual([
+      'buy_food',
+      { p_food_id: 'food-meal', p_qty: 2, p_idempotency_key: 'key-1' },
+    ])
   })
 
   test('passes the RPC error through (e.g. not enough credits)', async () => {
     supabaseMock.reset([
       { data: null, error: { message: 'Not enough credits.' } },
     ])
-    await expect(buyFood('food-feast', 1)).rejects.toThrow(/Not enough credits/)
+    await expect(buyFood('food-feast', 1, 'key-2')).rejects.toThrow(
+      /Not enough credits/,
+    )
   })
 })
