@@ -1,17 +1,17 @@
-# code-reviewer verdict — demo course seed
+# code-reviewer verdict — password-reset flow
 
-**Verdict: PASS.** No code-quality findings on the seed diff.
+**Verdict: PASS.** The one WARN was fixed in-diff.
 
-- All NOT NULL columns supplied; schema defaults cover the rest.
-- All CHECK constraints satisfied: `status='ready'`, `visibility='public'`, all
-  `kind` values valid (mcq, fill_blank, mcq_multi, calc — calc allowed since
-  `20260613050000_calc_questions.sql`), all `difficulty` values valid (easy,
-  medium, hard), `credit_prize` values (10, 10, 15) all `>= 0`.
-- No UNIQUE violations: chapter positions (1,2) distinct within the course; node
-  positions distinct within each chapter; question positions (1,2) distinct
-  within each node.
-- `answer` jsonb matches each kind: mcq/mcq_multi → `correct_indexes` (every
-  index valid into its 4-element options array), fill_blank → `accepted`, calc →
-  `{}` with `options=[]` and a well-formed calc spec in the `calc` column.
-- `delete from courses where id = <fixed uuid>` + `on delete cascade` makes the
-  whole block idempotent on re-seed.
+- **Duplication.** `passwordProblem()` has two callers (justified). The email
+  regex was duplicated between `validateCredentials` and `requestPasswordReset`
+  (the WARN) — now extracted into an `emailProblem()` helper used by both, so
+  the regex and message live in one place.
+- **No components doing data access.** `LoginForm` and `ResetPasswordPage`
+  import only from the service layer; no `supabase` call in components.
+- **UI states.** Both forms handle busy/disabled and error; `ResetPasswordPage`
+  also handles password-mismatch and the expired-link error. Early `return`s
+  inside the `try` still hit `finally`, so `busy` always resets.
+- **File sizes / responsibility.** LoginForm ~127, ResetPasswordPage ~72,
+  authService ~125 lines — all under ~200, each single-responsibility.
+- **Sibling tests.** New `authService.test.ts` covers `validateCredentials`,
+  `requestPasswordReset`, and `updatePassword` on happy and unhappy paths.

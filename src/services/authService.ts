@@ -4,18 +4,28 @@ import type { Session } from '@supabase/supabase-js'
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD_LENGTH = 8
 
+// Returns a human-readable problem with the password, or null when it's usable.
+function passwordProblem(password: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+  }
+  return null
+}
+
+// Returns a human-readable problem with the email, or null when it's usable.
+function emailProblem(email: string): string | null {
+  if (!EMAIL_PATTERN.test(email.trim())) {
+    return 'Enter a valid email address.'
+  }
+  return null
+}
+
 // Returns a human-readable problem, or null when the credentials are usable.
 export function validateCredentials(
   email: string,
   password: string,
 ): string | null {
-  if (!EMAIL_PATTERN.test(email.trim())) {
-    return 'Enter a valid email address.'
-  }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
-  }
-  return null
+  return emailProblem(email) ?? passwordProblem(password)
 }
 
 // Returns true when the project requires email confirmation (no session yet),
@@ -53,6 +63,36 @@ export async function signIn(email: string, password: string): Promise<void> {
     email: email.trim(),
     password,
   })
+  if (error) throw new Error(error.message)
+}
+
+// Emails a password-reset link that lands on /reset, where the recovery session
+// lets the user set a new password. We don't reveal whether the address has an
+// account (the UI says "if it exists…"), so this can't be used to probe which
+// emails are registered. Abuse (spamming a victim with reset emails) is bounded
+// only by Supabase's project-wide mailer rate limit, not a per-address one.
+export async function requestPasswordReset(email: string): Promise<void> {
+  const problem = emailProblem(email)
+  if (problem) throw new Error(problem)
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: `${window.location.origin}/reset`,
+  })
+  if (error) {
+    if (error.code === 'over_email_send_rate_limit') {
+      throw new Error(
+        'Too many reset emails were sent in the last hour (a shared limit, not yours). Please try again in about an hour.',
+      )
+    }
+    throw new Error(error.message)
+  }
+}
+
+// Sets a new password for the user in the current session — used on /reset,
+// where the email link established a recovery session.
+export async function updatePassword(password: string): Promise<void> {
+  const problem = passwordProblem(password)
+  if (problem) throw new Error(problem)
+  const { error } = await supabase.auth.updateUser({ password })
   if (error) throw new Error(error.message)
 }
 

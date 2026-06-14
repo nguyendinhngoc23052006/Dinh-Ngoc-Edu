@@ -1,8 +1,7 @@
-# scale-reviewer verdict — demo course seed
+# scale-reviewer verdict — password-reset flow
 
 **Verdict: PASS.** No scale findings.
 
-- Static, bounded seed data: 1 course, 2 chapters, 3 nodes, 6 questions.
-- `delete`-then-`insert` on a fixed course id is idempotent — re-seeding never
-  grows the tables.
-- No app code changed; no query, index, or write pattern introduced.
+- No DB tables or queries added; `resetPasswordForEmail` and `updateUser` are
+  single auth API calls.
+- No unbounded query, no N+1, no non-idempotent write introduced.

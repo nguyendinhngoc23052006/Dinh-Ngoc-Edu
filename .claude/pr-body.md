@@ -1,32 +1,33 @@
-# Seed a ready-made course for the demo account
+# Password reset / forgot-password flow
 
-A preview branch is a fresh, isolated database that starts empty and is only
-populated by `seed.sql`. The demo account could log in, but with no courses,
-lessons, or mock tests there was nothing to click into — most of the app was
-unreachable in a preview. This seeds one complete, public, already-generated
-course owned by the demo user so the whole learning loop is explorable on a
-fresh preview: dashboard, course map, the three lessons, Explore, save/clone,
-and the mock-test builder.
+Phase 1 #1. There was no way to recover an account — the login form had no
+"forgot password" path, and a reset link would have 404'd. This adds the full
+flow: request a reset email from the login screen, then set a new password on a
+dedicated page the email link lands on.
 
-## What's in the diff (`supabase/seed.sql` only)
-- A public `'ready'` course **"Photosynthesis Crash Course"** owned by the fixed
-  demo user id, with 2 chapters, 3 lessons, and 6 questions.
-- The questions cover **all four kinds** — mcq, mcq_multi, fill_blank, and a
-  **calc** question — so every lesson UI is exercised, and the calc question also
-  demonstrates the calc-in-mock-test fix that just merged.
-- Lessons carry a `credit_prize` (10/10/15), so finishing one flawlessly also
-  exercises the credit award.
+## What's in the diff
+- **`authService.ts`:** `requestPasswordReset(email)` →
+  `supabase.auth.resetPasswordForEmail(email, { redirectTo: <origin>/reset })`,
+  and `updatePassword(pw)` → `supabase.auth.updateUser({ password })`. Extracted
+  `emailProblem()` / `passwordProblem()` helpers (each now has two callers) so
+  the validation strings live in one place.
+- **`LoginForm.tsx`:** a "Forgot your password?" link opens a third `forgot`
+  mode (email only) that sends the reset link and shows a neutral confirmation.
+- **`ResetPasswordPage.tsx` + `/reset` route (public):** where the email link
+  lands. Supabase establishes a recovery session from the link, so the user sets
+  a new password (with confirm) and continues to the app; an expired/used link
+  surfaces a clear "request a new one" error.
+- **`authService.test.ts` (new):** covers `validateCredentials`,
+  `requestPasswordReset` (redirect URL, malformed email, rate-limit mapping), and
+  `updatePassword` (min length, success, API error) — happy and unhappy paths.
 
-## Idempotency & correctness
-- `delete from courses where id = <fixed course uuid>` runs first; the course's
-  `on delete cascade` wipes its chapters/nodes/questions (and any demo progress
-  or mock tests on it) before the re-insert, so re-seeding never duplicates —
-  the same delete-then-insert pattern the existing pet seed uses.
-- Verified by hand and by the code reviewer against the live schema: every NOT
-  NULL column supplied, all CHECK domains satisfied (status, visibility, kind
-  incl. `calc`, difficulty, credit_prize ≥ 0), no duplicate positions within any
-  chapter/node, `answer` jsonb shaped per kind with valid `correct_indexes`, and
-  a well-formed calc spec (`molecules * 8`, always an integer answer).
+## Security / abuse
+- **No email enumeration:** the confirmation always says "if an account
+  exists…", never branching on whether the address is registered.
+- **Spam:** bounded by Supabase's project-wide mailer rate limit (mapped to a
+  readable message), not a per-address one — stated in the code comment.
+- **Identity:** `updateUser` acts only on the recovery session the email link
+  creates; no client-supplied identity is trusted. Token is single-use.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -40,25 +41,25 @@ and the mock-test builder.
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
-(No migration in this PR — it's a `seed.sql`-only change, which is not a
-migration and is fixed forward in place. No new table, no RLS surface, no
-`src/types` change. The 207 existing tests / lint / typecheck stay green;
-seed.sql is not covered by unit tests, so its correctness was verified against
-the schema by hand and by the code reviewer. Reviewers ran on Sonnet, one tier
-below this Opus session — all three PASS.)
+(No migration / no new table / no `src/types` change — client-only auth flow.
+Irreversible action = the reset email: it goes only to the address the user
+typed, is rate-limited by Supabase, and is flagged below as needing a manual
+allow-list step. Reviewers ran on Sonnet, one tier below this Opus session — all
+three PASS; memory at `MEMORY.md` updated to list the `/reset` redirect path.)
 
 ## For you
-**What changed:** the demo account now starts with a real, public course
-("Photosynthesis Crash Course") containing chapters, lessons of every question
-type, and a mock-test-ready set — so you can actually open and use the app in
-the preview instead of staring at empty lists.
+**What changed:** users can now reset a forgotten password — a "Forgot your
+password?" link on the login screen emails a reset link, which opens a page to
+choose a new password.
 
-**What you do next:** review this PR's preview. It gets a brand-new branch DB, so
-the updated seed runs on creation and the course will be there. Log in as
-`demo@example.com` / `password123`, open the Dashboard or Explore, click into the
-course, take a lesson (finish one with no mistakes to see the credit award), and
-build a mock test to see the calc question render correctly. Then merge.
+**What you do next (one manual step, required for the link to work):** in the
+**Supabase dashboard → Authentication → URL Configuration → Redirect URLs**, add
+`https://<your-production-domain>/reset` and `https://*.vercel.app/reset`.
+Without these, the reset link falls back to the project's Site URL instead of
+landing on `/reset`. Then review the preview: click "Forgot your password?",
+send yourself a link (the demo mailer is rate-limited project-wide), and confirm
+`/reset` lets you set a new password. Then merge.
 
-**How to roll it back:** revert this PR. On a database that already seeded it,
-`delete from courses where id = 'c0000000-0000-0000-0000-000000000001';` removes
-the course and all its content via cascade.
+**How to roll it back:** revert this PR — it's client-only, nothing to undo in
+the database. (You may also remove the `/reset` allow-list entries, but leaving
+them is harmless.)
