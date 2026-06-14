@@ -4,6 +4,7 @@ import AppLayout from './components/layout/AppLayout'
 import RequireAuth from './components/auth/RequireAuth'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import ExplorePage from './pages/ExplorePage'
 import NewCoursePage from './pages/NewCoursePage'
@@ -23,6 +24,8 @@ function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            {/* Reached logged-out via the reset email; the link sets a recovery session. */}
+            <Route path="/reset" element={<ResetPasswordPage />} />
             {/* Public: a shared course link works logged-out (read-only path). */}
             <Route path="/courses/:courseId" element={<CoursePage />} />
             <Route element={<RequireAuth />}>
