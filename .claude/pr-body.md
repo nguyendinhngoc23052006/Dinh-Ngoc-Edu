@@ -1,62 +1,63 @@
-# Pet companion glow-up: animated sprites, roaming movement, in-app delete modal, mobile header
+# Align the model-tier dispatch rule to the hierarchy model
 
-Fixes the reported pet/UX issues in one PR. The migration baseline left a note that
-"the on-screen renderer arrives in a later PR" — this is that PR.
+The constitution and the `researcher` agent still carried the **legacy** "reviewers = mid
+tier, researcher = fastest tier" framing, which had drifted behind the pipeline guide's
+hierarchy model. This PR makes the repo state the rule the way the guide (and the human's
+UI model pick) actually work: **tier is a hierarchy resolved live at dispatch, never a
+stored name** — the orchestrator's tier is the session model the human picks; every agent
+below runs a model strictly lower than its parent (reviewers one below the orchestrator,
+`researcher` one below the reviewers); and **`model` must be passed explicitly on every
+dispatch, because omitting it inherits the parent's top tier** (the PR #33 failure mode).
 
-## What's in it
+## What's in the diff
+- **`CLAUDE.md` — Agents section:** replaced the "mid/fastest tier" wording with the
+  hierarchy-relative rule + the explicit-dispatch rule ("omitting `model` inherits your
+  tier").
+- **`CLAUDE.md` — Self-check:** added a checklist item — "every subagent dispatched on a
+  model below the orchestrator's, never inherited". The Stop hook greps for any unticked
+  box and the heading only — no count is hardcoded, so the addition needs no hook change.
+- **`CLAUDE.md` — Supabase seed bullet:** absorbed the field-learned GoTrue lesson already
+  in `MEMORY.md:14` (token columns `''` not NULL, self-healing `UPDATE`, `provider_id`,
+  "`seed.sql` is NOT a migration — fix forward in place").
+- **`.claude/agents/researcher.md`:** prose updated from "fastest tier" to "one tier below
+  the reviewers … `model` passed explicitly," staying model-name-free.
+- **`MEMORY.md:8`:** corrected the stale tier fact in place (hierarchy + the PR #33 gotcha).
+- **`.claude/review/*.md`:** refreshed all three reviewer verdicts for this diff.
 
-1. **Real animated sprites instead of a bare emoji.** Each species now draws a CC0
-   spritesheet (Ninja Adventure pack, public domain) from `public/pets/<species_id>.png`,
-   resolved by convention from the species id — a 4-frame walk cycle stepped in CSS. A
-   missing/broken image falls back to the species emoji, so the companion never vanishes.
-2. **It actually roams.** The old footer crawl (a 16s left↔right CSS translate, near-
-   invisible on desktop) is replaced by `usePetWander` — the pet wanders to random points
-   across the viewport, varies speed, pauses, and **flips to face the way it's walking**.
-   It also **grows with each evolution form** (size + a subtle tint), so it's no longer one
-   size. Honours `prefers-reduced-motion` (parks still).
-3. **In-app delete confirmation.** Releasing a pet (and deleting a course) now opens a
-   centered `ConfirmDialog` in the middle of the screen instead of a browser
-   `window.confirm` popup. Esc / backdrop cancels; the confirm button is focused.
-4. **Mobile header no longer breaks.** The nav was a 6+ item non-wrapping flex row that
-   overflowed the header on phones; a `max-width: 640px` breakpoint lets the header stack
-   and the nav wrap.
+Deliberately NOT changed: agent frontmatter stays model-less (storing a name is the very
+thing the rule forbids); `stop-check.sh` is count-agnostic; `CLAUDE.md`'s `/health` line
+stays "uptime workflow" because this repo has no `canary.yml`.
 
-## Notes / assumptions
-- **Species were renamed to monster names** (Slimkin, Mossback, Wispet, Capling, Gloomeye,
-  Scarabee, Cindrake, Pyracor, Lumora) so the names match the CC0 monster art. The `spc-*`
-  **ids are unchanged**, so `pets.species_id` foreign keys and the sprite filenames stay
-  valid — only display `name` + emoji fallbacks move (migration `20260614050000`).
-- The art was originally going to be AI-generated in-session, but the image-gen account had
-  0 credits — CC0 art was used instead (chosen with the user).
-- Pure movement/sprite math is extracted to `src/lib` (petWander, petSprite) and unit-tested
-  with an injected rng (the project has no DOM test setup, matching the petProgress pattern).
-- Pre-existing, unrelated: `npm run format:check` still flags older `supabase/functions/*`
-  files (not touched here).
+A matching one-line cleanup was made to the human's external pipeline guide (line 502,
+"fastest-tier `researcher`" → "one tier below the reviewers") — that file lives in no repo,
+so it is not part of this diff.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches  *(one migration, 20260614050000; UPDATE-only on the existing `species` catalog — no new table, so no new RLS; it changes only `name`/`form*_sprite`, which already exist in src/types)*
-- [x] tests/lint/typecheck green; happy AND unhappy paths exercised  *(204 tests pass incl. new petWander/petSprite suites covering arrival/pause/facing/shrunken-bounds and the emoji-fallback path; lint + typecheck clean)*
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
+- [x] tests/lint/typecheck green; happy AND unhappy paths exercised
 - [x] scripts still named exactly `lint` and `typecheck`
-- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code  *(no client/env/secret code touched)*
-- [x] irreversible actions guarded + idempotent + flagged  *(pet release / course delete now guarded by an in-app confirm; the underlying RPCs are unchanged)*
+- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
+- [x] irreversible actions guarded + idempotent + flagged
 - [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English  *(see "Notes" — renames 9 catalog rows, keeps ids)*
-- [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR  *(security APPROVE; scale APPROVE; code APPROVE after fixing one WARN — the facing flip was being overridden by the bob animation, now on a wrapper element)*
+- [x] migrations explained in plain English
+- [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
+- [x] every subagent dispatched on a model below the orchestrator's — never inherited
+
+(Boxes that have no surface this PR — migration, RLS, src/types, irreversible actions,
+env/secret — are ticked as "nothing to do": this is a documentation-only change, no SQL,
+no application code, no secrets.)
 
 ## For you
-**What changed:**
-- The active pet renders an animated CC0 spritesheet (with emoji fallback) and roams the
-  screen, facing its direction and growing per evolution form.
-- Pet release and course delete now confirm via a centered in-app modal, not a browser popup.
-- The top nav wraps instead of overflowing on phone-width screens.
-- The nine pet species were renamed to match the new monster art (ids unchanged).
+**What changed:** the repo's constitution, `researcher` agent, and repo memory now state
+the model-tier rule as a *hierarchy resolved at dispatch* (orchestrator = your UI pick;
+each agent a model below its parent; always pass `model` explicitly) instead of the old
+fixed "mid/fastest tier" labels; the Supabase seed bullet absorbed the GoTrue
+`''`-not-NULL lesson; and a Self-check box was added for the dispatch rule.
 
-**What you do next:** review the preview — open `/pets`, set a pet active, and watch it
-walk around any page; hatch/feed to see it grow; click **Release** and confirm the modal is
-centered (and the same for a course's **Delete**). Resize to phone width and check the
-header. No env/secret action needed.
+**What you do next:** review the preview and merge — no env/secret/dashboard action needed
+(documentation-only). Your external pipeline guide was edited separately and is attached in
+chat.
 
-**How to roll it back:** revert this PR. The migration only renamed catalog rows, so to undo
-the names in an already-migrated DB, ship a follow-up migration restoring the old
-names/emoji (fix-forward) — the `spc-*` ids never changed, so no pet data is affected.
+**How to roll it back:** revert this PR's single commit (GitHub → the PR → **Revert**), or
+locally `git revert <sha>`. No schema or data to undo.

@@ -1,17 +1,11 @@
-# scale-reviewer verdict — pet companion overhaul + mobile header fix
+# scale-reviewer verdict — align model-tier dispatch rule to the hierarchy model
 
-**Verdict: APPROVE — rAF loop bounded and cleaned up; no DB/query scale concerns.**
+**Verdict: APPROVE.** No scale surface — no query, migration, or application code changed.
 
-- **usePetWander rAF loop:** gated by both the `enabled` flag and
-  `prefers-reduced-motion` (early return → no loop when no pet is shown or motion is
-  reduced); the rAF is cancelled and the resize listener removed on unmount; `dt` is
-  clamped to 50ms so a backgrounded-tab gap can't cause a jump. Browsers auto-throttle
-  rAF on hidden tabs, so no `visibilitychange` handling is needed.
-- **PetSprite preload:** one `Image()` per species change (bounded); a stale late error
-  is harmless because failure is keyed to the species id.
-- **DB:** migration UPDATEs 9 catalog rows only — no new query patterns, no filtered
-  columns, no index gaps. Render-time `.find()`/`Map` lookups are in-memory over already
-  fetched small lists (MAX_PETS=3); no N+1.
+Documentation-only diff: `CLAUDE.md` and `.claude/agents/researcher.md`. No SQL, no
+Supabase queries, no React data fetches, no loops or writes in any changed file.
 
-Non-blocking note: `setPos` runs each frame, re-rendering one small fixed element — fine
-as designed; if profiling ever shows jank, drive the transform via a ref instead of state.
+- Unbounded queries — none present.
+- Missing index on filtered/joined columns — no schema or filtered columns touched.
+- N+1 — no per-row fetches present.
+- Non-idempotent writes — no writes present.
