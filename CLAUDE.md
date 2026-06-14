@@ -34,7 +34,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 ## Supabase
 - Never hand-write `config.toml` — run `npx supabase init` (npx fetches the CLI; needs current Node LTS (20+); never a global `-g` install). Then edit only known keys: `[db.seed]`, plus any declared functions/buckets. **Leave the top-level `project_id` at its `supabase init` default (the working-directory name) — it is a local label, not the remote Project ID.** The parser is strict.
 - Edge Functions read secrets from `Deno.env`; never commit a secret.
-- `seed.sql` is idempotent. A loginable user needs an `auth.users` row (crypt password, pgcrypto) + a matching `auth.identities` row (provider 'email'); prefer the Admin API for real users. If a Supabase Auth update breaks the seed, fix-forward `seed.sql`; if a preview branch can't create the user, fall back to `signUp()` then a confirm.
+- `seed.sql` is idempotent. A loginable user needs an `auth.users` row (crypt password, pgcrypto) **with the GoTrue text token columns written as `''`, never left NULL** — at least `confirmation_token`, `recovery_token`, `email_change`, `email_change_token_new`; a NULL in any of them makes login fail with **"Database error querying schema"** (GoTrue scans those columns into non-null strings, so the broken row stays invisible until someone actually logs in) — **plus** a matching `auth.identities` row (provider `'email'`, with a `provider_id`). Make the seed self-healing: after the insert, also `UPDATE` those columns from NULL to `''` for the seeded email, so a branch seeded by an older version repairs itself. Prefer the Admin API for real users. `seed.sql` is NOT a migration — fix it forward by editing it in place; if a preview branch still can't create a loginable user, fall back to `signUp()` then a confirm.
 - A preview branch is a full isolated instance (own Auth/Storage) that starts empty — seed what a login/upload test needs.
 
 ## Payments (prevent; undo where possible)
@@ -71,6 +71,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 - [ ] no avoidable debt; memory updated and pruned
 - [ ] migrations explained in plain English
 - [ ] reviewers ran — `.claude/review/*` verdicts refreshed this PR
+- [ ] every subagent dispatched on a model below the orchestrator's — never inherited
 
 - End every PR description with this block, these exact headings:
 
@@ -80,7 +81,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 **How to roll it back:** the concrete undo for THIS PR.
 
 ## Agents, plugins, MCP
-- **Roles by capability tier, resolved at dispatch — never by model name.** You (the orchestrator) run the most capable tier and own every decision and the final commit; you dispatch the work down — reviewers run the **mid tier**, the `researcher` worker the **fastest tier**. Resolve a tier to the current model only when you dispatch (confirm a post-training lineup against official docs first); store no model name anywhere, so a changed lineup needs zero edits.
+- **Roles by capability tier, resolved at dispatch — never by model name.** Your own tier is the model the human picked for this session; you (the orchestrator) own every decision and the final commit, and you dispatch the work down — reviewers one tier **below you**, the `researcher` worker one tier below them. On every dispatch pass the `model` **explicitly** — **omitting it inherits your tier**, silently running subordinate work on the top model. Resolve "below me" from your current in-context lineup (the harness injects it; if a model is unfamiliar, confirm against official docs before ranking it); store no model name anywhere, so a changed lineup — or a tier rename — needs zero edits.
 - Agents live in `.claude/agents/` (committed), each with a proactive `description`. Floor = three read-only reviewers (security, code, scale; Read/Grep/Glob only); one read-only `researcher` worker does fan-out reading and drafting and returns text — only you commit. Add more anytime, least-privilege; a writer agent only opens PRs into `main` (never merges); each keeps its own memory. Before every PR you dispatch the three reviewers and record each verdict to `.claude/review/<agent>.md` — the Stop hook requires all three, refreshed that PR.
 - **Add/update/delete a part by intent.** On any "add/update/delete the `<agent|skill|hook|workflow|MCP server|rule>` whose job is `<…>`" request: resolve the intent to the exact named file and restate it ("you mean `<name>` at `<path>`"); if it matches two parts or none, ask before touching anything; confirm before any delete; never drop below the three-reviewer floor; name whatever depended on anything removed. One PR into `main`.
 - Plugins come from the marketplace via `.claude/settings.json`; prefer verified; a community plugin only if I name it.
