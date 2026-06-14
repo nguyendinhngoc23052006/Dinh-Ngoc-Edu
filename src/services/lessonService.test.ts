@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 import {
+  correctAnswerText,
   describeCorrectAnswer,
   gradeQuestion,
   shuffleLessonQuestions,
@@ -248,5 +249,35 @@ describe('describeCorrectAnswer', () => {
   test('out-of-range indexes are skipped, never "undefined"', () => {
     const q = makeQuestion({ answer: { correct_indexes: [9] } })
     expect(describeCorrectAnswer(q)).toBe('')
+  })
+})
+
+describe('correctAnswerText', () => {
+  const calc = makeQuestion({
+    kind: 'calc',
+    options: [],
+    answer: {},
+    calc: {
+      variables: [{ name: 'x', min: 1, max: 9, decimals: 0 }],
+      formula: 'x * 2',
+      prompt_template: 'Double {x}',
+      decimals: 0,
+      tolerance: 0,
+    },
+  })
+
+  test('calc: computes the answer from the response values for this take', () => {
+    expect(
+      correctAnswerText(calc, { kind: 'calc', values: { x: 4 }, answer: 0 }),
+    ).toBe('8')
+  })
+
+  test('calc: without a response there is no take to compute, so it is blank', () => {
+    // describeCorrectAnswer has no fixed key for a calc question.
+    expect(correctAnswerText(calc)).toBe('')
+  })
+
+  test('non-calc falls back to the stored answer key', () => {
+    expect(correctAnswerText(makeQuestion({}))).toBe('b')
   })
 })

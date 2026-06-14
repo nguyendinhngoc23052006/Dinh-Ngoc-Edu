@@ -1,24 +1,22 @@
-# code-reviewer verdict — align model-tier dispatch rule to the hierarchy model
+# code-reviewer verdict — calc questions in the mock-test runner
 
-**Verdict: APPROVE.** One WARN raised, consciously declined with rationale below.
+**Verdict: PASS.** One WARN raised, consciously declined with rationale below.
 
-Documentation-only diff: `CLAUDE.md` and `.claude/agents/researcher.md`. No source files
-changed, so the "changed service file needs a sibling test" rule does not apply (confirmed).
+- **Duplication removed.** The previously inline correct-answer logic (calc →
+  `computeExpected`, else `describeCorrectAnswer`) is now centralized in
+  `correctAnswerText(question, response?)` in `lessonService.ts`, called by both
+  `LessonPlayer` and `MockTestRunner`. No inline copies remain in `src/components/`.
+- **Dispatch orders match.** Both players now dispatch `calc` → `fill_blank` →
+  choice in the same order.
+- **No components doing data access.** Both runners take questions as props; no
+  Supabase calls added.
+- **UI states intact.** `MockTestRunner` keeps empty / in-progress / results
+  states; loading & error stay at the page level that owns the fetch.
+- **Service change has a sibling test change.** `lessonService.test.ts` adds a
+  `correctAnswerText` block (calc-with-response, calc-without-response, non-calc
+  fallback).
 
-- **Cross-file consistency holds.** The new tier rule in `CLAUDE.md` ("reviewers one tier
-  below you, the `researcher` one tier below them; pass `model` explicitly — omitting
-  inherits your tier") now agrees with `researcher.md` ("one tier below the reviewers …
-  passing `model` explicitly"). The opening "lesser-tier worker agents" line is unaffected.
-- **Stop hook unaffected.** The added Self-check item is a standard `- [ ]` checkbox; the
-  hook greps for any unticked box and a `## Self-check` heading — no count or text is
-  hardcoded, so the addition is safe.
-- **Seed bullet introduces no contradiction** — "fix it forward by editing in place"
-  agrees with the existing "`seed.sql` is NOT a migration" stance.
-
-**WARN (declined):** the new box "every subagent dispatched on a model below the
-orchestrator's — never inherited" is a looser lower-bound than the full ladder in the rule
-(reviewers one below, researcher two below) — it would pass even if the researcher ran at
-the reviewer tier. Declined on purpose: the checkbox is a terse attestation against the
-real failure mode (*inheriting* = silently running at the top tier, the PR #33 bug); the
-exact ladder lives in the rule at the Agents section. Tightening only the box would also
-re-introduce guide↔repo drift, which is exactly what this PR removes.
+**WARN (declined):** `describeCorrectAnswer` is now only called by
+`correctAnswerText` within the same file and by its own tests. Kept exported
+because it has dedicated, valuable direct test coverage (testing the inner
+function in isolation rather than only through the outer one). Not a dead export.
