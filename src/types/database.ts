@@ -182,3 +182,13 @@ export interface Cosmetic {
   sort: number
   created_at: string
 }
+
+// Records a credit-spending action's idempotency key so a retried call is a
+// no-op. Written only by the SECURITY DEFINER spend RPCs; the client never
+// selects it, but the row shape is kept here so the schema stays documented.
+export interface IdempotencyKey {
+  user_id: string
+  key: string
+  operation: string
+  created_at: string
+}

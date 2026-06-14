@@ -27,11 +27,17 @@ export async function listMyFood(): Promise<Map<string, number>> {
 
 // Buy food: the RPC deducts credits and adds to the stockpile atomically and
 // returns the new balance. Throws a readable message ("Not enough credits.")
-// the UI can show as-is.
-export async function buyFood(foodId: string, qty: number): Promise<number> {
+// the UI can show as-is. The idempotency key makes a retried call a no-op
+// server-side, so a lost response can't double-charge.
+export async function buyFood(
+  foodId: string,
+  qty: number,
+  idempotencyKey: string,
+): Promise<number> {
   const { data, error } = await supabase.rpc('buy_food', {
     p_food_id: foodId,
     p_qty: qty,
+    p_idempotency_key: idempotencyKey,
   })
   if (error) throw new Error(error.message)
   return typeof data === 'number' ? data : 0

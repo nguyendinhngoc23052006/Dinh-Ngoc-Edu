@@ -27,10 +27,15 @@ export async function listOwnedCosmeticIds(): Promise<Set<string>> {
 
 // Buys a cosmetic; the RPC deducts credits and grants ownership atomically and
 // returns the new balance. Throws a readable message ("Not enough credits.",
-// "You already own this.") the UI can show as-is.
-export async function purchaseCosmetic(cosmeticId: string): Promise<number> {
+// "You already own this.") the UI can show as-is. The idempotency key makes a
+// retried call a no-op server-side, so a lost response can't double-charge.
+export async function purchaseCosmetic(
+  cosmeticId: string,
+  idempotencyKey: string,
+): Promise<number> {
   const { data, error } = await supabase.rpc('purchase_cosmetic', {
     p_cosmetic_id: cosmeticId,
+    p_idempotency_key: idempotencyKey,
   })
   if (error) throw new Error(error.message)
   return typeof data === 'number' ? data : 0

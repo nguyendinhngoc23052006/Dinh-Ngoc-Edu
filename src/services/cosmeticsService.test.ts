@@ -32,15 +32,18 @@ describe('listOwnedCosmeticIds', () => {
 describe('purchaseCosmetic', () => {
   test('calls the purchase RPC and returns the new balance', async () => {
     supabaseMock.reset([{ data: 30, error: null }])
-    const balance = await purchaseCosmetic('theme-ocean')
+    const balance = await purchaseCosmetic('theme-ocean', 'key-1')
     expect(balance).toBe(30)
     const rpc = supabaseMock.calls.find((c) => c.path === 'rpc')
-    expect(rpc?.args).toEqual(['purchase_cosmetic', { p_cosmetic_id: 'theme-ocean' }])
+    expect(rpc?.args).toEqual([
+      'purchase_cosmetic',
+      { p_cosmetic_id: 'theme-ocean', p_idempotency_key: 'key-1' },
+    ])
   })
 
   test('passes the RPC error message through (e.g. not enough credits)', async () => {
     supabaseMock.reset([{ data: null, error: { message: 'Not enough credits.' } }])
-    await expect(purchaseCosmetic('theme-midnight')).rejects.toThrow(
+    await expect(purchaseCosmetic('theme-midnight', 'key-2')).rejects.toThrow(
       /Not enough credits/,
     )
   })

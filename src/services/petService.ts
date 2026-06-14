@@ -63,16 +63,20 @@ export async function setActivePet(petId: string): Promise<void> {
 
 // Spend owned food to add xp to a pet. The RPC checks the inventory and adds
 // xp_value * qty atomically, returning the updated pet. Throws a readable
-// message ("You do not have that much food.") the UI can show as-is.
+// message ("You do not have that much food.") the UI can show as-is. The
+// idempotency key makes a retried call a no-op server-side, so a lost response
+// can't double-spend the food.
 export async function feedPet(
   petId: string,
   foodId: string,
   qty: number,
+  idempotencyKey: string,
 ): Promise<Pet> {
   const { data, error } = await supabase.rpc('feed_pet', {
     p_pet_id: petId,
     p_food_id: foodId,
     p_qty: qty,
+    p_idempotency_key: idempotencyKey,
   })
   if (error) throw new Error(error.message)
   return data as Pet
