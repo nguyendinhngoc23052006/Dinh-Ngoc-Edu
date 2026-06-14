@@ -1,17 +1,25 @@
-# code-reviewer verdict — password-reset flow
+# code-reviewer verdict — delete-account
 
-**Verdict: PASS.** The one WARN was fixed in-diff.
+**Verdict: PASS.** Two warns fixed in-diff; one deferred with rationale.
 
-- **Duplication.** `passwordProblem()` has two callers (justified). The email
-  regex was duplicated between `validateCredentials` and `requestPasswordReset`
-  (the WARN) — now extracted into an `emailProblem()` helper used by both, so
-  the regex and message live in one place.
-- **No components doing data access.** `LoginForm` and `ResetPasswordPage`
-  import only from the service layer; no `supabase` call in components.
-- **UI states.** Both forms handle busy/disabled and error; `ResetPasswordPage`
-  also handles password-mismatch and the expired-link error. Early `return`s
-  inside the `try` still hit `finally`, so `busy` always resets.
-- **File sizes / responsibility.** LoginForm ~127, ResetPasswordPage ~72,
-  authService ~125 lines — all under ~200, each single-responsibility.
-- **Sibling tests.** New `authService.test.ts` covers `validateCredentials`,
-  `requestPasswordReset`, and `updatePassword` on happy and unhappy paths.
+## Fixed
+- **CSS collision.** The new `button.danger` rule would have restyled
+  pre-existing `.danger` buttons (ConfirmDialog, CourseSettings, PetsPage). Now
+  scoped to `.danger-zone button.danger`, so only the delete button is affected.
+- **File size.** Extracted the danger zone into a self-contained
+  `components/settings/DeleteAccountCard.tsx` (owns its own state); SettingsPage
+  is back to 168 lines.
+
+## Deferred (not a blocker)
+- `corsHeaders` + `json()` are now duplicated across all four Edge Functions.
+  Extracting `supabase/functions/_shared/http.ts` is warranted, but that is a
+  behaviour-preserving refactor touching three functions unrelated to this
+  feature — our rules keep refactors out of feature PRs. Left as debt (noted in
+  the PR), to be done stand-alone.
+
+## Passed
+- Components call the service layer (`authService`), not supabase directly.
+- UI states: typed-"DELETE" gate, busy/disabled, error, success navigation.
+- `authService.test.ts` covers `confirmsDeletion` and `deleteAccount` (happy +
+  error, and that signOut is skipped on error).
+- `delete-account` is declared in `config.toml`; idempotent not-found handling.

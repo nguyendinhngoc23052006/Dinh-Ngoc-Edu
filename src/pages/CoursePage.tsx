@@ -11,6 +11,7 @@ import {
 import { getCourseContent } from '../services/lessonService'
 import { listMaterials } from '../services/materialService'
 import { getCompletedNodeIds } from '../services/progressService'
+import { getDisplayNames } from '../services/profileService'
 import { cloneCourse, saveCourse } from '../services/savedCourseService'
 import { listMyMockTests } from '../services/mockTestService'
 import { startGeneration } from '../services/generationService'
@@ -39,6 +40,11 @@ function CoursePage() {
     const course = await getCourse(courseId)
     if (!course) return null
     const owner = session?.user.id === course.owner_id
+    // Show who wrote it when viewing someone else's course (public authors only).
+    const authorName = owner
+      ? null
+      : ((await getDisplayNames([course.owner_id])).get(course.owner_id) ??
+        null)
     const [chapters, mockTests, materials] = await Promise.all([
       getCourseContent(courseId),
       session ? listMyMockTests(courseId) : Promise.resolve([]),
@@ -53,7 +59,7 @@ function CoursePage() {
     const completed = session
       ? await getCompletedNodeIds(nodeIds)
       : new Set<string>()
-    return { course, chapters, completed, mockTests, materials }
+    return { course, chapters, completed, mockTests, materials, authorName }
   }, [courseId, session?.user.id])
 
   // While the AI pipeline runs, poll the status only (one PK lookup per
@@ -108,7 +114,8 @@ function CoursePage() {
     )
   }
 
-  const { course, chapters, completed, mockTests, materials } = state.data
+  const { course, chapters, completed, mockTests, materials, authorName } =
+    state.data
   const isOwner = session?.user.id === course.owner_id
   const failedMaterials = materials.filter(
     (material) => material.extract_status === 'failed',
@@ -178,7 +185,10 @@ function CoursePage() {
   return (
     <div>
       <div className="page-header">
-        <h1>{course.title}</h1>
+        <div>
+          <h1>{course.title}</h1>
+          {authorName ? <p className="course-author">by {authorName}</p> : null}
+        </div>
         {session && course.status === 'ready' ? (
           <Link className="cta" to={`/courses/${course.id}/mock-tests/new`}>
             Create mock test

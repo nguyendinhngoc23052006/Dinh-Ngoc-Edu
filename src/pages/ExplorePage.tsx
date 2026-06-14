@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAsync } from '../hooks/useAsync'
 import { listPublicCourses, PAGE_SIZE } from '../services/courseService'
+import { getDisplayNames } from '../services/profileService'
 import { saveCourse } from '../services/savedCourseService'
 import CourseCard from '../components/courses/CourseCard'
 
@@ -9,6 +10,15 @@ function ExplorePage() {
   const [savedIds, setSavedIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const state = useAsync(() => listPublicCourses(page), [page])
+  const courses = state.data ?? []
+  // One query for the whole page's authors (no per-card lookup); a failure here
+  // just means cards render without a "by …" line.
+  const ownerKey = courses.map((course) => course.owner_id).join(',')
+  const authors = useAsync(
+    () => getDisplayNames(courses.map((course) => course.owner_id)),
+    [ownerKey],
+  )
+  const authorNames = authors.data ?? new Map<string, string>()
 
   async function handleSave(courseId: string) {
     setError(null)
@@ -20,7 +30,6 @@ function ExplorePage() {
     }
   }
 
-  const courses = state.data ?? []
   return (
     <section>
       <h1>Explore public courses</h1>
@@ -46,6 +55,7 @@ function ExplorePage() {
             <CourseCard
               key={course.id}
               course={course}
+              authorName={authorNames.get(course.owner_id)}
               action={
                 <button
                   type="button"

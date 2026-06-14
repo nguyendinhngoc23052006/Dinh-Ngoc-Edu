@@ -81,7 +81,8 @@ where u.email = 'demo@example.com'
 update public.profiles
 set credits = 1000000000,
     pet_enabled = true,
-    pet_cheers_enabled = true
+    pet_cheers_enabled = true,
+    display_name = 'Demo Teacher'
 where user_id = '00000000-0000-0000-0000-000000000001';
 
 -- Own every theme so all map dimensions are switchable right away.

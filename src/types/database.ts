@@ -109,6 +109,8 @@ export interface Profile {
   pet_enabled: boolean
   // Whether the on-screen pet shows encouragement messages.
   pet_cheers_enabled: boolean
+  // Public author label; null until the user sets one.
+  display_name: string | null
   equipped_theme: string | null
   // Lifetime count of pets raised to a hatch (flavour/history).
   pets_hatched: number

@@ -178,6 +178,22 @@ button:disabled {
   color: var(--muted);
 }
 
+.course-author {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0.1rem 0 0;
+}
+
+.danger-zone {
+  border-color: var(--danger, #c0392b);
+}
+
+/* Scoped to the danger zone so it doesn't restyle other .danger buttons. */
+.danger-zone button.danger {
+  background: var(--danger, #c0392b);
+  color: #fff;
+}
+
 /* ---- Landing ---- */
 
 .hero {
