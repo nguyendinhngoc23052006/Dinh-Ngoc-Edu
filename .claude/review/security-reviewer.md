@@ -1,21 +1,15 @@
-# security-reviewer verdict — idempotent credit spends
+# security-reviewer verdict — demo course seed
 
-**Verdict: PASS.** One WARN raised and fixed.
+**Verdict: PASS.** No findings.
 
-- **New table has RLS.** `idempotency_keys` enables RLS with a select-own policy
-  and no insert/update/delete policy — writes happen only inside the SECURITY
-  DEFINER spend functions (which bypass RLS). Unauthenticated reads blocked.
-- **No secret in client code.** The hook uses only `crypto.randomUUID()`;
-  services call through the shared client (publishable key via the two-prefix
-  fallback). No service-role key referenced.
-- **Server re-derives amounts.** All three RPCs validate `auth.uid()`, the key,
-  the catalog item, and re-derive `cost` from the catalog row under a
-  `for update` balance lock. Client never supplies a price.
-- **Replay can't skip payment or cross users.** PK is `(user_id, key)` with the
-  server-derived `caller`; a key only exists after a committed first charge (a
-  later `raise` rolls back the claim), and replay returns only the caller's own
-  current state. FOUND after `insert … on conflict do nothing` correctly
-  distinguishes first-call (true) from replay (false).
-
-**WARN (fixed):** `feed_pet`'s replay `select` now includes `and user_id =
-caller` (defense-in-depth; was logically safe but not self-evident).
+- **No secrets committed.** `seed.sql` adds only DML; no service-role key, API
+  secret, or real credential. The only login is the pre-existing synthetic
+  `demo@example.com` / `password123` fixture.
+- **No new table, no RLS gap, no app code.** Seed-only change; no DDL, no policy.
+- **Seed runs as DB owner (bypasses RLS) — expected.** No grant or policy is
+  relaxed.
+- **Public visibility is intentional** (so the course also appears on Explore)
+  and rides the existing owner-or-public read policy; no new exposure vector.
+- **Synthetic data only.** Fixed UUIDs, dummy educational content, no PII.
+- **Idempotent.** `delete … where id = <fixed uuid>` + cascade before re-insert;
+  re-seeding never duplicates.

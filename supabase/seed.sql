@@ -105,3 +105,76 @@ insert into public.pets (user_id, stage, species_id, xp, is_active, hatched_at) 
   ('00000000-0000-0000-0000-000000000001', 'hatched', 'spc-kirin', 700, true, now()),
   ('00000000-0000-0000-0000-000000000001', 'hatched', 'spc-fox', 300, false, now()),
   ('00000000-0000-0000-0000-000000000001', 'egg', null, 0, false, null);
+
+-- A ready-made, fully generated course so a fresh preview branch (which starts
+-- with an empty DB) is actually explorable: the dashboard, course map, lessons,
+-- Explore, save/clone and mock-test builder all have real content to open.
+-- It is public, so it also shows on Explore. Delete-then-insert keyed on the
+-- fixed course id is idempotent in effect; the course's `on delete cascade`
+-- wipes its chapters/nodes/questions (and any demo progress/mock tests on it)
+-- before the re-insert, so re-seeding never duplicates. It covers all four
+-- question kinds (mcq, mcq_multi, fill_blank, calc) so every lesson UI — and
+-- the calc question in a mock test — can be exercised.
+
+delete from public.courses where id = 'c0000000-0000-0000-0000-000000000001';
+
+insert into public.courses (id, owner_id, title, output_language, visibility, status)
+values (
+  'c0000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000001',
+  'Photosynthesis Crash Course',
+  'English',
+  'public',
+  'ready'
+);
+
+insert into public.chapters (id, course_id, position, title, summary) values
+  ('c1000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 1,
+   'Light & Energy', 'How plants capture light and turn it into chemical energy.'),
+  ('c1000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 2,
+   'The Two Stages', 'The light-dependent reactions and the Calvin cycle.');
+
+insert into public.nodes (id, course_id, chapter_id, position, title, credit_prize) values
+  ('d0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-000000000001', 1, 'Capturing Light', 10),
+  ('d0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-000000000001', 2, 'Pigments', 10),
+  ('d0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001',
+   'c1000000-0000-0000-0000-000000000002', 1, 'Reactions & Math', 15);
+
+insert into public.questions
+  (id, course_id, node_id, position, kind, difficulty, prompt, options, answer, calc, verified)
+values
+  -- Node 1: Capturing Light
+  ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000001', 1, 'mcq', 'easy',
+   'Which organelle carries out photosynthesis?',
+   '["Mitochondrion","Chloroplast","Nucleus","Ribosome"]',
+   '{"correct_indexes":[1]}', null, true),
+  ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000001', 2, 'fill_blank', 'medium',
+   'Photosynthesis converts light energy into ______ energy.',
+   '[]', '{"accepted":["chemical"]}', null, true),
+  -- Node 2: Pigments
+  ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000002', 1, 'mcq_multi', 'medium',
+   'Which of these are photosynthetic pigments? (Choose all that apply.)',
+   '["Chlorophyll a","Hemoglobin","Carotenoids","Keratin"]',
+   '{"correct_indexes":[0,2]}', null, true),
+  ('e0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000002', 2, 'mcq', 'easy',
+   'Which color of light is reflected most by chlorophyll (making leaves look that color)?',
+   '["Red","Blue","Green","Violet"]',
+   '{"correct_indexes":[2]}', null, true),
+  -- Node 3: Reactions & Math (includes a calc question)
+  ('e0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000003', 1, 'fill_blank', 'medium',
+   'The light-independent reactions are also known as the ______ cycle.',
+   '[]', '{"accepted":["Calvin"]}', null, true),
+  ('e0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000001',
+   'd0000000-0000-0000-0000-000000000003', 2, 'calc', 'hard',
+   'Calculate how many photons are needed.',
+   '[]', '{}',
+   '{"variables":[{"name":"molecules","min":2,"max":12,"decimals":0}],"formula":"molecules * 8","prompt_template":"About 8 photons are needed to release one O₂ molecule. How many photons are needed to release {molecules} O₂ molecules?","decimals":0,"tolerance":0}',
+   true);
+
