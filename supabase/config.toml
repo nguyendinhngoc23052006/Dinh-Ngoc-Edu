@@ -402,6 +402,12 @@ enabled = true
 # function, so invoking it fails with "Failed to send a request to the Edge Function".
 verify_jwt = true
 
+[functions.delete-account]
+enabled = true
+# Caller's JWT identifies who to delete; the service role performs the delete.
+# Same deploy requirement as the others — undeclared functions never ship.
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

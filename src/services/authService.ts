@@ -101,6 +101,27 @@ export async function signOut(): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// The exact word the user must type to confirm the irreversible account delete.
+export const DELETE_CONFIRMATION = 'DELETE'
+
+export function confirmsDeletion(text: string): boolean {
+  return text.trim() === DELETE_CONFIRMATION
+}
+
+// Permanently deletes the caller's account. The delete-account Edge Function
+// verifies the JWT and deletes the auth user with the service role; every
+// owner/user table cascades from auth.users, so all of the user's data goes
+// with it. This cannot be undone. We sign out locally once it succeeds.
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account', {
+    method: 'POST',
+  })
+  if (error) {
+    throw new Error(error.message ?? 'Could not delete your account.')
+  }
+  await supabase.auth.signOut()
+}
+
 export async function getSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getSession()
   if (error) throw new Error(error.message)

@@ -2,6 +2,8 @@ import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const resetPasswordForEmail = vi.fn()
 const updateUser = vi.fn()
+const invoke = vi.fn()
+const signOut = vi.fn()
 
 vi.mock('../lib/supabaseClient', () => ({
   supabase: {
@@ -9,6 +11,10 @@ vi.mock('../lib/supabaseClient', () => ({
       resetPasswordForEmail: (...args: unknown[]) =>
         resetPasswordForEmail(...args),
       updateUser: (...args: unknown[]) => updateUser(...args),
+      signOut: (...args: unknown[]) => signOut(...args),
+    },
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...args),
     },
   },
 }))
@@ -19,6 +25,8 @@ vi.stubGlobal('window', { location: { origin: 'https://app.test' } })
 afterAll(() => vi.unstubAllGlobals())
 
 import {
+  confirmsDeletion,
+  deleteAccount,
   requestPasswordReset,
   updatePassword,
   validateCredentials,
@@ -27,6 +35,8 @@ import {
 beforeEach(() => {
   resetPasswordForEmail.mockReset().mockResolvedValue({ error: null })
   updateUser.mockReset().mockResolvedValue({ error: null })
+  invoke.mockReset().mockResolvedValue({ data: { deleted: true }, error: null })
+  signOut.mockReset().mockResolvedValue({ error: null })
 })
 
 describe('validateCredentials', () => {
@@ -80,5 +90,29 @@ describe('updatePassword', () => {
     await expect(updatePassword('a-good-password')).rejects.toThrow(
       /session missing/,
     )
+  })
+})
+
+describe('confirmsDeletion', () => {
+  test('accepts the exact word (trimmed)', () => {
+    expect(confirmsDeletion('  DELETE  ')).toBe(true)
+  })
+  test('rejects anything else, case-sensitively', () => {
+    expect(confirmsDeletion('delete')).toBe(false)
+    expect(confirmsDeletion('')).toBe(false)
+  })
+})
+
+describe('deleteAccount', () => {
+  test('invokes the delete-account function then signs out', async () => {
+    await deleteAccount()
+    expect(invoke).toHaveBeenCalledWith('delete-account', { method: 'POST' })
+    expect(signOut).toHaveBeenCalled()
+  })
+
+  test('throws and does not sign out when the function errors', async () => {
+    invoke.mockResolvedValue({ data: null, error: { message: 'boom' } })
+    await expect(deleteAccount()).rejects.toThrow(/boom/)
+    expect(signOut).not.toHaveBeenCalled()
   })
 })

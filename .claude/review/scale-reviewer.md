@@ -1,12 +1,13 @@
-# scale-reviewer verdict — public user display name
+# scale-reviewer verdict — delete-account
 
 **Verdict: PASS.** No scale findings.
 
-- `getDisplayNames` is one `.in('user_id', ids).limit(200)` batch query;
-  ExplorePage collects all of a page's owner ids and calls it once; CoursePage
-  calls it once. No N+1.
-- The `public_profiles` view's `EXISTS` on `courses.owner_id` is covered by the
-  existing `courses_owner_id_idx` (migration 20260610213500); the outer filter
-  on `profiles.user_id` rides the primary key. No missing index.
-- `setDisplayName` is a single bounded UPDATE, RLS-scoped to the caller's row.
-  No unbounded write.
+- The function issues exactly one `admin.auth.admin.deleteUser(userId)` call; no
+  loop, no per-row fetch, no N+1. Child rows go via the DB cascade, not app code.
+- Idempotent: a not-found error is treated as success; the client does one
+  invoke with no retry loop, and the UI blocks a second in-flight call.
+- The cascade is 2–3 levels (auth.users → courses → chapters → nodes →
+  questions; plus materials/mock_tests/progress/saves), runs in one transaction,
+  and every participating FK column is indexed (`courses_owner_id_idx`,
+  `mock_tests_owner_id_idx`, `saved_courses_course_id_idx`, …). No batching
+  needed at this app's scale.

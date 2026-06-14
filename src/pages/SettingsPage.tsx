@@ -13,6 +13,7 @@ import {
   setPetCheersEnabled,
   setPetEnabled,
 } from '../services/profileService'
+import DeleteAccountCard from '../components/settings/DeleteAccountCard'
 
 function SettingsPage() {
   const { profile, setProfile } = useProfile()
@@ -159,6 +160,7 @@ function SettingsPage() {
         Raise your pets on the <Link to="/pets">Pets</Link> page and buy more
         themes in the <Link to="/market">Market</Link>.
       </p>
+      <DeleteAccountCard />
     </section>
   )
 }

@@ -1,40 +1,40 @@
-# Public user display name
+# User profile: public display name + account deletion
 
-Phase 1 #2. Accounts had no human name — public courses on Explore showed no
-author, so the page felt anonymous. This adds an optional display name a user
-sets in Settings, shown as the author on public courses.
+Phase 1 #2 and #3, on one branch. Two account-level features:
 
-## What's in the diff
-- **Migration `20260614153000_user_display_name.sql`:** adds
-  `profiles.display_name` (text, `≤50` CHECK); `grant update (display_name)` so a
-  user can write its own name (the column-level grant list is the real write
-  lockdown — RLS still scopes the row); and a view `public_profiles` exposing
-  ONLY `(user_id, display_name)`, and only for users who set a name AND own a
-  public course, granted SELECT to anon/authenticated.
-- **`profileService.ts`:** `validateDisplayName`, `setDisplayName` (trim +
-  validate, writes own row), `getDisplayNames(userIds)` — one batched query
-  against the view, dedupes ids, drops null names.
-- **`SettingsPage.tsx`:** a display-name field + Save, with busy/disabled/error
-  and a "Saved." note. Uses a derived `nameEdit ?? profile.display_name`
-  (no effect-based sync).
-- **`CourseCard` + `ExplorePage`:** Explore batch-fetches the page's authors in
-  one query and shows "by {name}" per card.
-- **`CoursePage.tsx`:** shows the author under the title when viewing someone
-  else's course.
-- **`database.ts`:** `display_name` on `Profile`. **`seed.sql`:** demo user gets
-  `display_name = 'Demo Teacher'` so the seeded public course shows an author.
-- **Tests:** `profileService.test.ts` covers the three new functions, happy and
-  unhappy.
+## 1. Public display name
+Accounts had no human name, so public courses on Explore looked anonymous. Users
+now set a display name in Settings, shown as the author on public courses.
+- **Migration `20260614153000_user_display_name.sql`:** `profiles.display_name`
+  (text, `≤50` CHECK); `grant update (display_name)` so a user can set its own
+  name; a view `public_profiles` exposing ONLY `(user_id, display_name)` for
+  users who set a name AND own a public course, granted SELECT to
+  anon/authenticated. (RLS can't be column-scoped, so the projection view is the
+  minimal way to publish only the name while credits stay private.)
+- `profileService`: `validateDisplayName`, `setDisplayName`, `getDisplayNames`
+  (one batched query, no N+1). Settings has a name editor; Explore and CoursePage
+  show "by {name}".
+
+## 2. Delete my account (hard delete, cascade)
+There was no way to delete an account. Users can now permanently delete
+themselves from Settings.
+- **Edge Function `delete-account`** (declared in `config.toml`,
+  `verify_jwt = true`): derives the user id from the caller's JWT (never the
+  request body — the IDOR guard) and calls `admin.auth.admin.deleteUser` with the
+  service role. It deletes no rows itself; every user/owner table cascades from
+  `auth.users`, so all the user's data goes in one transaction. Idempotent
+  (not-found on retry = success).
+- `authService.deleteAccount()` invokes the function then signs out;
+  `confirmsDeletion()` gates the UI. `DeleteAccountCard` requires typing "DELETE".
 
 ## Security / abuse
-- **No private-data leak.** `profiles` RLS is unchanged (own-row-only); credits
-  and preferences stay private. The public view projects only the name. An RLS
-  policy can't be column-scoped, so the view is the correct minimal tool.
-- **Bounded disclosure.** Only public-course authors with a set name appear in
-  the view — exactly the author-label use case; user_ids of public-course owners
-  are already public on the courses.
-- **Validated input.** `setDisplayName` trims + length-checks; the column also
-  carries a matching CHECK.
+- **Display name:** no private-data leak — base `profiles` RLS unchanged
+  (own-row-only); the view projects only the name, only for public-course
+  authors. Input trimmed + length-checked + CHECK.
+- **Delete account:** a user can only delete themselves (id from the verified
+  JWT). Service-role key stays in `Deno.env`, never in client code.
+  `verify_jwt` + in-function `getUser()` is defense in depth. The destructive
+  action is gated (typed "DELETE"), idempotent, and bounded to the caller.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -48,19 +48,30 @@ sets in Settings, shown as the author on public courses.
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
-(No new table — a column on `profiles` + a read-only projection view, both with
-plain-English comments in the migration. No irreversible action. Reviewers ran
-on Sonnet, one tier below this Opus session — all three PASS. Memory updated at
-`supabase/CLAUDE.md` with the projection-view + column-grant pattern.)
+(One migration (display name); account deletion adds an Edge Function, no
+migration. Irreversible action — account deletion — is guarded by a typed
+confirmation, idempotent, and safe to verify in a preview (it only deletes the
+caller's own test account); flagged for manual verify below. Reviewers ran on
+Sonnet, one tier below this Opus session — all three PASS. Memory updated at
+`supabase/CLAUDE.md`.)
+
+**Debt I'm leaving:** all four Edge Functions duplicate `corsHeaders` + `json()`;
+extracting `supabase/functions/_shared/http.ts` is owed as a stand-alone refactor
+(kept out of this feature PR per the no-refactor-in-feature-PR rule).
 
 ## For you
-**What changed:** users can set a display name in Settings, and it shows as the
-author "by {name}" on public courses in Explore and on the course page.
+**What changed:** (1) users set a display name in Settings, shown as "by {name}"
+on public courses; (2) users can permanently delete their account from Settings
+(type "DELETE" to confirm).
 
-**What you do next:** review the preview — open **Settings**, set a display name,
-save; then open **Explore** and confirm the seeded "Demo Teacher" course shows
-its author. No env or dashboard changes needed. Then merge.
+**What you do next:** review the preview. For display name: Settings → set a
+name → Explore shows the seeded "Demo Teacher" course's author. For deletion:
+make a throwaway account, Settings → type "DELETE" → confirm it's gone and you're
+signed out. No env/dashboard changes needed (the `delete-account` function
+deploys automatically because it's declared in `config.toml`, and uses the
+platform-injected service-role key). Then merge.
 
 **How to roll it back:** revert this PR. The `display_name` column and
-`public_profiles` view are additive and unused once the code is gone; you may
-drop them later with a follow-up migration, but leaving them is harmless.
+`public_profiles` view are additive (drop later if you like); the
+`delete-account` function stops being invoked once the client code is gone (you
+can also delete it from the dashboard, but leaving it is harmless).

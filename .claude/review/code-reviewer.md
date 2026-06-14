@@ -1,27 +1,25 @@
-# code-reviewer verdict — public user display name
+# code-reviewer verdict — delete-account
 
-**Verdict: PASS.** The one blocker was fixed; the warn is declined with rationale.
+**Verdict: PASS.** Two warns fixed in-diff; one deferred with rationale.
 
 ## Fixed
-- `profileService.test.ts` `getMyProfile` fixture now includes `display_name:
-  null`, matching the updated `Profile` interface.
+- **CSS collision.** The new `button.danger` rule would have restyled
+  pre-existing `.danger` buttons (ConfirmDialog, CourseSettings, PetsPage). Now
+  scoped to `.danger-zone button.danger`, so only the delete button is affected.
+- **File size.** Extracted the danger zone into a self-contained
+  `components/settings/DeleteAccountCard.tsx` (owns its own state); SettingsPage
+  is back to 168 lines.
 
-## Declined (warn)
-- `SettingsPage.saveName` passes the raw `name` to `setDisplayName` (so the
-  service validates whitespace-only input) while the context patch uses
-  `name.trim()`. These agree in effect — the service stores `trim(name)`, which
-  equals the patched value — so the raw call is intentional, not a divergence.
+## Deferred (not a blocker)
+- `corsHeaders` + `json()` are now duplicated across all four Edge Functions.
+  Extracting `supabase/functions/_shared/http.ts` is warranted, but that is a
+  behaviour-preserving refactor touching three functions unrelated to this
+  feature — our rules keep refactors out of feature PRs. Left as debt (noted in
+  the PR), to be done stand-alone.
 
 ## Passed
-1. **No N+1.** ExplorePage batches the page's owner ids into one
-   `getDisplayNames` call; CoursePage calls it once inside its unified load.
-2. **No Supabase in components** — all access via `profileService`.
-3. **UI states.** Settings: busy/disabled + error + "Saved."; Explore: a failed
-   author fetch degrades gracefully (cards still render); CoursePage unchanged
-   loading/error/not-found.
-4. **No duplication / oversized files** — all changed files well under ~200 lines.
-5. **Sibling tests** for `validateDisplayName`, `setDisplayName`,
-   `getDisplayNames` on happy and unhappy paths.
-6. **Derived-name pattern correct.** `name = nameEdit ?? profile.display_name ??
-   ''` avoids effect-based sync; `save(apply, patch)` keeps the profile context
-   in step; `nameEdit` resets to null on success so it re-tracks the profile.
+- Components call the service layer (`authService`), not supabase directly.
+- UI states: typed-"DELETE" gate, busy/disabled, error, success navigation.
+- `authService.test.ts` covers `confirmsDeletion` and `deleteAccount` (happy +
+  error, and that signOut is skipped on error).
+- `delete-account` is declared in `config.toml`; idempotent not-found handling.
