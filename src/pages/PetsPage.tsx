@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
+import PetSprite from '../components/pet/PetSprite'
 import { useAsync } from '../hooks/useAsync'
 import { useProfile } from '../hooks/profileContext'
 import { eggReady, petForm, petProgress } from '../lib/petProgress'
@@ -17,7 +19,8 @@ import type { Pet, Species } from '../types/database'
 
 const MAX_PETS = 3
 
-function spriteFor(pet: Pet, species: Species | undefined): string {
+// Emoji fallback for a pet, used when its species sprite image is unavailable.
+function emojiFor(pet: Pet, species: Species | undefined): string {
   if (pet.stage === 'egg' || !species) return '🥚'
   const form = petForm(pet.xp)
   if (form === 3) return species.form3_sprite
@@ -39,6 +42,8 @@ function PetsPage() {
   const inventory = useAsync(() => listMyFood(), [])
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The pet awaiting a release confirmation in the centered modal.
+  const [pendingRelease, setPendingRelease] = useState<Pet | null>(null)
 
   const myPets = pets.data ?? []
   const speciesById = new Map((species.data ?? []).map((s) => [s.id, s]))
@@ -87,10 +92,10 @@ function PetsPage() {
       inventory.reload()
     })
 
-  const release = (pet: Pet) => {
-    if (!window.confirm('Release this pet for good? This cannot be undone.')) {
-      return
-    }
+  const confirmRelease = () => {
+    const pet = pendingRelease
+    if (!pet) return
+    setPendingRelease(null)
     return run(pet.id, async () => {
       await releasePet(pet.id)
       pets.reload()
@@ -165,7 +170,14 @@ function PetsPage() {
             const ready = pet.stage === 'egg' && eggReady(pet.xp)
             return (
               <div key={pet.id} className="card market-card">
-                <div className="pet-preview">{spriteFor(pet, sp)}</div>
+                <div className="pet-preview">
+                  <PetSprite
+                    speciesId={pet.species_id}
+                    form={pet.stage === 'hatched' ? petForm(pet.xp) : 1}
+                    emoji={emojiFor(pet, sp)}
+                    size={48}
+                  />
+                </div>
                 <h3>{label(pet, sp)}</h3>
                 {sp ? (
                   <span className={`pet-rarity rarity-${sp.rarity}`}>
@@ -206,7 +218,9 @@ function PetsPage() {
 
                 <div className="pet-feed">
                   {ownedFoods.length === 0 ? (
-                    <p className="market-desc">No food — buy some in the Market.</p>
+                    <p className="market-desc">
+                      No food — buy some in the Market.
+                    </p>
                   ) : (
                     ownedFoods.map((f) => (
                       <button
@@ -238,7 +252,7 @@ function PetsPage() {
                     type="button"
                     className="danger"
                     disabled={busy === pet.id}
-                    onClick={() => release(pet)}
+                    onClick={() => setPendingRelease(pet)}
                   >
                     Release
                   </button>
@@ -248,6 +262,16 @@ function PetsPage() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingRelease !== null}
+        title="Release this pet?"
+        message="Releasing sets it free for good — this cannot be undone."
+        confirmLabel="Release"
+        busy={busy === pendingRelease?.id}
+        onConfirm={confirmRelease}
+        onCancel={() => setPendingRelease(null)}
+      />
     </section>
   )
 }

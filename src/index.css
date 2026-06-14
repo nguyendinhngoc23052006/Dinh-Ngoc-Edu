@@ -188,11 +188,7 @@ button:disabled {
   margin: -1.5rem -1.5rem 1.5rem;
   padding: 2.5rem 1.5rem;
   background:
-    radial-gradient(
-      1200px 400px at 10% -10%,
-      var(--green-soft),
-      transparent
-    ),
+    radial-gradient(1200px 400px at 10% -10%, var(--green-soft), transparent),
     linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
   color: #fff;
 }
@@ -279,6 +275,27 @@ button:disabled {
   }
   .hero-copy h1 {
     font-size: 2rem;
+  }
+}
+
+/* ---- Small screens: keep the header usable ----
+   The nav is a 6+ item flex row that overflowed the header on phones. Let the
+   header stack and the nav wrap/scroll instead of running off-screen. */
+@media (max-width: 640px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    padding: 0.6rem 1rem;
+  }
+  .app-nav {
+    width: 100%;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+    font-size: 0.95rem;
+  }
+  .app-main {
+    padding: 1.25rem 1rem 4rem;
   }
 }
 
@@ -493,7 +510,9 @@ button:disabled {
   color: #cbd5e1;
 }
 [data-dimension='cosmos'] .node-circle {
-  box-shadow: 0 0 12px #38bdf8, 0 4px 0 #1e3a8a;
+  box-shadow:
+    0 0 12px #38bdf8,
+    0 4px 0 #1e3a8a;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -614,6 +633,10 @@ button:disabled {
 .pet-preview {
   font-size: 3rem;
   line-height: 1;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .food-owned {
@@ -729,18 +752,40 @@ button:disabled {
   color: var(--ink);
 }
 
-/* ---- Walking pet companion ---- */
+/* ---- Roaming pet companion ----
+   Positioned at the viewport origin and moved by an inline translate() from
+   usePetWander; only the sprite frame animates in CSS. */
 .pet-companion {
   position: fixed;
-  bottom: 10px;
+  top: 0;
   left: 0;
   z-index: 5;
-  font-size: 2rem;
   pointer-events: none;
-  animation: pet-walk 16s linear infinite alternate;
+  will-change: transform;
 }
 
+/* Facing wrapper: holds the horizontal flip so the animated frame inside is free
+   to own the bob/step transforms (a live animation would override an inline flip
+   on the same element). */
 .pet-sprite {
+  display: inline-block;
+}
+
+/* The front-facing row of a 4-frame, 64×64 spritesheet, stepped frame by frame.
+   At 400% background-size one 16px cell fills the box; stepping background-x
+   (see pet-step) walks across the row's four columns, top row only. */
+.pet-sprite-frame {
+  display: inline-block;
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  animation:
+    pet-step 0.7s steps(4) infinite,
+    pet-bob 0.5s ease-in-out infinite alternate;
+}
+
+.pet-emoji {
   display: inline-block;
   animation: pet-bob 0.5s ease-in-out infinite alternate;
 }
@@ -761,12 +806,15 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
-@keyframes pet-walk {
+@keyframes pet-step {
   from {
-    transform: translateX(2vw);
+    background-position-x: 0%;
   }
   to {
-    transform: translateX(88vw);
+    /* At 400% background-size, % positioning scales by (1−4), so one cell of
+       travel is 33.33%; four cells (a full loop) is 133.33%. steps(4) then lands
+       exactly on frames 0–3 before wrapping. */
+    background-position-x: 133.333%;
   }
 }
 
@@ -775,15 +823,52 @@ button:disabled {
     transform: translateY(0);
   }
   to {
-    transform: translateY(-6px);
+    transform: translateY(-4px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pet-companion,
-  .pet-sprite {
+  .pet-sprite-frame,
+  .pet-emoji {
     animation: none;
   }
+}
+
+/* ---- Centered confirmation modal (replaces window.confirm) ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 24rem;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+}
+
+.modal-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.modal-message {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .credit-earned {

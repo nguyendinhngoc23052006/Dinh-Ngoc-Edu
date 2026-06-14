@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useAsync } from '../../hooks/useAsync'
 import { useProfile } from '../../hooks/profileContext'
+import { usePetWander } from '../../hooks/usePetWander'
 import { petForm } from '../../lib/petProgress'
 import { pickCheer } from '../../lib/petCheers'
 import { listCosmetics } from '../../services/cosmeticsService'
 import { getActivePet, listSpecies } from '../../services/petService'
+import PetSprite from '../pet/PetSprite'
 import type { Pet, Species } from '../../types/database'
+
+// On-screen size (px) of the roaming companion before per-form scaling.
+const PET_SIZE = 30
 
 // Every CSS variable a theme may override; cleared before applying a theme so
 // switching away from one that set extras (e.g. Midnight's --muted/--line)
@@ -23,8 +28,9 @@ const THEME_VARS = [
 const CHEER_EVERY_MS = 25000
 const CHEER_SHOW_MS = 6000
 
-// The sprite for a pet: an egg, or its species' form for the current xp.
-function spriteFor(pet: Pet, species: Species | undefined): string {
+// The emoji fallback for a pet: an egg, or its species' form glyph — shown when
+// the species sprite image is missing. The drawn sprite is PetSprite's job.
+function emojiFor(pet: Pet, species: Species | undefined): string {
   if (pet.stage === 'egg' || !species) return '🥚'
   const form = petForm(pet.xp)
   if (form === 3) return species.form3_sprite
@@ -75,14 +81,17 @@ function CosmeticsLayer() {
   const sp = pet?.species_id
     ? (species.data ?? []).find((s) => s.id === pet.species_id)
     : undefined
-  const sprite = pet && profile?.pet_enabled ? spriteFor(pet, sp) : undefined
+  const shown = !!(pet && profile?.pet_enabled)
+  const form = pet && pet.stage === 'hatched' ? petForm(pet.xp) : 1
+
+  // Roam across the viewport (the hook parks the pet still under
+  // prefers-reduced-motion). Called unconditionally to satisfy the hooks rules.
+  const motion = usePetWander(shown, PET_SIZE)
 
   // Cheers only from a hatched companion (an egg stays silent), and only when
   // the user hasn't turned them off.
   const cheersOn =
-    !!sprite &&
-    pet?.stage === 'hatched' &&
-    (profile?.pet_cheers_enabled ?? true)
+    shown && pet?.stage === 'hatched' && (profile?.pet_cheers_enabled ?? true)
   const [cheer, setCheer] = useState<string | null>(null)
 
   useEffect(() => {
@@ -100,12 +109,22 @@ function CosmeticsLayer() {
     }
   }, [cheersOn])
 
-  if (!sprite) return null
+  if (!shown || !pet) return null
 
   return (
-    <div className="pet-companion" aria-hidden="true">
+    <div
+      className="pet-companion"
+      aria-hidden="true"
+      style={{ transform: `translate(${motion.x}px, ${motion.y}px)` }}
+    >
       {cheersOn && cheer ? <span className="pet-cheer">{cheer}</span> : null}
-      <span className="pet-sprite">{sprite}</span>
+      <PetSprite
+        speciesId={pet.species_id}
+        form={form}
+        emoji={emojiFor(pet, sp)}
+        size={PET_SIZE}
+        facing={motion.facing}
+      />
     </div>
   )
 }
