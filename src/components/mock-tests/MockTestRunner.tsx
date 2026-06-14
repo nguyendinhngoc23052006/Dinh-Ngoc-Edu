@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { Question } from '../../types/database'
 import {
-  describeCorrectAnswer,
+  correctAnswerText,
   gradeQuestion,
 } from '../../services/lessonService'
 import type { Grade, QuestionResponse } from '../../services/lessonService'
 import ChoiceQuestion from '../lessons/ChoiceQuestion'
 import FillBlankQuestion from '../lessons/FillBlankQuestion'
+import CalcQuestion from '../lessons/CalcQuestion'
 
 interface MockTestRunnerProps {
   questions: Question[]
@@ -27,6 +28,9 @@ function MockTestRunner({
 }: MockTestRunnerProps) {
   const [index, setIndex] = useState(0)
   const [gradeByIndex, setGradeByIndex] = useState<Grade[]>([])
+  // Kept alongside the grade so the end-of-test review can show a calc
+  // question's correct answer, which depends on the values rolled for this take.
+  const [responseByIndex, setResponseByIndex] = useState<QuestionResponse[]>([])
 
   if (questions.length === 0) {
     return (
@@ -72,7 +76,7 @@ function MockTestRunner({
                   <li key={q.id}>
                     <p>{q.prompt}</p>
                     <p className="state-correct">
-                      Correct answer: {describeCorrectAnswer(q)}
+                      Correct answer: {correctAnswerText(q, responseByIndex[i])}
                     </p>
                   </li>
                 ),
@@ -88,6 +92,7 @@ function MockTestRunner({
     if (!question) return
     const grade = gradeQuestion(question, response)
     setGradeByIndex((current) => [...current, grade])
+    setResponseByIndex((current) => [...current, response])
     setIndex((i) => i + 1)
   }
 
@@ -102,7 +107,13 @@ function MockTestRunner({
       <p className="lesson-progress">
         Question {index + 1} of {questions.length}
       </p>
-      {question.kind === 'fill_blank' ? (
+      {question.kind === 'calc' ? (
+        <CalcQuestion
+          key={question.id}
+          question={question}
+          onSubmit={handleSubmit}
+        />
+      ) : question.kind === 'fill_blank' ? (
         <FillBlankQuestion
           key={question.id}
           question={question}

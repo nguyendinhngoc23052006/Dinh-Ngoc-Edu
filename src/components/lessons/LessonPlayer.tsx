@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react'
-import { computeExpected } from '../../../supabase/functions/_shared/calc'
 import type { Question } from '../../types/database'
 import {
-  describeCorrectAnswer,
+  correctAnswerText,
   gradeQuestion,
   toSubmission,
 } from '../../services/lessonService'
@@ -77,13 +76,6 @@ function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) 
     setIndex((i) => i + 1)
   }
 
-  // calc answers depend on the values rolled for this take, so the correct
-  // value comes from the response, not a fixed key on the question.
-  const correctAnswerText =
-    question.kind === 'calc' && lastResponse?.kind === 'calc' && question.calc
-      ? String(computeExpected(question.calc, lastResponse.values))
-      : describeCorrectAnswer(question)
-
   return (
     <div className="card lesson-player">
       <progress
@@ -142,7 +134,9 @@ function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) 
             {lastGrade === 'correct' ? null : (
               <p>
                 {lastGrade === 'partial' ? 'Exact answer: ' : 'Correct answer: '}
-                <strong>{correctAnswerText}</strong>
+                <strong>
+                  {correctAnswerText(question, lastResponse ?? undefined)}
+                </strong>
               </p>
             )}
             <button type="button" onClick={handleNext}>

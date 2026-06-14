@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
-import { gradeCalc } from '../../supabase/functions/_shared/calc'
+import { computeExpected, gradeCalc } from '../../supabase/functions/_shared/calc'
 import type { SubmittedAnswer } from '../../supabase/functions/_shared/grade'
 import type { Chapter, LessonNode, Question } from '../types/database'
 
@@ -236,4 +236,17 @@ export function describeCorrectAnswer(question: Question): string {
     .map((index) => question.options[index])
     .filter((option): option is string => option !== undefined)
     .join(', ')
+}
+
+// The correct answer to show after a wrong response. A calc answer depends on
+// the values rolled for that take, so it is computed from the player's response
+// rather than a fixed key; everything else uses the stored answer key.
+export function correctAnswerText(
+  question: Question,
+  response?: QuestionResponse,
+): string {
+  if (question.kind === 'calc' && response?.kind === 'calc' && question.calc) {
+    return String(computeExpected(question.calc, response.values))
+  }
+  return describeCorrectAnswer(question)
 }

@@ -1,36 +1,35 @@
-# Align the model-tier dispatch rule to the hierarchy model
+# Fix: calc questions now work in mock tests
 
-The constitution and the `researcher` agent still carried the **legacy** "reviewers = mid
-tier, researcher = fastest tier" framing, which had drifted behind the pipeline guide's
-hierarchy model. This PR makes the repo state the rule the way the guide (and the human's
-UI model pick) actually work: **tier is a hierarchy resolved live at dispatch, never a
-stored name** — the orchestrator's tier is the session model the human picks; every agent
-below runs a model strictly lower than its parent (reviewers one below the orchestrator,
-`researcher` one below the reviewers); and **`model` must be passed explicitly on every
-dispatch, because omitting it inherits the parent's top tier** (the PR #33 failure mode).
+A `calc` (calculation) question dropped into a mock test was a real bug. The
+mock-test runner only branched on `fill_blank`; everything else fell through to
+the multiple-choice component. A calc question therefore rendered with the wrong
+UI (no number input, options it doesn't have) and was graded as always wrong —
+silently corrupting that test's score. The single-lesson player (`LessonPlayer`)
+already handled all three question kinds; only the mock-test runner was missing
+the branch.
 
 ## What's in the diff
-- **`CLAUDE.md` — Agents section:** replaced the "mid/fastest tier" wording with the
-  hierarchy-relative rule + the explicit-dispatch rule ("omitting `model` inherits your
-  tier").
-- **`CLAUDE.md` — Self-check:** added a checklist item — "every subagent dispatched on a
-  model below the orchestrator's, never inherited". The Stop hook greps for any unticked
-  box and the heading only — no count is hardcoded, so the addition needs no hook change.
-- **`CLAUDE.md` — Supabase seed bullet:** absorbed the field-learned GoTrue lesson already
-  in `MEMORY.md:14` (token columns `''` not NULL, self-healing `UPDATE`, `provider_id`,
-  "`seed.sql` is NOT a migration — fix forward in place").
-- **`.claude/agents/researcher.md`:** prose updated from "fastest tier" to "one tier below
-  the reviewers … `model` passed explicitly," staying model-name-free.
-- **`MEMORY.md:8`:** corrected the stale tier fact in place (hierarchy + the PR #33 gotcha).
-- **`.claude/review/*.md`:** refreshed all three reviewer verdicts for this diff.
+- **`MockTestRunner.tsx`:** added the `calc` dispatch branch, matching
+  `LessonPlayer`'s order (`calc` → `fill_blank` → choice), so calc questions
+  render `CalcQuestion` and grade correctly.
+- **End-of-test review fix:** a calc question's correct answer depends on the
+  random values rolled for that take, which the runner previously discarded. It
+  now keeps each response (`responseByIndex`) alongside its grade so the mistake
+  review can show the real expected value instead of a blank.
+- **`lessonService.ts`:** extracted `correctAnswerText(question, response?)` —
+  the calc-aware "what was the right answer" logic that `LessonPlayer` had inline
+  (now a second caller exists, so the shared helper is justified). `LessonPlayer`
+  now uses it too, removing the duplication.
+- **`lessonService.test.ts`:** added a `correctAnswerText` block — calc with a
+  response (computes from the take's values), calc without a response (blank, no
+  take to compute), and the non-calc fallback to the stored answer key.
 
-Deliberately NOT changed: agent frontmatter stays model-less (storing a name is the very
-thing the rule forbids); `stop-check.sh` is count-agnostic; `CLAUDE.md`'s `/health` line
-stays "uptime workflow" because this repo has no `canary.yml`.
+No migration, no schema, no query, no write — this is a client-side rendering fix
+plus a pure tested helper.
 
-A matching one-line cleanup was made to the human's external pipeline guide (line 502,
-"fastest-tier `researcher`" → "one tier below the reviewers") — that file lives in no repo,
-so it is not part of this diff.
+Noted, not fixed (out of scope, per surgical rule): `extract.test.ts` fails in a
+fresh sandbox until `npm install` pulls the `fflate`/`unpdf` devDependencies —
+an environment quirk, not a code issue; CI's `npm ci` has them.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -44,20 +43,20 @@ so it is not part of this diff.
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
-(Boxes that have no surface this PR — migration, RLS, src/types, irreversible actions,
-env/secret — are ticked as "nothing to do": this is a documentation-only change, no SQL,
-no application code, no secrets.)
+(Boxes with no surface this PR — migration, RLS, src/types, irreversible
+actions, env/secret — are ticked as "nothing to do": no SQL, no schema, no
+secrets. The three reviewers ran on Sonnet, one tier below this Opus session.)
 
 ## For you
-**What changed:** the repo's constitution, `researcher` agent, and repo memory now state
-the model-tier rule as a *hierarchy resolved at dispatch* (orchestrator = your UI pick;
-each agent a model below its parent; always pass `model` explicitly) instead of the old
-fixed "mid/fastest tier" labels; the Supabase seed bullet absorbed the GoTrue
-`''`-not-NULL lesson; and a Self-check box was added for the dispatch rule.
+**What changed:** calc questions placed in a mock test now show the proper
+number-entry UI and grade correctly (they were rendering as multiple-choice and
+always scoring wrong), and the end-of-test mistake review shows a calc question's
+real correct answer instead of a blank.
 
-**What you do next:** review the preview and merge — no env/secret/dashboard action needed
-(documentation-only). Your external pipeline guide was edited separately and is attached in
-chat.
+**What you do next:** review the preview and merge — no env/secret/dashboard
+action needed. To exercise it: build a course that yields a calc question, create
+a mock test that includes that chapter, and confirm the calc question shows a
+number box and grades right.
 
-**How to roll it back:** revert this PR's single commit (GitHub → the PR → **Revert**), or
-locally `git revert <sha>`. No schema or data to undo.
+**How to roll it back:** revert this PR's single commit (GitHub → the PR →
+**Revert**), or locally `git revert <sha>`. No schema or data to undo.
