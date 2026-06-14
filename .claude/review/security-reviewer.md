@@ -1,24 +1,19 @@
-# security-reviewer verdict — password-reset flow
+# security-reviewer verdict — public user display name
 
-**Verdict: PASS.** No blockers; one ops step the human must do (redirect allow-list).
+**Verdict: PASS.** No findings.
 
-- **No email enumeration.** The notice always says "if an account exists…",
-  with no branch on whether the address is registered; errors are thrown only
-  for API failures, never "user not found".
-- **Spam bound.** Repeated reset requests are capped by Supabase's project-wide
-  mailer rate limit (mapped to a clear message), not a per-address one — the
-  code comment was corrected to say so rather than implying full protection.
-- **/reset identity integrity.** `updateUser({ password })` acts only on the
-  Supabase recovery session the email link establishes; no client-supplied
-  identity is trusted. The route is correctly public (the link arrives
-  logged-out) — no auth bypass.
-- **No secrets / no new table / no migration.** Pure client auth flow using the
-  publishable client; no service-role key, no DDL, no RLS surface.
-- **Single-use token.** Supabase's reset token is single-use; an expired/used
-  link leaves no recovery session and `updateUser` errors, surfaced by the page.
-
-**Ops step for the PR (not a code defect):** `redirectTo` is
-`${window.location.origin}/reset`. The Supabase Auth **Redirect URLs** allow-list
-must include the production `/reset` and a Vercel preview wildcard
-(`https://*.vercel.app/reset`), or the link falls back to the Site URL. Called
-out in the PR's "what you do next".
+- **Minimal public disclosure.** `public_profiles` projects only
+  `(user_id, display_name)` and only for users who set a name AND own ≥1 public
+  course. Users with no public course or no name are not listed. user_ids of
+  public-course owners are already public (on the courses). Intended author label.
+- **Private columns stay private.** The base `profiles` RLS is unchanged
+  (own-row-only); credits/preferences are never reachable through the view,
+  which selects just the two safe columns.
+- **Column-scoped write.** `grant update (display_name)` lets a caller write
+  only their own name (RLS still scopes the row); no other column becomes
+  writable. Consistent with the existing pet-pref column grants.
+- **Input validated.** `setDisplayName` trims + length-checks (≤50), and the
+  column carries a matching CHECK — defense at both layers.
+- **View is the correct tool.** A SELECT policy can't restrict columns, so a
+  policy permitting public reads of `profiles` would leak credits. A definer-
+  style projection view is the minimal, correct way to expose only the name.

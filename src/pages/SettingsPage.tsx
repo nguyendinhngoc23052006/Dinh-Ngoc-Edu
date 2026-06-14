@@ -9,6 +9,7 @@ import {
   equipCosmetic,
 } from '../services/cosmeticsService'
 import {
+  setDisplayName,
   setPetCheersEnabled,
   setPetEnabled,
 } from '../services/profileService'
@@ -19,6 +20,11 @@ function SettingsPage() {
   const ownership = useAsync(() => listOwnedCosmeticIds(), [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Null means "untouched, show whatever the profile has"; once the user types,
+  // the edit takes over — this avoids syncing from the profile via an effect.
+  const [nameEdit, setNameEdit] = useState<string | null>(null)
+  const [nameSaved, setNameSaved] = useState(false)
+  const name = nameEdit ?? profile?.display_name ?? ''
 
   async function save(apply: () => Promise<void>, patch: Partial<typeof profile>) {
     setBusy(true)
@@ -42,6 +48,19 @@ function SettingsPage() {
   const changeTheme = (id: string | null) =>
     save(() => equipCosmetic('theme', id), { equipped_theme: id })
 
+  const saveName = () => {
+    const trimmed = name.trim()
+    setNameSaved(false)
+    return save(
+      async () => {
+        await setDisplayName(name)
+        setNameSaved(true)
+        setNameEdit(null)
+      },
+      { display_name: trimmed },
+    )
+  }
+
   // The themes the user can switch to: free ones (Classic) plus any they own.
   const owned = ownership.data ?? new Set<string>()
   const themes = (catalog.data ?? []).filter(
@@ -52,6 +71,34 @@ function SettingsPage() {
     <section className="settings">
       <h1>Settings</h1>
       {error ? <p className="state state-error">{error}</p> : null}
+      <div className="card">
+        <label className="setting-row">
+          <span>
+            <strong>Display name</strong>
+            <br />
+            Shown as the author on courses you make public.
+          </span>
+          <input
+            type="text"
+            maxLength={50}
+            value={name}
+            disabled={busy || !profile}
+            placeholder="Your name"
+            onChange={(event) => {
+              setNameEdit(event.target.value)
+              setNameSaved(false)
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !profile || name.trim().length === 0}
+          onClick={saveName}
+        >
+          {busy ? 'Saving…' : 'Save name'}
+        </button>
+        {nameSaved ? <p className="state state-empty">Saved.</p> : null}
+      </div>
       <div className="card">
         <label className="setting-row">
           <input

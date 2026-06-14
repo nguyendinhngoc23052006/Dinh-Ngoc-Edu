@@ -178,6 +178,12 @@ button:disabled {
   color: var(--muted);
 }
 
+.course-author {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0.1rem 0 0;
+}
+
 /* ---- Landing ---- */
 
 .hero {

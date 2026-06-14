@@ -7,14 +7,17 @@ interface CourseCardProps {
   course: Course
   progress?: CourseProgress
   action?: ReactNode
+  // The author's public display name, when known (shown on Explore).
+  authorName?: string
 }
 
-function CourseCard({ course, progress, action }: CourseCardProps) {
+function CourseCard({ course, progress, action, authorName }: CourseCardProps) {
   return (
     <article className="card course-card">
       <h3>
         <Link to={`/courses/${course.id}`}>{course.title}</Link>
       </h3>
+      {authorName ? <p className="course-author">by {authorName}</p> : null}
       <p className="course-meta">
         {course.output_language} · {course.status} · {course.visibility}
       </p>
