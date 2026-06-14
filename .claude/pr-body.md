@@ -1,51 +1,32 @@
-# Make credit spends idempotent (no double-charge on retry)
+# Seed a ready-made course for the demo account
 
-Phase 0 defect #2. `buy_food` and `feed_pet` *accumulate* (`qty += `, `xp += `),
-so a spend whose response was lost — then retried by the user — charged twice.
-`purchase_cosmetic` was already replay-safe via its "you already own this" check,
-but is brought under the same mechanism for uniformity.
+A preview branch is a fresh, isolated database that starts empty and is only
+populated by `seed.sql`. The demo account could log in, but with no courses,
+lessons, or mock tests there was nothing to click into — most of the app was
+unreachable in a preview. This seeds one complete, public, already-generated
+course owned by the demo user so the whole learning loop is explorable on a
+fresh preview: dashboard, course map, the three lessons, Explore, save/clone,
+and the mock-test builder.
 
-Each spend now takes a **client-generated idempotency key**. The first call with
-a key records it (in a new `idempotency_keys` ledger) and charges; a replay with
-the *same* key returns the post-charge state **without charging again**. The
-client holds the key stable across retries of one action and rotates it on
-success, so a retry-after-lost-response is a no-op while a fresh deliberate
-action charges normally. The per-action button-disable already in place stops
-the rapid double-click; the ledger stops the lost-ack double-charge.
+## What's in the diff (`supabase/seed.sql` only)
+- A public `'ready'` course **"Photosynthesis Crash Course"** owned by the fixed
+  demo user id, with 2 chapters, 3 lessons, and 6 questions.
+- The questions cover **all four kinds** — mcq, mcq_multi, fill_blank, and a
+  **calc** question — so every lesson UI is exercised, and the calc question also
+  demonstrates the calc-in-mock-test fix that just merged.
+- Lessons carry a `credit_prize` (10/10/15), so finishing one flawlessly also
+  exercises the credit award.
 
-## What's in the diff
-- **Migration `20260614120000_idempotent_spends.sql`:** adds the
-  `idempotency_keys` table (PK `(user_id, key)`, RLS: read-own only; writes go
-  through the SECURITY DEFINER functions), and recreates `buy_food`,
-  `purchase_cosmetic`, `feed_pet` to take `p_idempotency_key uuid` with the
-  claim → replay-return → charge flow. Each spend self-prunes the caller's keys
-  older than 1 day so the ledger stays bounded (a key that old can never be
-  replayed — the client rotates its key on reload).
-- **`useIdempotencyKeys` hook:** holds a stable key per action id in a ref;
-  `keyFor(id)` reuses until `clearKey(id)` (called only on success).
-- **Services:** `buyFood` / `purchaseCosmetic` / `feedPet` take a required
-  `idempotencyKey` and forward it as `p_idempotency_key`.
-- **MarketPage & PetsPage:** thread a stable key through buy / buy-food / feed,
-  clearing it on success.
-- **`src/types/database.ts`:** added the `IdempotencyKey` row type.
-- **Service tests:** updated to pass and assert the new key arg.
-
-## Migration in plain English
-A new tiny table remembers, per user, which spend requests have already been
-processed (by a random key the app generates). Buying food, buying a theme, and
-feeding a pet now check that table first: if they've seen this exact request
-before, they return the previous result instead of charging again. Each request
-also tidies up the user's own entries older than a day. Money amounts are still
-computed on the server from the catalog, never trusted from the browser.
-
-## Abuse case (money)
-A double-submit (double-click or a lost-response retry) could previously
-double-charge credits or double-spend food. Blocked by: (1) the per-action
-button stays disabled while a call is in flight; (2) the server records each
-request key and replays the prior result rather than re-charging; (3) a failed
-call's key claim is rolled back with the transaction, so a genuine retry still
-works. Amounts are re-derived server-side under a `for update` balance lock;
-keys are scoped to the server-derived `auth.uid()`, so no cross-user replay.
+## Idempotency & correctness
+- `delete from courses where id = <fixed course uuid>` runs first; the course's
+  `on delete cascade` wipes its chapters/nodes/questions (and any demo progress
+  or mock tests on it) before the re-insert, so re-seeding never duplicates —
+  the same delete-then-insert pattern the existing pet seed uses.
+- Verified by hand and by the code reviewer against the live schema: every NOT
+  NULL column supplied, all CHECK domains satisfied (status, visibility, kind
+  incl. `calc`, difficulty, credit_prize ≥ 0), no duplicate positions within any
+  chapter/node, `answer` jsonb shaped per kind with valid `correct_indexes`, and
+  a well-formed calc spec (`molecules * 8`, always an integer answer).
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -59,22 +40,25 @@ keys are scoped to the server-derived `auth.uid()`, so no cross-user replay.
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
-(The three reviewers ran on Sonnet, one tier below this Opus session, and all
-returned PASS; their WARNs are fixed in the diff except one documented inline.)
+(No migration in this PR — it's a `seed.sql`-only change, which is not a
+migration and is fixed forward in place. No new table, no RLS surface, no
+`src/types` change. The 207 existing tests / lint / typecheck stay green;
+seed.sql is not covered by unit tests, so its correctness was verified against
+the schema by hand and by the code reviewer. Reviewers ran on Sonnet, one tier
+below this Opus session — all three PASS.)
 
 ## For you
-**What changed:** buying food, buying a theme, and feeding a pet can no longer
-double-charge your credits (or double-spend food) if you double-click or retry
-after a dropped connection — the server now remembers each request and won't
-process it twice.
+**What changed:** the demo account now starts with a real, public course
+("Photosynthesis Crash Course") containing chapters, lessons of every question
+type, and a mock-test-ready set — so you can actually open and use the app in
+the preview instead of staring at empty lists.
 
-**What you do next:** review the preview and merge. The migration runs first on
-the preview DB; confirm it applies cleanly. To exercise it: buy a food item, and
-confirm a rapid second click (or a refresh-and-retry) doesn't deduct twice. No
-env/secret/dashboard action needed.
+**What you do next:** review this PR's preview. It gets a brand-new branch DB, so
+the updated seed runs on creation and the course will be there. Log in as
+`demo@example.com` / `password123`, open the Dashboard or Explore, click into the
+course, take a lesson (finish one with no mistakes to see the credit award), and
+build a mock test to see the calc question render correctly. Then merge.
 
-**How to roll it back:** revert this PR. To fully undo the schema on a database
-that already applied it, add a follow-up migration that
-`drop table idempotency_keys` and recreates the three functions without the
-`p_idempotency_key` parameter (the prior definitions live in
-`20260613052000_cosmetics.sql` and `20260613150000_food_and_feeding.sql`).
+**How to roll it back:** revert this PR. On a database that already seeded it,
+`delete from courses where id = 'c0000000-0000-0000-0000-000000000001';` removes
+the course and all its content via cascade.
