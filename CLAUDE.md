@@ -64,7 +64,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 ## Self-check
 - [ ] base = main; exactly one PR
 - [ ] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
-- [ ] tests/lint/typecheck green; happy AND unhappy paths exercised
+- [ ] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised
 - [ ] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [ ] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
 - [ ] irreversible actions guarded + idempotent + flagged
