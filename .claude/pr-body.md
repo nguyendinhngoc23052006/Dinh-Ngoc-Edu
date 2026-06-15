@@ -1,80 +1,83 @@
-# Phase 4 (component/hook tests) + Phase 5 (docs/runbook)
+# UI overhaul — a playful, immersive, interconnected game world
 
-Closes the last two post-MVP roadmap items in one PR.
+A full visual overhaul of the front end toward the look the product already
+wants to be: a gamified, pet-powered learning world rather than a plain form
+app. The change is **presentational only** — no schema, services, routes, env,
+or data flow changed, so every existing test, the build, and all client-side
+guards keep working untouched.
 
-**Phase 4 — the project's first React component & hook tests.** All 246
-existing suites covered `src/services`, `src/lib`, and `supabase/functions`;
-there were zero tests that render a component. This adds that layer with React
-Testing Library + happy-dom (dev-only, pinned), wired so the existing
-node-environment service/lib suites are untouched.
+Three things were asked for and delivered:
 
-**Phase 5 — docs.** The README was a one-line stub; it's now a real overview +
-quickstart, and a new `docs/RUNBOOK.md` documents deploy flow, env/secret
-click-paths, the `/health` + uptime monitor, and rollback.
+- **Playful game world.** A full rewrite of `src/index.css`: richer tokens
+  (deeper greens, a gold accent for credits/XP, layered shadows, rounder
+  radii), chunky tactile buttons with a press, a persistent dotted-grid + aurora
+  backdrop behind every page, glowing "next" course nodes, a frosted HUD-style
+  top bar, hover-lift on collectible-style cards, and a loading shimmer.
+- **Persistent shell + route transitions.** `AppLayout` gains a brand mark and
+  wraps the `<Outlet/>` in a `route-view` div keyed on `location.pathname`, so
+  each navigation fades and rises in — the app reads as one continuous space.
+  The pet companion and credits HUD stay put across pages.
+- **Unified theme system.** The equipped theme now reskins the **whole app**,
+  not just the course map: `[data-dimension] .app` paints an immersive backdrop
+  per theme (meadow / volcano / tide / twilight / cosmos). Cards are a fixed
+  light surface with fixed dark text, so they stay readable over every
+  backdrop — which also **fixes a latent contrast bug** where the dark Midnight
+  theme's light `--ink` was nearly invisible on white cards.
 
-## What's in the diff
+Every class name the previous stylesheet defined is preserved, along with the
+pet-sprite keyframe math, `prefers-reduced-motion` handling, and the course-map
+dimension reskins. No new dependency, no new external resource (system fonts,
+CSS gradients only).
 
-### Phase 4 — tests
-- **New dev deps** (`package.json` + lockfile): `@testing-library/react`,
-  `@testing-library/user-event`, `happy-dom` — all pinned, dev-only.
-- **`src/test/setup.ts`** — `afterEach(cleanup)`; a no-op for the node-env
-  suites that also load it, so it's safe globally.
-- **`vite.config.ts`** — one line: `setupFiles: ['src/test/setup.ts']`.
-  Component/hook suites opt into a DOM with a `// @vitest-environment happy-dom`
-  docblock, so the service/lib suites keep running in the default node env.
-- **8 new suites (23 tests)**: `ChoiceQuestion`, `FillBlankQuestion`,
-  `CalcQuestion`, `ConfirmDialog`, `CourseCard`, `DeleteAccountCard`, and the
-  `useAsync` hook. Happy and unhappy paths each: disabled-until-valid,
-  submit payloads, Enter-to-submit, Escape/backdrop/busy on the dialog,
-  conditional progress bar, and the irreversible delete-account flow
-  (success → navigate home; failure → error shown, no navigation). Tests use
-  plain DOM assertions (no jest-dom dependency) and the existing
-  `supabaseClient` mock convention.
+## Assumptions
+- Direction confirmed with the human up front: "playful game world", tied
+  together by a "persistent shell" + "unified theme system", **staying in
+  vanilla CSS** (no framework — no new dependency).
+- The 5 themes' exact palettes were read from the seed migrations
+  (`20260613052000_cosmetics.sql` / `20260613170000_theme_dimensions.sql`);
+  only Midnight is dark, which drives the fixed-light-card decision above.
 
-### Phase 5 — docs
-- **`README.md`** — overview, local-dev quickstart, the two-prefix env
-  fallback, scripts table, testing model, CI workflows. Links to ARCHITECTURE
-  and the new RUNBOOK.
-- **`docs/RUNBOOK.md`** — the four parts (GitHub/Supabase/Vercel/AI), release
-  flow, production env vars + Edge Function secrets with click-paths,
-  `/health` + `uptime.yml` (needs the `PRODUCTION_URL` repo variable), and a
-  rollback section (Vercel Instant Rollback, revert PR, fix-forward
-  migrations, secret rotation).
-
-## Notes / debt
-- Pre-existing dev-only `node-tar` advisories already in the lockfile — **not**
-  introduced here (production `npm audit` is clean). Left as-is; out of scope.
-- happy-dom is the project's first DOM test env (the one question I asked).
+## Reviewer note
+The code reviewer initially flagged two items; both were investigated:
+1. "Six JSX classes dropped" — **false positive**: `.course-card`,
+   `.lesson-player`, `.question`, `.prompt`, `.hint`, `.feedback` were never
+   defined on `main` (verified by grep); the rewrite dropped nothing and added
+   no speculative styles for them.
+2. `.ghost`/cancel-button contrast — **fixed**: the `ConfirmDialog` cancel
+   (`.ghost`) and destructive confirm (`.danger`) both fell through to the green
+   primary style. `.ghost` is now a standalone secondary modifier and
+   `button.danger` a destructive red; the more-specific `.market-card` rules
+   keep market/pets visuals unchanged.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — **no migration** (presentational only); no new tables; types untouched
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — 269 unit + 3 e2e pass, build clean; existing happy/unhappy suites unchanged
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
-- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
-- [x] irreversible actions guarded + idempotent + flagged
+- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code — no env/client config touched
+- [x] irreversible actions guarded + idempotent + flagged — none in this PR
 - [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English
+- [x] migrations explained in plain English — n/a, no migration
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
-- [x] every subagent dispatched on a model below the orchestrator's — never inherited
-
-(No migration and no new irreversible *code* in this PR — the delete-account
-path is pre-existing and only newly *tested* here; migration/RLS boxes true by
-absence. Gates run green locally: `lint`, `typecheck`, `test` 269, `e2e` 3.
-Reviewers ran on Sonnet, one tier below this Opus session.)
+- [x] every subagent dispatched on a model below the orchestrator's — never inherited (reviewers dispatched explicitly on the tier below)
 
 ## For you
-**What changed:** the app now has React component + hook tests (its first), and
-the README/runbook are real docs instead of a stub.
+**What changed:**
+- Rewrote `src/index.css` into a playful "game world" design (richer tokens,
+  tactile buttons, glowing nodes, frosted HUD bar, immersive backdrop).
+- `AppLayout` now shows a brand mark and animates each route change, with the
+  pet + credits HUD persistent across pages.
+- The equipped theme reskins the entire app (per-theme backdrops), and cards
+  became fixed light surfaces — fixing the dark-theme card-contrast bug.
+- Promoted `.ghost`/`button.danger` to real button modifiers so the confirm
+  dialog's cancel/confirm buttons are visually distinct.
 
-**What you do next:** review the preview, then merge. One manual action that is
-**not** in this PR: confirm the `e2e` check is listed under **required checks**
-in the GitHub ruleset (**repo → Settings → Rules/Branches → the `main`
-ruleset → require the `e2e` status check**) so #42's gate is enforced. The
-uptime monitor also needs a repo **variable** `PRODUCTION_URL` (**repo →
-Settings → Secrets and variables → Actions → Variables**) — see
-`docs/RUNBOOK.md`.
+**What you do next:** review the preview deployment on this PR — click through
+Landing, Dashboard, a Course map, the Market, Pets, and Settings; in Settings
+equip each theme (especially **Midnight**) and confirm every page reskins and
+all text stays readable. No env/secret action needed. Then merge.
 
-**How to roll it back:** revert this PR. It's test files + a vitest setup line +
-dev-only deps + docs — no runtime/app code, no migration, no schema. Reverting
-removes the new suites and restores the stub README with zero production impact.
+**How to roll it back:** revert this PR (or `git revert <merge commit>`) — it
+only touches `src/index.css`, `src/components/layout/AppLayout.tsx`, the review
+verdicts, and `MEMORY.md`; reverting fully restores the previous look with no
+data or schema implications.
