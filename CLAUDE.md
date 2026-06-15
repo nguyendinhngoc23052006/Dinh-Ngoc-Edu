@@ -65,7 +65,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 - [ ] base = main; exactly one PR
 - [ ] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
 - [ ] tests/lint/typecheck green; happy AND unhappy paths exercised
-- [ ] scripts still named exactly `lint` and `typecheck`
+- [ ] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [ ] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
 - [ ] irreversible actions guarded + idempotent + flagged
 - [ ] no avoidable debt; memory updated and pruned
@@ -92,10 +92,10 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 - Refactors are behaviour-preserving and stand alone (tests green before and after); never inside a feature PR.
 
 ## Quality gate
-- The sandbox has no DB/secrets — write mocked unit tests, run them before every PR; never fake a DB to pass.
+- The sandbox has no DB/secrets — write mocked unit tests, run them before every PR; never fake a DB to pass. A mocked-network Playwright `e2e` suite covers UI/flow regressions unit tests miss and is a required gate.
 - Type every mock with the generated row types from `src/types` — schema drift must fail `typecheck`, never pass silently.
-- `lint`/`typecheck` script names are a CI contract (the GitHub workflow jobs call them, and the ruleset requires those jobs) — keep them; if you rename one, update the workflow and tell me to reselect it in the ruleset in the same PR.
-- `/health` is a permanent route; never remove or rename it — the uptime workflow depends on it.
+- `lint`/`typecheck`/`test`/`e2e` script names are a CI contract (the GitHub workflow jobs call them, and the ruleset requires those jobs) — keep them; if you rename one, update the workflow and tell me to reselect it in the ruleset in the same PR.
+- `/health` is a permanent route; never remove or rename it — the uptime and canary workflows depend on it.
 - Nothing testable may require a prod-only secret.
 - Keep builds reproducible: commit the lockfile; no unpinned `latest` ranges, no installing latest at runtime. Staying current is Dependabot's job — accept its version-bump PRs through the normal flow; track the current Node LTS.
 - Small focused PRs; never commit a real secret (`.env.example` placeholders only).

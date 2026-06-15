@@ -1,19 +1,26 @@
-# code-reviewer verdict — Phase 3 (polish)
+# code-reviewer verdict — E2E gate (step 8.5)
 
-**Verdict: PASS.** No findings.
+**Verdict: PASS** (two findings raised, both resolved this task).
 
-- `courseLabels.ts` (`statusLabel`/`visibilityLabel`) has two real callers
-  (CourseCard, CoursePage) — justified extraction, not premature abstraction —
-  and ships with a sibling unit test (all enum values, happy path).
-- `SettingsPage` now surfaces `ownership.error` (was swallowed; the catalog error
-  was already shown) — consistent with the existing error-display pattern.
-- `FillBlankQuestion` extracts `submit()` and adds Enter-to-submit via
-  `onKeyDown`, deliberately not a `<form>` (avoids nesting in any parent form).
-- All changes are pure/UI; no component touches `supabase` directly; no oversized
-  or mixed-responsibility file.
+Config matches the guide's spec: chromium only, stub-env webServer, fixed-port
+(`4173`) baseURL, `retries: 2` in CI / `0` local, `trace: 'on-first-retry'`.
+All three required flows covered (landing renders · client-side validation with
+no network · gated-route redirect). All new files well under 200 lines,
+single-responsibility, no duplication; selectors are role-based (the one
+error-text assertion is intentional and stable).
+
+## Findings raised → resolved
+- **HTML report artifact** (was: `reporter: 'list'` never writes
+  `playwright-report/`, so the failure-artifact upload would be empty) → added
+  the `html` reporter (`open: 'never'`, `outputFolder: 'playwright-report'`).
+- **typecheck didn't cover `e2e/`** → considered and deliberately not adopted:
+  pulling `e2e/` into the root `tsconfig` forces `@types/node`, which loosens the
+  strict browser typing in `src/` (lets `src` reference Node globals and still
+  pass). The guide's template doesn't typecheck `e2e/`; ESLint already lints the
+  specs. Kept `tsconfig` `include` as-is.
 
 ## Reasonable skips (verified, not gaps)
-- **CosmeticsLayer (#12):** not touched — its per-navigation refetch premise is
-  false (stable layout route + dep-based `useAsync`).
-- **MockTestRunner (#13c):** not touched — it already guards
-  `questions.length === 0` (and a `!question` fallback).
+- Stub key already uses the real `sb_publishable_` prefix — no client-side prefix
+  validation to trip.
+- Browser-binary CI cache is an optimization beyond the guide's `e2e.yml` spec;
+  package/binary can't diverge within a single `npm ci` run.
