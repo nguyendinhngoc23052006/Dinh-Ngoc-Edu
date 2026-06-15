@@ -155,6 +155,11 @@ function SettingsPage() {
         {catalog.error ? (
           <p className="state state-error">{catalog.error}</p>
         ) : null}
+        {ownership.error ? (
+          <p className="state state-error">
+            Couldn't load which themes you own: {ownership.error}
+          </p>
+        ) : null}
       </div>
       <p>
         Raise your pets on the <Link to="/pets">Pets</Link> page and buy more

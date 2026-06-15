@@ -1,28 +1,19 @@
-# code-reviewer verdict — Phase 2 (5 features)
+# code-reviewer verdict — Phase 3 (polish)
 
-**Verdict: PASS.** Both blockers fixed in-diff.
+**Verdict: PASS.** No findings.
 
-## Fixed
-- **`unsaveCourse` now tested.** Added happy-path (asserts `user_id`+`course_id`
-  scoping) and error-surfaces tests in `savedCourseService.test.ts`.
-- **Concurrent save double-click guarded.** ExplorePage tracks an `inFlight` Set
-  of course ids; `toggleSave` early-returns if already in flight, and the button
-  is `disabled={inFlight.has(course.id)}`.
+- `courseLabels.ts` (`statusLabel`/`visibilityLabel`) has two real callers
+  (CourseCard, CoursePage) — justified extraction, not premature abstraction —
+  and ships with a sibling unit test (all enum values, happy path).
+- `SettingsPage` now surfaces `ownership.error` (was swallowed; the catalog error
+  was already shown) — consistent with the existing error-display pattern.
+- `FillBlankQuestion` extracts `submit()` and adds Enter-to-submit via
+  `onKeyDown`, deliberately not a `<form>` (avoids nesting in any parent form).
+- All changes are pure/UI; no component touches `supabase` directly; no oversized
+  or mixed-responsibility file.
 
-## Warns (accepted)
-- `MockTestList` Cancel button isn't disabled during a parent rename/delete —
-  cosmetic only (a reload corrects the title); left as-is.
-- `CoursePage` is 342 lines after the `OwnerCourseControls` extraction — all
-  course status/orchestration, single responsibility; the remaining bulk is
-  pre-existing status banners, not this phase's additions.
-
-## Passed
-- No Supabase calls in components/pages (all via services).
-- Sibling tests for every changed service: `listPublicCourses`
-  (filter/search/escape), `renameMockTest`/`deleteMockTest` (incl. 120-char cap),
-  `deleteMaterial` (happy + storage-error stops before row delete),
-  `listSavedCourseIds`/`unsaveCourse` — happy + unhappy.
-- `isSaved` derivation (`localSaves[id] ?? saved.data?.has(id) ?? false`) and the
-  applied-vs-typed search split are correct — no stale-state/effect bugs.
-- `OwnerCourseControls` / `MaterialsManager` are single-responsibility; no
-  duplication.
+## Reasonable skips (verified, not gaps)
+- **CosmeticsLayer (#12):** not touched — its per-navigation refetch premise is
+  false (stable layout route + dep-based `useAsync`).
+- **MockTestRunner (#13c):** not touched — it already guards
+  `questions.length === 0` (and a `!question` fallback).

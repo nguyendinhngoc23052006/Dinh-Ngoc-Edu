@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import type { Course } from '../../types/database'
 import type { CourseProgress } from '../../services/progressService'
+import { statusLabel, visibilityLabel } from '../../lib/courseLabels'
 
 interface CourseCardProps {
   course: Course
@@ -19,7 +20,8 @@ function CourseCard({ course, progress, action, authorName }: CourseCardProps) {
       </h3>
       {authorName ? <p className="course-author">by {authorName}</p> : null}
       <p className="course-meta">
-        {course.output_language} · {course.status} · {course.visibility}
+        {course.output_language} · {statusLabel(course.status)} ·{' '}
+        {visibilityLabel(course.visibility)}
       </p>
       {progress && progress.total > 0 ? (
         <p className="course-progress">
