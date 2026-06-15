@@ -1,33 +1,25 @@
-# code-reviewer verdict — UI overhaul (playful game world)
+# code-reviewer verdict — Phase 4 component/hook tests + Phase 5 docs
 
-**Verdict: PASS** (initial FAIL — both findings investigated; one was a false
-positive, one fixed before commit).
+**Verdict: PASS** (one WARN fixed before commit; one non-blocking note left).
 
-Reviewed: `src/index.css` (full rewrite), `src/components/layout/AppLayout.tsx`
-(brand-mark span + `route-view` wrapper keyed on `location.pathname`).
+Reviewed: src/test/setup.ts, vite.config.ts setupFiles addition, package.json
+new dev deps, src/components/lessons/{ChoiceQuestion,FillBlankQuestion,
+CalcQuestion}.test.tsx, src/components/ui/ConfirmDialog.test.tsx,
+src/components/courses/CourseCard.test.tsx,
+src/components/settings/DeleteAccountCard.test.tsx, src/hooks/useAsync.test.tsx,
+README.md, docs/RUNBOOK.md.
 
-FINDING 1 (raised: "six JSX classes dropped — silent regression") — **NOT a
-regression.** Verified against `origin/main:src/index.css`: `.course-card`,
-`.lesson-player`, `.question`, `.prompt`, `.hint`, and `.feedback` were never
-defined in the previous stylesheet (grep count 0 on main). They are unstyled
-JSX hooks that shipped unstyled; the rewrite preserves every selector the old
-file defined and drops none. No speculative styles added for them (project
-simplicity rule: no styling a hook with no demonstrated need).
+FIXED — ConfirmDialog.test.tsx — the "backdrop clicks cancel" test asserted
+only the negative (card click does not cancel) and never clicked the backdrop.
+Now clicks `.modal-overlay` and asserts onCancel fires, plus keeps the card
+stopPropagation negative case.
 
-FINDING 2 (raised: `.ghost`/cancel-button contrast) — **FIXED.** The reviewer's
-PetsPage sub-claim was off (its buttons sit in `.card.market-card`, so they were
-already styled), but the core point held for `ConfirmDialog`: its `.ghost`
-cancel and `.danger` confirm both fell through to the green primary, leaving the
-modal's two buttons indistinguishable. Promoted `.ghost` to a standalone
-secondary modifier (transparent + brand outline) and added a destructive
-`button.danger` (solid red); the more-specific `.market-card button.danger`
-keeps market/pets visuals unchanged. Confirm/cancel now read distinctly.
+NOTE (left, not a violation) — the `checkButton()` one-liner repeats across
+the three lesson test files; CLAUDE.md forbids abstracting until a second real
+use within a caller, and each is a single per-file caller. Extract to a shared
+helper only if a fourth lesson test appears.
 
-Checks that passed: AppLayout renders UI only (no data access; `useLocation`
-keys the wrapper, `signOut` delegated to the service); `route-in` keyframe reuse
-by `.modal-card` is intentional sharing, not duplication; `node-step-0..3`
-winding offsets correct; `prefers-reduced-motion` covers all newly
-added/modified animations (`route-view`, pet sprite/emoji, loading shimmer); all
-five `[data-dimension]` themes have both `.app` backdrop and `.course-map`
-rules; no data access in `src/components`; no service files changed.
-Lint/typecheck/test (269)/build/e2e (3) all green after the fix.
+All other checks passed: no jest-dom matchers, environment docblocks match
+existing style, mock convention matches authService.test.ts, no Supabase in
+components, happy and unhappy paths in every suite, no over-mocking, files
+under 80 lines, deps pinned and dev-only, README/RUNBOOK internal links valid.
