@@ -1,4 +1,8 @@
-# scale-reviewer verdict — constitution sync (e2e in Self-check)
+# scale-reviewer verdict — Phase 4 component tests + Phase 5 docs
 
-**Verdict: PASS.** Single-line doc update to a checklist; no queries, migrations,
-data access, indexes, writes, or loops to evaluate. Scale rules N/A.
+**Verdict: PASS.** Test files, a vitest setup file (`afterEach(cleanup)`), a
+`setupFiles` line in vite.config.ts, dev-only deps, and docs (README +
+RUNBOOK). No queries, migrations, data access, indexes, writes, or loops to
+evaluate. Doc claims about pagination/indexing/idempotency restate the
+existing codebase conventions accurately and add no new scale surface. Scale
+rules N/A.
