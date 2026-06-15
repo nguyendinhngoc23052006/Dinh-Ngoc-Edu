@@ -1,5 +1,7 @@
 # Repo memory
 
+- Explore's public-catalogue title search (`listPublicCourses`) uses `ILIKE '%term%'` with the LIKE metacharacters escaped — no trigram index, so it's a sequential scan over public courses. Fine while the catalogue is small and always paginated; if it grows large, add a `pg_trgm` GIN index on `courses.title` (and a btree if the title sort gets heavy). Deliberately deferred in Phase 2.
+
 - The on-screen pet companion (`CosmeticsLayer`) renders animated CC0 spritesheets from `public/pets/<species_id>.png` (Ninja Adventure pack, CC0; 64×64 = 4 walk frames × 4 direction rows of 16×16) — keyed by `species.id` by CONVENTION (no DB column; resolver in `lib/petSprite.ts`), with the species emoji as `<Image>`-onerror fallback. It roams the viewport via `usePetWander` (rAF) over pure math in `lib/petWander.ts`. Two gotchas: (1) the facing flip (`scaleX(-1)`) MUST sit on a wrapper, never on the animated frame — a live CSS keyframe that animates `transform` overrides an inline `transform`; (2) the 9 species were renamed to monster names (migration 20260614050000) to match the art, keeping their `spc-*` ids so `pets.species_id` FKs + sprite filenames stay valid. The image-gen MCP (Higgsfield) was the first art choice but the account had 0 credits, so CC0 was used instead.
 - Toolchain (scaffolded 2026-06): Node 22 LTS, Vite 8, React 19, TypeScript 6, ESLint 10 (flat config), Vitest 4, Supabase CLI 2.105.
 - `npx supabase init` (CLI 2.105) already generates `[db.seed]` with `enabled = true` and `sql_paths = ["./seed.sql"]` — no config.toml edit needed.

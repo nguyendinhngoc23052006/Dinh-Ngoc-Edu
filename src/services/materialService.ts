@@ -118,6 +118,24 @@ export async function uploadMaterial(
   return material
 }
 
+// Removes a material after course creation: the stored bytes first, then the
+// metadata row. If the storage delete fails we stop and surface it rather than
+// orphaning a file whose row is gone. RLS (and the owner-scoped storage path)
+// keep this to the caller's own files.
+export async function deleteMaterial(
+  material: Pick<CourseMaterial, 'id' | 'storage_path'>,
+): Promise<void> {
+  const { error: storageError } = await supabase.storage
+    .from('course-materials')
+    .remove([material.storage_path])
+  if (storageError) throw new Error(storageError.message)
+  const { error } = await supabase
+    .from('course_materials')
+    .delete()
+    .eq('id', material.id)
+  if (error) throw new Error(error.message)
+}
+
 export async function listMaterials(
   courseId: string,
 ): Promise<CourseMaterial[]> {

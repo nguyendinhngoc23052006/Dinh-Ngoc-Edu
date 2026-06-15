@@ -1,16 +1,40 @@
 import { useState } from 'react'
+import type { FormEvent } from 'react'
 import { useAsync } from '../hooks/useAsync'
-import { listPublicCourses, PAGE_SIZE } from '../services/courseService'
+import {
+  listOutputLanguages,
+  listPublicCourses,
+  PAGE_SIZE,
+} from '../services/courseService'
+import type { PublicCourseSort } from '../services/courseService'
 import { getDisplayNames } from '../services/profileService'
-import { saveCourse } from '../services/savedCourseService'
+import {
+  listSavedCourseIds,
+  saveCourse,
+  unsaveCourse,
+} from '../services/savedCourseService'
 import CourseCard from '../components/courses/CourseCard'
 
 function ExplorePage() {
   const [page, setPage] = useState(0)
-  const [savedIds, setSavedIds] = useState<string[]>([])
+  // `searchInput` is what's typed; `search` is what's applied (on submit), so we
+  // don't refetch on every keystroke.
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [language, setLanguage] = useState('')
+  const [sort, setSort] = useState<PublicCourseSort>('recent')
   const [error, setError] = useState<string | null>(null)
-  const state = useAsync(() => listPublicCourses(page), [page])
+  // Optimistic save/unsave overrides layered on the loaded saved-id set.
+  const [localSaves, setLocalSaves] = useState<Record<string, boolean>>({})
+  // Course ids with a save/unsave request in flight, to block double-clicks.
+  const [inFlight, setInFlight] = useState<Set<string>>(() => new Set())
+
+  const state = useAsync(
+    () => listPublicCourses(page, { search, language, sort }),
+    [page, search, language, sort],
+  )
   const courses = state.data ?? []
+
   // One query for the whole page's authors (no per-card lookup); a failure here
   // just means cards render without a "by …" line.
   const ownerKey = courses.map((course) => course.owner_id).join(',')
@@ -20,19 +44,79 @@ function ExplorePage() {
   )
   const authorNames = authors.data ?? new Map<string, string>()
 
-  async function handleSave(courseId: string) {
+  // Load once so the Save/Saved state survives a page reload (Explore is behind
+  // RequireAuth, so a session always exists here).
+  const saved = useAsync(() => listSavedCourseIds(), [])
+  const isSaved = (id: string): boolean =>
+    localSaves[id] ?? saved.data?.has(id) ?? false
+
+  function applySearch(event: FormEvent) {
+    event.preventDefault()
+    setPage(0)
+    setSearch(searchInput)
+  }
+
+  async function toggleSave(courseId: string) {
+    if (inFlight.has(courseId)) return
+    const currently = isSaved(courseId)
     setError(null)
+    setInFlight((current) => new Set(current).add(courseId))
+    setLocalSaves((current) => ({ ...current, [courseId]: !currently }))
     try {
-      await saveCourse(courseId)
-      setSavedIds((current) => [...current, courseId])
+      if (currently) await unsaveCourse(courseId)
+      else await saveCourse(courseId)
     } catch (cause) {
+      // Roll the optimistic toggle back on failure.
+      setLocalSaves((current) => ({ ...current, [courseId]: currently }))
       setError(cause instanceof Error ? cause.message : 'Save failed.')
+    } finally {
+      setInFlight((current) => {
+        const next = new Set(current)
+        next.delete(courseId)
+        return next
+      })
     }
   }
 
   return (
     <section>
       <h1>Explore public courses</h1>
+      <form className="explore-filters" onSubmit={applySearch}>
+        <input
+          type="search"
+          value={searchInput}
+          placeholder="Search by title"
+          aria-label="Search by title"
+          onChange={(event) => setSearchInput(event.target.value)}
+        />
+        <button type="submit">Search</button>
+        <select
+          value={language}
+          aria-label="Filter by language"
+          onChange={(event) => {
+            setPage(0)
+            setLanguage(event.target.value)
+          }}
+        >
+          <option value="">All languages</option>
+          {listOutputLanguages().map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sort}
+          aria-label="Sort"
+          onChange={(event) => {
+            setPage(0)
+            setSort(event.target.value as PublicCourseSort)
+          }}
+        >
+          <option value="recent">Newest first</option>
+          <option value="title">Title A–Z</option>
+        </select>
+      </form>
       {error ? <p className="state state-error">{error}</p> : null}
       {state.loading ? (
         <p className="state state-loading">Loading public courses…</p>
@@ -46,7 +130,7 @@ function ExplorePage() {
       ) : courses.length === 0 ? (
         <p className="state state-empty">
           {page === 0
-            ? 'No public courses yet — share one of yours from its course page.'
+            ? 'No public courses match — try a different search or filter.'
             : 'No more courses.'}
         </p>
       ) : (
@@ -59,10 +143,10 @@ function ExplorePage() {
               action={
                 <button
                   type="button"
-                  disabled={savedIds.includes(course.id)}
-                  onClick={() => handleSave(course.id)}
+                  disabled={inFlight.has(course.id)}
+                  onClick={() => toggleSave(course.id)}
                 >
-                  {savedIds.includes(course.id) ? 'Saved' : 'Save'}
+                  {isSaved(course.id) ? 'Saved ✓' : 'Save'}
                 </button>
               }
             />

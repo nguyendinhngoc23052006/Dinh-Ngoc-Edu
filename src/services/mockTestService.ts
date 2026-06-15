@@ -66,6 +66,33 @@ export async function createMockTest(
   return data as MockTest
 }
 
+// Renames a mock test. RLS scopes the update to the caller's own tests.
+export async function renameMockTest(
+  testId: string,
+  title: string,
+): Promise<void> {
+  const trimmed = title.trim()
+  if (trimmed.length === 0) throw new Error('Give the mock test a title.')
+  if (trimmed.length > 120) {
+    throw new Error('Title must be 120 characters or fewer.')
+  }
+  const { error } = await supabase
+    .from('mock_tests')
+    .update({ title: trimmed })
+    .eq('id', testId)
+  if (error) throw new Error(error.message)
+}
+
+// Deletes a mock test. RLS scopes the delete to the caller's own tests; the
+// stored chapter selection is just a uuid[], so nothing cascades.
+export async function deleteMockTest(testId: string): Promise<void> {
+  const { error } = await supabase
+    .from('mock_tests')
+    .delete()
+    .eq('id', testId)
+  if (error) throw new Error(error.message)
+}
+
 export async function getMockTest(testId: string): Promise<MockTest | null> {
   const { data, error } = await supabase
     .from('mock_tests')

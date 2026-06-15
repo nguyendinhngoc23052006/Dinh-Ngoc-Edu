@@ -13,11 +13,14 @@ import { listMaterials } from '../services/materialService'
 import { getCompletedNodeIds } from '../services/progressService'
 import { getDisplayNames } from '../services/profileService'
 import { cloneCourse, saveCourse } from '../services/savedCourseService'
-import { listMyMockTests } from '../services/mockTestService'
+import {
+  deleteMockTest,
+  listMyMockTests,
+  renameMockTest,
+} from '../services/mockTestService'
 import { startGeneration } from '../services/generationService'
 import CourseMap from '../components/courses/CourseMap'
-import CourseSettings from '../components/courses/CourseSettings'
-import VisibilityToggle from '../components/courses/VisibilityToggle'
+import OwnerCourseControls from '../components/courses/OwnerCourseControls'
 import MockTestList from '../components/mock-tests/MockTestList'
 import type { Visibility } from '../types/database'
 
@@ -48,11 +51,8 @@ function CoursePage() {
     const [chapters, mockTests, materials] = await Promise.all([
       getCourseContent(courseId),
       session ? listMyMockTests(courseId) : Promise.resolve([]),
-      // Materials are owner-only (RLS) and only matter before the course is
-      // ready: a file that failed text extraction explains a stuck course.
-      owner && course.status !== 'ready'
-        ? listMaterials(courseId)
-        : Promise.resolve([]),
+      // Materials are owner-only (RLS); the owner manages them here at any time.
+      owner ? listMaterials(courseId) : Promise.resolve([]),
     ])
     const nodeIds = chapters.flatMap((c) => c.nodes.map((n) => n.id))
     // Guests have no progress rows; skip the query, render an untouched path.
@@ -120,6 +120,9 @@ function CoursePage() {
   const failedMaterials = materials.filter(
     (material) => material.extract_status === 'failed',
   )
+  // An upload/generation failure handed over by NewCoursePage on creation.
+  const uploadError =
+    (location.state as { uploadError?: string } | null)?.uploadError ?? null
 
   async function run(action: () => Promise<void>, failure: string) {
     setBusy(true)
@@ -176,6 +179,20 @@ function CoursePage() {
     }, 'Could not start generation.')
   }
 
+  function handleRenameTest(id: string, title: string) {
+    void run(async () => {
+      await renameMockTest(id, title)
+      state.reload()
+    }, 'Rename failed.')
+  }
+
+  function handleDeleteTest(id: string) {
+    void run(async () => {
+      await deleteMockTest(id)
+      state.reload()
+    }, 'Delete failed.')
+  }
+
   const startButton = (
     <button type="button" disabled={busy} onClick={handleStartGeneration}>
       {course.status === 'failed' ? 'Retry generation' : 'Start generation'}
@@ -198,14 +215,19 @@ function CoursePage() {
       <p className="course-meta">
         {course.output_language} · status: {course.status}
       </p>
+      {uploadError ? (
+        <p className="state state-error">
+          Creating this course hit a problem: {uploadError} Use the controls
+          below to fix the materials and start generation.
+        </p>
+      ) : null}
       {failedMaterials.length > 0 ? (
         <p className="state state-error">
           Some materials could not be read, so generation can't use them:{' '}
           {failedMaterials
             .map((m) => `${m.file_name} — ${m.extract_error ?? 'unreadable'}`)
             .join('; ')}{' '}
-          Fix the file, then create a new course with it (materials are
-          uploaded once per course).
+          Remove or replace it under “Source materials” below, then regenerate.
         </p>
       ) : null}
       {course.status === 'pending' ? (
@@ -265,19 +287,16 @@ function CoursePage() {
         </p>
       ) : null}
       {isOwner ? (
-        <>
-          <VisibilityToggle
-            visibility={course.visibility}
-            busy={busy}
-            onChange={handleVisibility}
-          />
-          <CourseSettings
-            title={course.title}
-            busy={busy}
-            onRename={handleRename}
-            onDelete={handleDelete}
-          />
-        </>
+        <OwnerCourseControls
+          course={course}
+          materials={materials}
+          busy={busy}
+          onVisibility={handleVisibility}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onMaterialsChanged={state.reload}
+          onRegenerate={handleStartGeneration}
+        />
       ) : session ? (
         <p className="visitor-actions">
           <button
@@ -308,7 +327,12 @@ function CoursePage() {
       {session && course.status === 'ready' ? (
         <section>
           <h2>Your mock tests</h2>
-          <MockTestList tests={mockTests} />
+          <MockTestList
+            tests={mockTests}
+            busy={busy}
+            onRename={isOwner ? handleRenameTest : undefined}
+            onDelete={isOwner ? handleDeleteTest : undefined}
+          />
         </section>
       ) : null}
     </div>

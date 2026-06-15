@@ -1,13 +1,17 @@
-# scale-reviewer verdict — delete-account
+# scale-reviewer verdict — Phase 2 (5 features)
 
-**Verdict: PASS.** No scale findings.
+**Verdict: PASS.** One future-work index noted; no blocker at this app's scale.
 
-- The function issues exactly one `admin.auth.admin.deleteUser(userId)` call; no
-  loop, no per-row fetch, no N+1. Child rows go via the DB cascade, not app code.
-- Idempotent: a not-found error is treated as success; the client does one
-  invoke with no retry loop, and the UI blocks a second in-flight call.
-- The cascade is 2–3 levels (auth.users → courses → chapters → nodes →
-  questions; plus materials/mock_tests/progress/saves), runs in one transaction,
-  and every participating FK column is indexed (`courses_owner_id_idx`,
-  `mock_tests_owner_id_idx`, `saved_courses_course_id_idx`, …). No batching
-  needed at this app's scale.
+- **`listPublicCourses` title ILIKE `%term%`** is a sequential scan over the
+  public-courses set (no trigram index). Acceptable now: the public catalogue is
+  small and the query is always `visibility='public'` + paginated (`.range`,
+  PAGE_SIZE 20). Sorting by `title` is likewise unindexed but fine at this size.
+  *Future work:* if the public catalogue grows large, add a `pg_trgm` GIN index
+  on `courses.title` (and/or a btree for the title sort). Recorded in MEMORY.md.
+- **`listSavedCourseIds`** — one `.eq('user_id',…).limit(500)` query, bounded, no
+  N+1.
+- **ExplorePage** — authors still batch-fetched in one `getDisplayNames`; saved
+  ids loaded once (not per card); save/unsave toggle is O(1) optimistic state.
+  No per-card query.
+- **`deleteMaterial`** — two bounded calls (storage remove + row delete).
+  Mock-test rename/delete — single bounded writes.

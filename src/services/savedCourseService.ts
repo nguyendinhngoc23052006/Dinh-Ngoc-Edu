@@ -37,6 +37,21 @@ export async function unsaveCourse(courseId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// The set of course ids the caller has saved, so a list (e.g. Explore) can show
+// the correct Save/Saved state on load instead of resetting every visit. Bounded
+// by a generous cap; saves are personal, so this stays small in practice.
+export async function listSavedCourseIds(): Promise<Set<string>> {
+  const userId = await requireUserId()
+  const { data, error } = await supabase
+    .from('saved_courses')
+    .select('course_id')
+    .eq('user_id', userId)
+    .limit(500)
+  if (error) throw new Error(error.message)
+  const rows = (data ?? []) as Array<{ course_id: string }>
+  return new Set(rows.map((row) => row.course_id))
+}
+
 export async function listSavedCourses(page = 0): Promise<Course[]> {
   const userId = await requireUserId()
   const { data, error } = await supabase

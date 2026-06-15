@@ -1,28 +1,27 @@
-# security-reviewer verdict — delete-account
+# security-reviewer verdict — Phase 2 (5 features)
 
-**Verdict: PASS** (one advisory warn, not a blocker).
+**Verdict: PASS.** No blockers; advisories addressed/accepted below.
 
 ## Passed
-1. **No IDOR.** `userId` comes only from the JWT-verified `getUser()`
-   (`userData.user.id`); the request body is never read, so a caller can delete
-   only themselves — never an arbitrary id.
-2. **No secret in client.** The service-role key is read from `Deno.env` in the
-   function; nothing in `src/` references it. The client only invokes the
-   function with its existing publishable key.
-3. **Defense in depth.** `verify_jwt = true` at the gateway PLUS the in-function
-   `getUser()` 401 — unauthenticated calls can't reach `deleteUser`.
-4. **Blast radius = caller's own rows.** Every user/owner table cascades from
-   `auth.users(id)`; deleting one auth row touches only that user's data.
-5. **Idempotent.** A "not found" on retry is treated as success.
+1. **`listPublicCourses` search.** Still scoped to `visibility='public'`; LIKE
+   metacharacters (`\ % _`) escaped before the ILIKE pattern so a user can't
+   broaden the match; PostgREST parametrizes — no SQL injection.
+2. **Mock test rename/delete IDOR.** No code-level owner check by design — the
+   existing `mock_tests` owner-only RLS update/delete policies are the trust
+   boundary (server-side, authoritative).
+3. **`deleteMaterial` is caller-scoped.** A crafted `storage_path` can't touch
+   another user's file: the storage delete policy requires the first path
+   segment to equal `auth.uid()`, and the row delete is owner-RLS-scoped.
+4. **Save/unsave + `listSavedCourseIds`** are own-rows-only, behind RequireAuth;
+   `unsaveCourse` also filters `user_id` explicitly. Saving a private course is
+   blocked by the `can_view_course` insert check.
+5. **Rendered upload error** comes from our own service exceptions, shown as a
+   React text child (escaped) — no `dangerouslySetInnerHTML`, same-origin router
+   state only.
 
-## Abuse cases
-- CSRF/replay: bounded — the JWT (in-memory session, not a cookie) is the gate
-  and can't be forged or replayed cross-origin; replay is bounded by JWT expiry.
-- Self-spam: first call deletes the user; later calls fail at the gateway or the
-  idempotent not-found path. Harmless.
-
-## Warn (accepted, not blocking)
-- `Access-Control-Allow-Origin: *` on a destructive endpoint. Safe here because
-  the JWT can't be read cross-origin, and it matches the existing functions'
-  CORS. Tightening CORS to the app origin across all functions is a reasonable
-  future defense-in-depth follow-up, not part of this PR.
+## Advisories
+- **Fixed:** `renameMockTest` now caps the title at 120 chars (matching course
+  titles) — was unbounded.
+- **Accepted:** `public_profiles` is readable by `anon` (intended — the public
+  catalogue is public). Worth revisiting only if a "remove from public listing"
+  flow is added.

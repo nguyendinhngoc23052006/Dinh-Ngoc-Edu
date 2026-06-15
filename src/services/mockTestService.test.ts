@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { supabaseMock, sessionResult } from '../test/supabaseMock'
 import {
   createMockTest,
+  deleteMockTest,
   getMockTestQuestions,
+  renameMockTest,
   sampleQuestions,
   validateNewMockTest,
 } from './mockTestService'
@@ -133,5 +135,39 @@ describe('getMockTestQuestions', () => {
   test('returns empty when the chapters have no nodes', async () => {
     supabaseMock.reset([{ data: [], error: null }])
     await expect(getMockTestQuestions(baseTest)).resolves.toEqual([])
+  })
+})
+
+describe('renameMockTest', () => {
+  test('rejects an empty title without calling the API', async () => {
+    await expect(renameMockTest('t1', '   ')).rejects.toThrow(/title/i)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(false)
+  })
+
+  test('updates with the trimmed title', async () => {
+    supabaseMock.reset([{ data: null, error: null }])
+    await renameMockTest('t1', '  Final review ')
+    const update = supabaseMock.calls.find((c) => c.path.endsWith('update'))
+    expect(update?.args[0]).toEqual({ title: 'Final review' })
+  })
+
+  test('rejects a title over 120 characters', async () => {
+    await expect(renameMockTest('t1', 'x'.repeat(121))).rejects.toThrow(
+      /120 characters/,
+    )
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(false)
+  })
+})
+
+describe('deleteMockTest', () => {
+  test('deletes the test', async () => {
+    supabaseMock.reset([{ data: null, error: null }])
+    await deleteMockTest('t1')
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('delete'))).toBe(true)
+  })
+
+  test('surfaces database errors', async () => {
+    supabaseMock.reset([{ data: null, error: { message: 'denied' } }])
+    await expect(deleteMockTest('t1')).rejects.toThrow(/denied/)
   })
 })
