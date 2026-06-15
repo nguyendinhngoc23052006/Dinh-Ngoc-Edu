@@ -12,6 +12,7 @@ import { getCourseContent } from '../services/lessonService'
 import { listMaterials } from '../services/materialService'
 import { getCompletedNodeIds } from '../services/progressService'
 import { getDisplayNames } from '../services/profileService'
+import { statusLabel } from '../lib/courseLabels'
 import { cloneCourse, saveCourse } from '../services/savedCourseService'
 import {
   deleteMockTest,
@@ -213,7 +214,7 @@ function CoursePage() {
         ) : null}
       </div>
       <p className="course-meta">
-        {course.output_language} · status: {course.status}
+        {course.output_language} · {statusLabel(course.status)}
       </p>
       {uploadError ? (
         <p className="state state-error">

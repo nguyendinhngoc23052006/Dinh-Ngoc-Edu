@@ -9,6 +9,9 @@ interface FillBlankQuestionProps {
 
 function FillBlankQuestion({ question, onSubmit }: FillBlankQuestionProps) {
   const [text, setText] = useState('')
+  const submit = () => {
+    if (text.trim().length > 0) onSubmit({ kind: 'text', text })
+  }
 
   return (
     <div className="question">
@@ -17,13 +20,13 @@ function FillBlankQuestion({ question, onSubmit }: FillBlankQuestionProps) {
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter submits, matching the Check button (no surrounding form).
+          if (e.key === 'Enter') submit()
+        }}
         placeholder="Type your answer"
       />
-      <button
-        type="button"
-        disabled={text.trim().length === 0}
-        onClick={() => onSubmit({ kind: 'text', text })}
-      >
+      <button type="button" disabled={text.trim().length === 0} onClick={submit}>
         Check
       </button>
     </div>

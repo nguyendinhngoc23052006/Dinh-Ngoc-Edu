@@ -1,17 +1,11 @@
-# scale-reviewer verdict — Phase 2 (5 features)
+# scale-reviewer verdict — Phase 3 (polish)
 
-**Verdict: PASS.** One future-work index noted; no blocker at this app's scale.
+**Verdict: PASS.** No findings.
 
-- **`listPublicCourses` title ILIKE `%term%`** is a sequential scan over the
-  public-courses set (no trigram index). Acceptable now: the public catalogue is
-  small and the query is always `visibility='public'` + paginated (`.range`,
-  PAGE_SIZE 20). Sorting by `title` is likewise unindexed but fine at this size.
-  *Future work:* if the public catalogue grows large, add a `pg_trgm` GIN index
-  on `courses.title` (and/or a btree for the title sort). Recorded in MEMORY.md.
-- **`listSavedCourseIds`** — one `.eq('user_id',…).limit(500)` query, bounded, no
-  N+1.
-- **ExplorePage** — authors still batch-fetched in one `getDisplayNames`; saved
-  ids loaded once (not per card); save/unsave toggle is O(1) optimistic state.
-  No per-card query.
-- **`deleteMaterial`** — two bounded calls (storage remove + row delete).
-  Mock-test rename/delete — single bounded writes.
+- The PR adds NO queries, fetching, or loops — pure label helpers, an error
+  display, and an Enter-key handler.
+- Confirmed the `CosmeticsLayer` "refetch on every navigation" premise is FALSE:
+  it's mounted in `AppLayout`, a layout route with `<Outlet/>` that stays mounted
+  across child navigations, and `useAsync(fn, [])` is strictly dep-based — so the
+  cosmetics catalog and species load once per app session, not per navigation.
+  No change warranted (recorded in MEMORY.md).
