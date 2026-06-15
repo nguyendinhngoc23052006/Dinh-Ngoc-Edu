@@ -3,6 +3,7 @@ import { supabaseMock, sessionResult } from '../test/supabaseMock'
 import {
   createCourse,
   deleteCourse,
+  listPublicCourses,
   renameCourse,
   validateNewCourse,
 } from './courseService'
@@ -85,5 +86,34 @@ describe('deleteCourse', () => {
       { data: null, error: { message: 'permission denied' } },
     ])
     await expect(deleteCourse('c1')).rejects.toThrow(/permission denied/)
+  })
+})
+
+describe('listPublicCourses', () => {
+  test('defaults to newest-first with no filters', async () => {
+    supabaseMock.reset([{ data: [], error: null }])
+    await listPublicCourses()
+    const order = supabaseMock.calls.find((c) => c.path.endsWith('order'))
+    expect(order?.args).toEqual(['created_at', { ascending: false }])
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('ilike'))).toBe(false)
+  })
+
+  test('applies a title search, language filter, and title sort', async () => {
+    supabaseMock.reset([{ data: [], error: null }])
+    await listPublicCourses(0, {
+      search: 'bio',
+      language: 'English',
+      sort: 'title',
+    })
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('ilike'))).toBe(true)
+    const order = supabaseMock.calls.find((c) => c.path.endsWith('order'))
+    expect(order?.args).toEqual(['title', { ascending: true }])
+  })
+
+  test('escapes LIKE metacharacters so they search literally', async () => {
+    supabaseMock.reset([{ data: [], error: null }])
+    await listPublicCourses(0, { search: '100%' })
+    const ilike = supabaseMock.calls.find((c) => c.path.endsWith('ilike'))
+    expect(ilike?.args).toEqual(['title', '%100\\%%'])
   })
 })

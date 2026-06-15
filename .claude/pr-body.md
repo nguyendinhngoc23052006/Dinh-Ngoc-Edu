@@ -1,40 +1,45 @@
-# User profile: public display name + account deletion
+# Phase 2 — complete the learning loop
 
-Phase 1 #2 and #3, on one branch. Two account-level features:
+Five independent improvements to course/test management and the public catalogue.
+**No migration** — every RLS policy, column, and the regenerate path already
+existed.
 
-## 1. Public display name
-Accounts had no human name, so public courses on Explore looked anonymous. Users
-now set a display name in Settings, shown as the author on public courses.
-- **Migration `20260614153000_user_display_name.sql`:** `profiles.display_name`
-  (text, `≤50` CHECK); `grant update (display_name)` so a user can set its own
-  name; a view `public_profiles` exposing ONLY `(user_id, display_name)` for
-  users who set a name AND own a public course, granted SELECT to
-  anon/authenticated. (RLS can't be column-scoped, so the projection view is the
-  minimal way to publish only the name while credits stay private.)
-- `profileService`: `validateDisplayName`, `setDisplayName`, `getDisplayNames`
-  (one batched query, no N+1). Settings has a name editor; Explore and CoursePage
-  show "by {name}".
+## What's in the diff
+**#6 Mock test delete & rename.** `mockTestService.renameMockTest` (trim +
+120-char cap) and `deleteMockTest`; `MockTestList` gains inline rename + delete
+for the owner (RLS scopes both). CoursePage wires the owner handlers.
 
-## 2. Delete my account (hard delete, cascade)
-There was no way to delete an account. Users can now permanently delete
-themselves from Settings.
-- **Edge Function `delete-account`** (declared in `config.toml`,
-  `verify_jwt = true`): derives the user id from the caller's JWT (never the
-  request body — the IDOR guard) and calls `admin.auth.admin.deleteUser` with the
-  service role. It deletes no rows itself; every user/owner table cascades from
-  `auth.users`, so all the user's data goes in one transaction. Idempotent
-  (not-found on retry = success).
-- `authService.deleteAccount()` invokes the function then signs out;
-  `confirmsDeletion()` gates the UI. `DeleteAccountCard` requires typing "DELETE".
+**#7 Manage materials after creation (add + remove + re-generate).** New
+`MaterialsManager` (owner-only): add a file (same upload + text-extraction path
+as creation) or remove one (`materialService.deleteMaterial` — storage bytes
+then the row). CoursePage now loads materials for the owner at any time and
+offers a **Regenerate course** button (existing `startGeneration`), with a clear
+warning that regenerating rebuilds chapters/questions/progress. The owner block
+is grouped into a new `OwnerCourseControls` component to keep CoursePage focused.
 
-## Security / abuse
-- **Display name:** no private-data leak — base `profiles` RLS unchanged
-  (own-row-only); the view projects only the name, only for public-course
-  authors. Input trimmed + length-checked + CHECK.
-- **Delete account:** a user can only delete themselves (id from the verified
-  JWT). Service-role key stays in `Deno.env`, never in client code.
-  `verify_jwt` + in-function `getUser()` is defense in depth. The destructive
-  action is gated (typed "DELETE"), idempotent, and bounded to the caller.
+**#8 Explore search / filter / sort.** `listPublicCourses(page, { search,
+language, sort })` — title `ILIKE` (LIKE metacharacters escaped), language
+filter, newest-first or title A–Z; still public-only and paginated. ExplorePage
+gets a filter bar (search applied on submit, not per keystroke).
+
+**#9 NewCoursePage error surfacing.** The old silent `catch {}` is gone: an
+upload/generation failure is carried to the course page (where the materials,
+Start-generation, and Delete recovery paths live) via router state and shown
+there — without the duplicate-shell risk of resubmitting the form.
+
+**#10 Explore "Save" persistence.** `listSavedCourseIds` hydrates the
+Save/Saved state once on load, so it reflects prior sessions; the button is now a
+save/unsave toggle with optimistic state and a per-card in-flight guard against
+double-clicks.
+
+## Security / scale notes
+- Mock-test rename/delete and `deleteMaterial` carry no code-level owner check by
+  design — the existing owner-only RLS (and the owner-scoped storage path) are
+  the trust boundary. A crafted `storage_path` can't touch another user's file
+  (storage policy keys on the uid path segment).
+- The title `ILIKE '%term%'` is a sequential scan with no trigram index —
+  acceptable while the public catalogue is small and paginated; flagged as
+  future work (a `pg_trgm` index) in MEMORY.md.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -48,30 +53,27 @@ themselves from Settings.
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
-(One migration (display name); account deletion adds an Edge Function, no
-migration. Irreversible action — account deletion — is guarded by a typed
-confirmation, idempotent, and safe to verify in a preview (it only deletes the
-caller's own test account); flagged for manual verify below. Reviewers ran on
-Sonnet, one tier below this Opus session — all three PASS. Memory updated at
-`supabase/CLAUDE.md`.)
+(Zero migrations — all policies/columns existed. Irreversible actions: removing
+a material deletes the file (owner-scoped, and the course is unaffected until you
+regenerate); regenerating rebuilds the course and is gated behind an explicit
+button + warning. Reviewers ran on Sonnet, one tier below this Opus session — all
+three PASS after I fixed two code-review blockers (untested `unsaveCourse`;
+unguarded concurrent save clicks). Memory updated at `MEMORY.md`.)
 
-**Debt I'm leaving:** all four Edge Functions duplicate `corsHeaders` + `json()`;
-extracting `supabase/functions/_shared/http.ts` is owed as a stand-alone refactor
-(kept out of this feature PR per the no-refactor-in-feature-PR rule).
+**Debt I'm leaving:** the four Edge Functions still duplicate `corsHeaders` +
+`json()` (a `supabase/functions/_shared/http.ts` extraction, owed as a stand-alone
+refactor — unchanged by this PR).
 
 ## For you
-**What changed:** (1) users set a display name in Settings, shown as "by {name}"
-on public courses; (2) users can permanently delete their account from Settings
-(type "DELETE" to confirm).
+**What changed:** you can now rename/delete mock tests, add/remove a course's
+source files and regenerate it, search/filter/sort the Explore catalogue, see why
+a new course failed to start, and the Explore Save button remembers what you
+saved.
 
-**What you do next:** review the preview. For display name: Settings → set a
-name → Explore shows the seeded "Demo Teacher" course's author. For deletion:
-make a throwaway account, Settings → type "DELETE" → confirm it's gone and you're
-signed out. No env/dashboard changes needed (the `delete-account` function
-deploys automatically because it's declared in `config.toml`, and uses the
-platform-injected service-role key). Then merge.
+**What you do next:** review the preview — on your own course, rename a mock
+test, remove/add a material and hit Regenerate; on Explore, search + filter and
+toggle Save (reload to confirm it sticks). No env or dashboard changes needed.
+Then merge.
 
-**How to roll it back:** revert this PR. The `display_name` column and
-`public_profiles` view are additive (drop later if you like); the
-`delete-account` function stops being invoked once the client code is gone (you
-can also delete it from the dashboard, but leaving it is harmless).
+**How to roll it back:** revert this PR. It's code-only (no schema change), so
+there's nothing to undo in the database.

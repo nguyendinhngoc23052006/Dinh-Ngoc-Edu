@@ -1,25 +1,28 @@
-# code-reviewer verdict — delete-account
+# code-reviewer verdict — Phase 2 (5 features)
 
-**Verdict: PASS.** Two warns fixed in-diff; one deferred with rationale.
+**Verdict: PASS.** Both blockers fixed in-diff.
 
 ## Fixed
-- **CSS collision.** The new `button.danger` rule would have restyled
-  pre-existing `.danger` buttons (ConfirmDialog, CourseSettings, PetsPage). Now
-  scoped to `.danger-zone button.danger`, so only the delete button is affected.
-- **File size.** Extracted the danger zone into a self-contained
-  `components/settings/DeleteAccountCard.tsx` (owns its own state); SettingsPage
-  is back to 168 lines.
+- **`unsaveCourse` now tested.** Added happy-path (asserts `user_id`+`course_id`
+  scoping) and error-surfaces tests in `savedCourseService.test.ts`.
+- **Concurrent save double-click guarded.** ExplorePage tracks an `inFlight` Set
+  of course ids; `toggleSave` early-returns if already in flight, and the button
+  is `disabled={inFlight.has(course.id)}`.
 
-## Deferred (not a blocker)
-- `corsHeaders` + `json()` are now duplicated across all four Edge Functions.
-  Extracting `supabase/functions/_shared/http.ts` is warranted, but that is a
-  behaviour-preserving refactor touching three functions unrelated to this
-  feature — our rules keep refactors out of feature PRs. Left as debt (noted in
-  the PR), to be done stand-alone.
+## Warns (accepted)
+- `MockTestList` Cancel button isn't disabled during a parent rename/delete —
+  cosmetic only (a reload corrects the title); left as-is.
+- `CoursePage` is 342 lines after the `OwnerCourseControls` extraction — all
+  course status/orchestration, single responsibility; the remaining bulk is
+  pre-existing status banners, not this phase's additions.
 
 ## Passed
-- Components call the service layer (`authService`), not supabase directly.
-- UI states: typed-"DELETE" gate, busy/disabled, error, success navigation.
-- `authService.test.ts` covers `confirmsDeletion` and `deleteAccount` (happy +
-  error, and that signOut is skipped on error).
-- `delete-account` is declared in `config.toml`; idempotent not-found handling.
+- No Supabase calls in components/pages (all via services).
+- Sibling tests for every changed service: `listPublicCourses`
+  (filter/search/escape), `renameMockTest`/`deleteMockTest` (incl. 120-char cap),
+  `deleteMaterial` (happy + storage-error stops before row delete),
+  `listSavedCourseIds`/`unsaveCourse` — happy + unhappy.
+- `isSaved` derivation (`localSaves[id] ?? saved.data?.has(id) ?? false`) and the
+  applied-vs-typed search split are correct — no stale-state/effect bugs.
+- `OwnerCourseControls` / `MaterialsManager` are single-responsibility; no
+  duplication.

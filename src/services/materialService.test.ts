@@ -1,7 +1,17 @@
-import { describe, expect, test, vi } from 'vitest'
-import { toStorageName, validateMaterialFile } from './materialService'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { supabaseMock } from '../test/supabaseMock'
+import {
+  deleteMaterial,
+  toStorageName,
+  validateMaterialFile,
+} from './materialService'
 
-vi.mock('../lib/supabaseClient', () => ({ supabase: {} }))
+vi.mock('../lib/supabaseClient', async () => {
+  const { supabaseMock } = await import('../test/supabaseMock')
+  return { supabase: supabaseMock.client }
+})
+
+beforeEach(() => supabaseMock.reset([]))
 
 describe('validateMaterialFile', () => {
   test('accepts a normal pdf', () => {
@@ -65,5 +75,25 @@ describe('toStorageName', () => {
     const name = toStorageName('考试.pdf')
     expect(name).toMatch(/^[A-Za-z0-9._-]+$/)
     expect(name).toMatch(/\.pdf$/)
+  })
+})
+
+describe('deleteMaterial', () => {
+  test('removes the storage object, then the row', async () => {
+    supabaseMock.reset([
+      { data: null, error: null }, // storage remove
+      { data: null, error: null }, // row delete
+    ])
+    await deleteMaterial({ id: 'm1', storage_path: 'u/c/notes.pdf' })
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('remove'))).toBe(true)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('delete'))).toBe(true)
+  })
+
+  test('stops and surfaces a storage error without deleting the row', async () => {
+    supabaseMock.reset([{ data: null, error: { message: 'storage boom' } }])
+    await expect(
+      deleteMaterial({ id: 'm1', storage_path: 'u/c/notes.pdf' }),
+    ).rejects.toThrow(/storage boom/)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('delete'))).toBe(false)
   })
 })

@@ -18,17 +18,24 @@ function NewCoursePage() {
     // A failure here leaves nothing behind; the form shows the error.
     const course = await createCourse(input.title, input.outputLanguage)
     clearPendingCourse()
+    // The shell now exists, so resubmitting would duplicate it. Instead of
+    // swallowing an upload/generation failure, we carry it to the course page
+    // (which has the Start-generation, materials, and Delete recovery paths) and
+    // show it there.
+    let uploadError: string | null = null
     try {
       for (const file of input.files) {
         await uploadMaterial(course.id, file)
       }
       await startGeneration(course.id)
-    } catch {
-      // The course shell already exists — resubmitting the form would only
-      // create a duplicate. Its page has the recovery paths instead: it shows
-      // the 'pending' state with a Start-generation button, and Delete.
+    } catch (cause) {
+      uploadError =
+        cause instanceof Error ? cause.message : 'Upload or generation failed.'
     }
-    navigate(`/courses/${course.id}`)
+    navigate(
+      `/courses/${course.id}`,
+      uploadError ? { state: { uploadError } } : undefined,
+    )
   }
 
   return (

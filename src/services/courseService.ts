@@ -84,13 +84,40 @@ export async function listMyCourses(page = 0): Promise<Course[]> {
   return (data ?? []) as Course[]
 }
 
-export async function listPublicCourses(page = 0): Promise<Course[]> {
-  const { data, error } = await supabase
-    .from('courses')
-    .select()
-    .eq('visibility', 'public')
-    .order('created_at', { ascending: false })
-    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+export type PublicCourseSort = 'recent' | 'title'
+
+export interface PublicCourseQuery {
+  search?: string
+  language?: string
+  sort?: PublicCourseSort
+}
+
+// The public catalogue, with optional title search, language filter, and sort.
+// Always scoped to public courses and paginated, so the result set stays bounded
+// however the caller filters.
+export async function listPublicCourses(
+  page = 0,
+  query: PublicCourseQuery = {},
+): Promise<Course[]> {
+  let request = supabase.from('courses').select().eq('visibility', 'public')
+
+  const search = query.search?.trim()
+  // Escape the LIKE metacharacters so a user typing % or _ searches literally.
+  if (search) {
+    const escaped = search.replace(/[\\%_]/g, (char) => `\\${char}`)
+    request = request.ilike('title', `%${escaped}%`)
+  }
+  if (query.language) request = request.eq('output_language', query.language)
+
+  request =
+    query.sort === 'title'
+      ? request.order('title', { ascending: true })
+      : request.order('created_at', { ascending: false })
+
+  const { data, error } = await request.range(
+    page * PAGE_SIZE,
+    (page + 1) * PAGE_SIZE - 1,
+  )
   if (error) throw new Error(error.message)
   return (data ?? []) as Course[]
 }
