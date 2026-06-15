@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
@@ -7,6 +7,9 @@ export default defineConfig({
   // NEXT_PUBLIC_ names; Vite must expose them to the browser too.
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   test: {
+    // The e2e/ folder is Playwright (its own runner); keep Vitest out of it —
+    // its *.spec.ts files import @playwright/test, which Vitest can't run.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     // Edge Function code imports Deno npm: specifiers; alias them to the same
     // packages (dev mirrors pinned to the SAME versions as the npm: strings in
     // supabase/functions — keep them in lockstep) so vitest can test the pure

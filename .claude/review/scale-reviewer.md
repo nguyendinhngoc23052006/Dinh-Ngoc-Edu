@@ -1,11 +1,15 @@
-# scale-reviewer verdict — Phase 3 (polish)
+# scale-reviewer verdict — E2E gate (step 8.5)
 
-**Verdict: PASS.** No findings.
+**Verdict: PASS.**
 
-- The PR adds NO queries, fetching, or loops — pure label helpers, an error
-  display, and an Enter-key handler.
-- Confirmed the `CosmeticsLayer` "refetch on every navigation" premise is FALSE:
-  it's mounted in `AppLayout`, a layout route with `<Outlet/>` that stays mounted
-  across child navigations, and `useAsync(fn, [])` is strictly dep-based — so the
-  cosmetics catalog and species load once per app session, not per navigation.
-  No change warranted (recorded in MEMORY.md).
+- Pagination / indexes / N+1 / idempotent-write rules are N/A: this PR adds no
+  database queries, migrations, or data-access code. The mocked intercept returns
+  static stubs and never touches Supabase.
+- `fullyParallel: true`, chromium only, three tests — parallelism is appropriate
+  for the suite size.
+
+## Advisory (no change needed now)
+- `retries: 2` on CI can mask a genuinely flaky test — watch for retry
+  consumption in CI summaries and fix the test rather than lean on retries.
+- The `webServer` command runs a full Vite build per E2E run (~30-60s); if total
+  suite runtime exceeds ~3 min as it grows, cache `dist/` from a prior job.
