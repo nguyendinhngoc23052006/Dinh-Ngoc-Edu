@@ -1,67 +1,82 @@
-# Remove the dead "Regenerate course" button
+# UI overhaul — a playful, immersive, interconnected game world
 
-The owner-only **"Regenerate course"** button in `OwnerCourseControls` was a
-silent no-op for finished courses. It rendered for **every** `ready` course, but
-the `generate-course` Edge Function returns `200` and does nothing when a ready
-course has no empty lessons (`index.ts` short-circuits after the question-count
-check) — so clicking it produced no pipeline run and no feedback. This removes
-that dead control.
+A full visual overhaul of the front end toward the look the product already
+wants to be: a gamified, pet-powered learning world rather than a plain form
+app. The change is **presentational only** — no schema, services, routes, env,
+or data flow changed, so every existing test, the build, and all client-side
+guards keep working untouched.
 
-The **working** regenerate path is untouched: `CoursePage` still shows a
-"Regenerate course" button when a ready course has lessons missing questions
-(`status === 'ready'` AND some node `question_count === 0`), which is the only
-case the Edge Function actually re-runs. `LessonPlayer`'s empty-lesson message
-still points the owner there, accurately.
+Three things were asked for and delivered:
 
-Per the product decision, finished courses are intentionally **not**
-re-generatable from the controls block; owners can still manage source materials
-at any time (they apply at the next regeneration).
+- **Playful game world.** A full rewrite of `src/index.css`: richer tokens
+  (deeper greens, a gold accent for credits/XP, layered shadows, rounder
+  radii), chunky tactile buttons with a press, a persistent dotted-grid + aurora
+  backdrop behind every page, glowing "next" course nodes, a frosted HUD-style
+  top bar, hover-lift on collectible-style cards, and a loading shimmer.
+- **Persistent shell + route transitions.** `AppLayout` gains a brand mark and
+  wraps the `<Outlet/>` in a `route-view` div keyed on `location.pathname`, so
+  each navigation fades and rises in — the app reads as one continuous space.
+  The pet companion and credits HUD stay put across pages.
+- **Unified theme system.** The equipped theme now reskins the **whole app**,
+  not just the course map: `[data-dimension] .app` paints an immersive backdrop
+  per theme (meadow / volcano / tide / twilight / cosmos). Cards are a fixed
+  light surface with fixed dark text, so they stay readable over every
+  backdrop — which also **fixes a latent contrast bug** where the dark Midnight
+  theme's light `--ink` was nearly invisible on white cards.
 
-## What's in the diff
-- **`src/components/courses/OwnerCourseControls.tsx`** — removed the
-  `status === 'ready'` regenerate `<p>`/`<button>` block and the now-unused
-  `onRegenerate` prop (interface + destructuring); updated the block comment.
-- **`src/pages/CoursePage.tsx`** — dropped `onRegenerate={handleStartGeneration}`
-  at the call site. `handleStartGeneration` is still used by the Start/Retry
-  button and the empty-lessons banner, so nothing is orphaned.
-- **`src/components/courses/MaterialsManager.tsx`** — one comment wording fix
-  (the parent no longer "surfaces that button" for finished courses).
-- **`src/components/courses/OwnerCourseControls.test.tsx`** — new suite (3 tests):
-  controls render; no "Regenerate course" button for a `ready` course; none for
-  a `pending` course. Uses the `// @vitest-environment happy-dom` + shared
-  `supabaseMock` convention.
-- **`MEMORY.md`** — one corollary line so the dead button is never re-added.
+Every class name the previous stylesheet defined is preserved, along with the
+pet-sprite keyframe math, `prefers-reduced-motion` handling, and the course-map
+dimension reskins. No new dependency, no new external resource (system fonts,
+CSS gradients only).
 
-## Notes / debt
-- No migration, no schema, no `src/types`, no env/client change.
-- The Edge Function `200`-on-no-empty-lessons guard is left as-is — it's the
-  correct safety net; this PR just stops offering a button that always hit it.
-- Out of scope, noted not fixed: Supabase advisors currently flag a
-  `SECURITY DEFINER` view `public_profiles` (ERROR) and leaked-password
-  protection disabled — unrelated to this change.
+## Assumptions
+- Direction confirmed with the human up front: "playful game world", tied
+  together by a "persistent shell" + "unified theme system", **staying in
+  vanilla CSS** (no framework — no new dependency).
+- The 5 themes' exact palettes were read from the seed migrations
+  (`20260613052000_cosmetics.sql` / `20260613170000_theme_dimensions.sql`);
+  only Midnight is dark, which drives the fixed-light-card decision above.
+
+## Reviewer note
+The code reviewer initially flagged two items; both were investigated:
+1. "Six JSX classes dropped" — **false positive**: `.course-card`,
+   `.lesson-player`, `.question`, `.prompt`, `.hint`, `.feedback` were never
+   defined on `main` (verified by grep); the rewrite dropped nothing and added
+   no speculative styles for them.
+2. `.ghost`/cancel-button contrast — **fixed**: the `ConfirmDialog` cancel
+   (`.ghost`) and destructive confirm (`.danger`) both fell through to the green
+   primary style. `.ghost` is now a standalone secondary modifier and
+   `button.danger` a destructive red; the more-specific `.market-card` rules
+   keep market/pets visuals unchanged.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — no migration; no schema/types touched (true by absence)
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — `lint` 0, `typecheck` clean, `test` 272 passed, `e2e` 3 passed; test covers the controls-render path and the no-dead-button guard for `ready`/`pending`
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — **no migration** (presentational only); no new tables; types untouched
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — 272 unit + 3 e2e pass, build clean; existing happy/unhappy suites unchanged
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code — no env/client config touched
 - [x] irreversible actions guarded + idempotent + flagged — none in this PR
 - [x] no avoidable debt; memory updated and pruned
 - [x] migrations explained in plain English — n/a, no migration
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
-- [x] every subagent dispatched on a model below the orchestrator's — never inherited (research on Haiku; the three reviewers on Sonnet, one tier below this Opus session)
+- [x] every subagent dispatched on a model below the orchestrator's — never inherited (reviewers dispatched explicitly on the tier below)
 
 ## For you
-**What changed:** the owner controls no longer show a "Regenerate course" button
-that did nothing on finished courses; the real regenerate button (for courses
-with empty lessons) stays.
+**What changed:**
+- Rewrote `src/index.css` into a playful "game world" design (richer tokens,
+  tactile buttons, glowing nodes, frosted HUD bar, immersive backdrop).
+- `AppLayout` now shows a brand mark and animates each route change, with the
+  pet + credits HUD persistent across pages.
+- The equipped theme reskins the entire app (per-theme backdrops), and cards
+  became fixed light surfaces — fixing the dark-theme card-contrast bug.
+- Promoted `.ghost`/`button.danger` to real button modifiers so the confirm
+  dialog's cancel/confirm buttons are visually distinct.
 
-**What you do next:** review the preview, then merge — no env/secret action
-needed. To eyeball it: open a finished course you own → the controls block shows
-visibility, settings, and source materials but **no** "Regenerate course"
-button; a course with lessons missing questions still shows one in its banner.
+**What you do next:** review the preview deployment on this PR — click through
+Landing, Dashboard, a Course map, the Market, Pets, and Settings; in Settings
+equip each theme (especially **Midnight**) and confirm every page reskins and
+all text stays readable. No env/secret action needed. Then merge.
 
-**How to roll it back:** revert this PR — it only removes a button + a prop and
-adds a test; no schema, env, or data implications, so reverting restores the old
-(dead) button with zero production impact.
+**How to roll it back:** revert this PR — it only touches `src/index.css`,
+`src/components/layout/AppLayout.tsx`, the review verdicts, and `MEMORY.md`;
+reverting fully restores the previous look with no data or schema implications.

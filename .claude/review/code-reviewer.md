@@ -1,26 +1,33 @@
-# code-reviewer verdict — remove dead "Regenerate course" button
+# code-reviewer verdict — UI overhaul (playful game world)
 
-**Verdict: PASS.**
+**Verdict: PASS** (initial FAIL — both findings investigated; one was a false
+positive, one fixed before commit).
 
-Checked: src/components/courses/OwnerCourseControls.tsx,
-src/pages/CoursePage.tsx, src/components/courses/MaterialsManager.tsx,
-src/components/courses/OwnerCourseControls.test.tsx, and grep for residual
-regenerate references across src/.
+Reviewed: `src/index.css` (full rewrite), `src/components/layout/AppLayout.tsx`
+(brand-mark span + `route-view` wrapper keyed on `location.pathname`).
 
-- `onRegenerate` fully removed from the interface, destructuring, and the single
-  call site in CoursePage.tsx — zero remaining references in src/.
-- `handleStartGeneration` is NOT orphaned: still referenced by its definition,
-  the `startButton` const, and the empty-lessons banner `onClick` in CoursePage.
-  Its `startGeneration` import stays consumed.
-- All props still passed to `<OwnerCourseControls>` match the trimmed interface;
-  no prop mismatch. `busy`/`course` still used inside the component.
-- The only "Regenerate course" button now lives at CoursePage (behind
-  `ready && some node question_count === 0`). LessonPlayer.tsx's user-facing
-  "Regenerate option" string still accurately points at that banner — not a dead
-  reference.
-- New test follows the project convention: `// @vitest-environment happy-dom`
-  docblock, shared `supabaseMock`, role/text queries, no jest-dom; covers
-  controls-render + no-button for `ready` and `pending`. Component stays purely
-  compositional (no data access), one responsibility, well under ~200 lines.
+FINDING 1 (raised: "six JSX classes dropped — silent regression") — **NOT a
+regression.** Verified against `origin/main:src/index.css`: `.course-card`,
+`.lesson-player`, `.question`, `.prompt`, `.hint`, and `.feedback` were never
+defined in the previous stylesheet (grep count 0 on main). They are unstyled
+JSX hooks that shipped unstyled; the rewrite preserves every selector the old
+file defined and drops none. No speculative styles added for them (project
+simplicity rule: no styling a hook with no demonstrated need).
 
-No duplication, no dead code, no mixed responsibility introduced.
+FINDING 2 (raised: `.ghost`/cancel-button contrast) — **FIXED.** The reviewer's
+PetsPage sub-claim was off (its buttons sit in `.card.market-card`, so they were
+already styled), but the core point held for `ConfirmDialog`: its `.ghost`
+cancel and `.danger` confirm both fell through to the green primary, leaving the
+modal's two buttons indistinguishable. Promoted `.ghost` to a standalone
+secondary modifier (transparent + brand outline) and added a destructive
+`button.danger` (solid red); the more-specific `.market-card button.danger`
+keeps market/pets visuals unchanged. Confirm/cancel now read distinctly.
+
+Checks that passed: AppLayout renders UI only (no data access; `useLocation`
+keys the wrapper, `signOut` delegated to the service); `route-in` keyframe reuse
+by `.modal-card` is intentional sharing, not duplication; `node-step-0..3`
+winding offsets correct; `prefers-reduced-motion` covers all newly
+added/modified animations (`route-view`, pet sprite/emoji, loading shimmer); all
+five `[data-dimension]` themes have both `.app` backdrop and `.course-map`
+rules; no data access in `src/components`; no service files changed.
+Lint/typecheck/test (272)/build/e2e (3) all green after the fix.
