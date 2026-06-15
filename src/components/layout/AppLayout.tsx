@@ -1,10 +1,4 @@
-import {
-  Link,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/profileContext'
 import { signOut } from '../../services/authService'
@@ -14,9 +8,6 @@ function AppLayout() {
   const { session, loading } = useAuth()
   const { profile } = useProfile()
   const navigate = useNavigate()
-  // Keying the page wrapper on the path replays the route-in animation on each
-  // navigation, so moving between pages reads as movement through one space.
-  const location = useLocation()
 
   async function handleSignOut() {
     try {
@@ -31,9 +22,6 @@ function AppLayout() {
     <div className="app">
       <header className="app-header">
         <Link to="/" className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ⚡
-          </span>
           Last Minute
         </Link>
         <nav className="app-nav">
@@ -59,9 +47,7 @@ function AppLayout() {
         </nav>
       </header>
       <main className="app-main">
-        <div className="route-view" key={location.pathname}>
-          <Outlet />
-        </div>
+        <Outlet />
       </main>
       <CosmeticsLayer />
     </div>
