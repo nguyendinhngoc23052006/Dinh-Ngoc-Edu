@@ -10,6 +10,10 @@ export default defineConfig({
     // The e2e/ folder is Playwright (its own runner); keep Vitest out of it —
     // its *.spec.ts files import @playwright/test, which Vitest can't run.
     exclude: [...configDefaults.exclude, 'e2e/**'],
+    // Component/hook suites opt into a DOM with a `// @vitest-environment
+    // happy-dom` docblock; the service/lib suites stay in the default node
+    // env. This setup file runs in both and only cleans up rendered DOM.
+    setupFiles: ['src/test/setup.ts'],
     // Edge Function code imports Deno npm: specifiers; alias them to the same
     // packages (dev mirrors pinned to the SAME versions as the npm: strings in
     // supabase/functions — keep them in lockstep) so vitest can test the pure
