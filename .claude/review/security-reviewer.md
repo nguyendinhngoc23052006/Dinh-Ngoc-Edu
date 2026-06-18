@@ -1,19 +1,16 @@
-# security-reviewer verdict — Phase 4 component tests + Phase 5 docs
+# security-reviewer verdict — remove dead "Regenerate course" button
 
 **Verdict: PASS.**
 
-Checked: src/test/setup.ts,
-src/components/lessons/{ChoiceQuestion,FillBlankQuestion,CalcQuestion}.test.tsx,
-src/components/ui/ConfirmDialog.test.tsx,
-src/components/courses/CourseCard.test.tsx,
-src/components/settings/DeleteAccountCard.test.tsx,
-src/hooks/useAsync.test.tsx, docs/RUNBOOK.md, README.md, vite.config.ts,
-package.json.
+Checked: src/components/courses/OwnerCourseControls.tsx,
+src/pages/CoursePage.tsx, src/components/courses/MaterialsManager.tsx,
+src/components/courses/OwnerCourseControls.test.tsx.
 
-No real secrets, credentials, or hardcoded keys in any test or doc file. All
-fixture data uses synthetic placeholder IDs. The supabaseClient mock in
-DeleteAccountCard.test.tsx contains no real URL or key. RUNBOOK.md and
-README.md correctly state that the browser receives only the publishable key
-and that Edge Functions read secrets from Deno.env only. No new tables, no RLS
-concern, no unvalidated user input, no auth/money/PII/upload surface touched.
-New deps are dev-only and pinned.
+Removing the UI button does not widen any server-side trust boundary — the
+`generate-course` Edge Function guard is unchanged, and the `isOwner` gate at
+the OwnerCourseControls call site is untouched. No secrets, real keys, or
+hardcoded credentials in the change; the new test mocks `../../lib/supabaseClient`
+via the shared `supabaseMock` proxy (synthetic IDs only, no real URL/key). No new
+tables, no RLS surface, no unvalidated input, no auth/money/PII/upload path
+touched. Removed prop `onRegenerate` leaves no dangling secret or exposed
+endpoint.

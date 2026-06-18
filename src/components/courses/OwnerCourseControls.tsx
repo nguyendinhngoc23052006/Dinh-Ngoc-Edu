@@ -11,12 +11,11 @@ interface OwnerCourseControlsProps {
   onRename: (title: string) => void
   onDelete: () => void
   onMaterialsChanged: () => void
-  onRegenerate: () => void
 }
 
-// The owner-only management block for a course: visibility, rename/delete,
-// source materials, and regeneration. Grouped here so CoursePage stays focused
-// on loading + status.
+// The owner-only management block for a course: visibility, rename/delete, and
+// source materials. Grouped here so CoursePage stays focused on loading +
+// status.
 function OwnerCourseControls({
   course,
   materials,
@@ -25,7 +24,6 @@ function OwnerCourseControls({
   onRename,
   onDelete,
   onMaterialsChanged,
-  onRegenerate,
 }: OwnerCourseControlsProps) {
   return (
     <>
@@ -45,15 +43,6 @@ function OwnerCourseControls({
         materials={materials}
         onChanged={onMaterialsChanged}
       />
-      {course.status === 'ready' ? (
-        <p className="state state-empty">
-          Changed the materials? Regenerating rebuilds the whole course
-          (chapters, questions, and lesson progress) from the current files.{' '}
-          <button type="button" disabled={busy} onClick={onRegenerate}>
-            Regenerate course
-          </button>
-        </p>
-      ) : null}
     </>
   )
 }
