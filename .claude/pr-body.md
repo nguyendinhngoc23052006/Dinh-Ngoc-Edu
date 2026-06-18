@@ -1,80 +1,67 @@
-# Phase 4 (component/hook tests) + Phase 5 (docs/runbook)
+# Remove the dead "Regenerate course" button
 
-Closes the last two post-MVP roadmap items in one PR.
+The owner-only **"Regenerate course"** button in `OwnerCourseControls` was a
+silent no-op for finished courses. It rendered for **every** `ready` course, but
+the `generate-course` Edge Function returns `200` and does nothing when a ready
+course has no empty lessons (`index.ts` short-circuits after the question-count
+check) — so clicking it produced no pipeline run and no feedback. This removes
+that dead control.
 
-**Phase 4 — the project's first React component & hook tests.** All 246
-existing suites covered `src/services`, `src/lib`, and `supabase/functions`;
-there were zero tests that render a component. This adds that layer with React
-Testing Library + happy-dom (dev-only, pinned), wired so the existing
-node-environment service/lib suites are untouched.
+The **working** regenerate path is untouched: `CoursePage` still shows a
+"Regenerate course" button when a ready course has lessons missing questions
+(`status === 'ready'` AND some node `question_count === 0`), which is the only
+case the Edge Function actually re-runs. `LessonPlayer`'s empty-lesson message
+still points the owner there, accurately.
 
-**Phase 5 — docs.** The README was a one-line stub; it's now a real overview +
-quickstart, and a new `docs/RUNBOOK.md` documents deploy flow, env/secret
-click-paths, the `/health` + uptime monitor, and rollback.
+Per the product decision, finished courses are intentionally **not**
+re-generatable from the controls block; owners can still manage source materials
+at any time (they apply at the next regeneration).
 
 ## What's in the diff
-
-### Phase 4 — tests
-- **New dev deps** (`package.json` + lockfile): `@testing-library/react`,
-  `@testing-library/user-event`, `happy-dom` — all pinned, dev-only.
-- **`src/test/setup.ts`** — `afterEach(cleanup)`; a no-op for the node-env
-  suites that also load it, so it's safe globally.
-- **`vite.config.ts`** — one line: `setupFiles: ['src/test/setup.ts']`.
-  Component/hook suites opt into a DOM with a `// @vitest-environment happy-dom`
-  docblock, so the service/lib suites keep running in the default node env.
-- **8 new suites (23 tests)**: `ChoiceQuestion`, `FillBlankQuestion`,
-  `CalcQuestion`, `ConfirmDialog`, `CourseCard`, `DeleteAccountCard`, and the
-  `useAsync` hook. Happy and unhappy paths each: disabled-until-valid,
-  submit payloads, Enter-to-submit, Escape/backdrop/busy on the dialog,
-  conditional progress bar, and the irreversible delete-account flow
-  (success → navigate home; failure → error shown, no navigation). Tests use
-  plain DOM assertions (no jest-dom dependency) and the existing
-  `supabaseClient` mock convention.
-
-### Phase 5 — docs
-- **`README.md`** — overview, local-dev quickstart, the two-prefix env
-  fallback, scripts table, testing model, CI workflows. Links to ARCHITECTURE
-  and the new RUNBOOK.
-- **`docs/RUNBOOK.md`** — the four parts (GitHub/Supabase/Vercel/AI), release
-  flow, production env vars + Edge Function secrets with click-paths,
-  `/health` + `uptime.yml` (needs the `PRODUCTION_URL` repo variable), and a
-  rollback section (Vercel Instant Rollback, revert PR, fix-forward
-  migrations, secret rotation).
+- **`src/components/courses/OwnerCourseControls.tsx`** — removed the
+  `status === 'ready'` regenerate `<p>`/`<button>` block and the now-unused
+  `onRegenerate` prop (interface + destructuring); updated the block comment.
+- **`src/pages/CoursePage.tsx`** — dropped `onRegenerate={handleStartGeneration}`
+  at the call site. `handleStartGeneration` is still used by the Start/Retry
+  button and the empty-lessons banner, so nothing is orphaned.
+- **`src/components/courses/MaterialsManager.tsx`** — one comment wording fix
+  (the parent no longer "surfaces that button" for finished courses).
+- **`src/components/courses/OwnerCourseControls.test.tsx`** — new suite (3 tests):
+  controls render; no "Regenerate course" button for a `ready` course; none for
+  a `pending` course. Uses the `// @vitest-environment happy-dom` + shared
+  `supabaseMock` convention.
+- **`MEMORY.md`** — one corollary line so the dead button is never re-added.
 
 ## Notes / debt
-- Pre-existing dev-only `node-tar` advisories already in the lockfile — **not**
-  introduced here (production `npm audit` is clean). Left as-is; out of scope.
-- happy-dom is the project's first DOM test env (the one question I asked).
+- No migration, no schema, no `src/types`, no env/client change.
+- The Edge Function `200`-on-no-empty-lessons guard is left as-is — it's the
+  correct safety net; this PR just stops offering a button that always hit it.
+- Out of scope, noted not fixed: Supabase advisors currently flag a
+  `SECURITY DEFINER` view `public_profiles` (ERROR) and leaked-password
+  protection disabled — unrelated to this change.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — no migration; no schema/types touched (true by absence)
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — `lint` 0, `typecheck` clean, `test` 272 passed, `e2e` 3 passed; test covers the controls-render path and the no-dead-button guard for `ready`/`pending`
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
-- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
-- [x] irreversible actions guarded + idempotent + flagged
+- [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code — no env/client config touched
+- [x] irreversible actions guarded + idempotent + flagged — none in this PR
 - [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English
+- [x] migrations explained in plain English — n/a, no migration
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
-- [x] every subagent dispatched on a model below the orchestrator's — never inherited
-
-(No migration and no new irreversible *code* in this PR — the delete-account
-path is pre-existing and only newly *tested* here; migration/RLS boxes true by
-absence. Gates run green locally: `lint`, `typecheck`, `test` 269, `e2e` 3.
-Reviewers ran on Sonnet, one tier below this Opus session.)
+- [x] every subagent dispatched on a model below the orchestrator's — never inherited (research on Haiku; the three reviewers on Sonnet, one tier below this Opus session)
 
 ## For you
-**What changed:** the app now has React component + hook tests (its first), and
-the README/runbook are real docs instead of a stub.
+**What changed:** the owner controls no longer show a "Regenerate course" button
+that did nothing on finished courses; the real regenerate button (for courses
+with empty lessons) stays.
 
-**What you do next:** review the preview, then merge. One manual action that is
-**not** in this PR: confirm the `e2e` check is listed under **required checks**
-in the GitHub ruleset (**repo → Settings → Rules/Branches → the `main`
-ruleset → require the `e2e` status check**) so #42's gate is enforced. The
-uptime monitor also needs a repo **variable** `PRODUCTION_URL` (**repo →
-Settings → Secrets and variables → Actions → Variables**) — see
-`docs/RUNBOOK.md`.
+**What you do next:** review the preview, then merge — no env/secret action
+needed. To eyeball it: open a finished course you own → the controls block shows
+visibility, settings, and source materials but **no** "Regenerate course"
+button; a course with lessons missing questions still shows one in its banner.
 
-**How to roll it back:** revert this PR. It's test files + a vitest setup line +
-dev-only deps + docs — no runtime/app code, no migration, no schema. Reverting
-removes the new suites and restores the stub README with zero production impact.
+**How to roll it back:** revert this PR — it only removes a button + a prop and
+adds a test; no schema, env, or data implications, so reverting restores the old
+(dead) button with zero production impact.

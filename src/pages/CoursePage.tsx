@@ -296,7 +296,6 @@ function CoursePage() {
           onRename={handleRename}
           onDelete={handleDelete}
           onMaterialsChanged={state.reload}
-          onRegenerate={handleStartGeneration}
         />
       ) : session ? (
         <p className="visitor-actions">

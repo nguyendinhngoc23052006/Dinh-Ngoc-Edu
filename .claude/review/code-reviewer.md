@@ -1,25 +1,26 @@
-# code-reviewer verdict — Phase 4 component/hook tests + Phase 5 docs
+# code-reviewer verdict — remove dead "Regenerate course" button
 
-**Verdict: PASS** (one WARN fixed before commit; one non-blocking note left).
+**Verdict: PASS.**
 
-Reviewed: src/test/setup.ts, vite.config.ts setupFiles addition, package.json
-new dev deps, src/components/lessons/{ChoiceQuestion,FillBlankQuestion,
-CalcQuestion}.test.tsx, src/components/ui/ConfirmDialog.test.tsx,
-src/components/courses/CourseCard.test.tsx,
-src/components/settings/DeleteAccountCard.test.tsx, src/hooks/useAsync.test.tsx,
-README.md, docs/RUNBOOK.md.
+Checked: src/components/courses/OwnerCourseControls.tsx,
+src/pages/CoursePage.tsx, src/components/courses/MaterialsManager.tsx,
+src/components/courses/OwnerCourseControls.test.tsx, and grep for residual
+regenerate references across src/.
 
-FIXED — ConfirmDialog.test.tsx — the "backdrop clicks cancel" test asserted
-only the negative (card click does not cancel) and never clicked the backdrop.
-Now clicks `.modal-overlay` and asserts onCancel fires, plus keeps the card
-stopPropagation negative case.
+- `onRegenerate` fully removed from the interface, destructuring, and the single
+  call site in CoursePage.tsx — zero remaining references in src/.
+- `handleStartGeneration` is NOT orphaned: still referenced by its definition,
+  the `startButton` const, and the empty-lessons banner `onClick` in CoursePage.
+  Its `startGeneration` import stays consumed.
+- All props still passed to `<OwnerCourseControls>` match the trimmed interface;
+  no prop mismatch. `busy`/`course` still used inside the component.
+- The only "Regenerate course" button now lives at CoursePage (behind
+  `ready && some node question_count === 0`). LessonPlayer.tsx's user-facing
+  "Regenerate option" string still accurately points at that banner — not a dead
+  reference.
+- New test follows the project convention: `// @vitest-environment happy-dom`
+  docblock, shared `supabaseMock`, role/text queries, no jest-dom; covers
+  controls-render + no-button for `ready` and `pending`. Component stays purely
+  compositional (no data access), one responsibility, well under ~200 lines.
 
-NOTE (left, not a violation) — the `checkButton()` one-liner repeats across
-the three lesson test files; CLAUDE.md forbids abstracting until a second real
-use within a caller, and each is a single per-file caller. Extract to a shared
-helper only if a fourth lesson test appears.
-
-All other checks passed: no jest-dom matchers, environment docblocks match
-existing style, mock convention matches authService.test.ts, no Supabase in
-components, happy and unhappy paths in every suite, no over-mocking, files
-under 80 lines, deps pinned and dev-only, README/RUNBOOK internal links valid.
+No duplication, no dead code, no mixed responsibility introduced.

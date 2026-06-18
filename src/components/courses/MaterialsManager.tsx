@@ -14,8 +14,8 @@ interface MaterialsManagerProps {
 
 // Owner-only: manage a course's source files after creation. Adding a file runs
 // the same upload + text-extraction path as course creation; removing one
-// deletes the bytes and the row. Changes only take effect on the course once it
-// is regenerated (the parent surfaces that button).
+// deletes the bytes and the row. Changes only take effect on the course the
+// next time it is regenerated.
 function MaterialsManager({
   courseId,
   materials,
