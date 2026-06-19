@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import {
   Link,
   NavLink,
@@ -14,9 +15,24 @@ function AppLayout() {
   const { session, loading } = useAuth()
   const { profile } = useProfile()
   const navigate = useNavigate()
-  // Keying the page wrapper on the path replays the route-in animation on each
-  // navigation, so moving between pages reads as movement through one space.
   const location = useLocation()
+  const headerRef = useRef<HTMLElement>(null)
+  const lastY = useRef(0)
+
+  // On mobile: hide the header while scrolling down, reveal it on scroll-up.
+  // The CSS transition handles the smooth fade+slide; JS only toggles the class.
+  useEffect(() => {
+    const THRESHOLD = 8 // px — ignore tiny jitter
+    function onScroll() {
+      const y = window.scrollY
+      const delta = y - lastY.current
+      if (Math.abs(delta) < THRESHOLD) return
+      headerRef.current?.classList.toggle('header-hidden', delta > 0 && y > 60)
+      lastY.current = y
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   async function handleSignOut() {
     try {
@@ -29,7 +45,7 @@ function AppLayout() {
 
   return (
     <div className="app">
-      <header className="app-header">
+      <header ref={headerRef} className="app-header">
         <Link to="/" className="brand">
           <span className="brand-mark" aria-hidden="true">
             ⚡
