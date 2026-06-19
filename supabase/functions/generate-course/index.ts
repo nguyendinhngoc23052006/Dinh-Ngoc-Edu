@@ -270,10 +270,7 @@ async function generate(
       // or hit rate limits — it sends one chunk and asks for one lesson's worth
       // of questions. ensureTime is called outside the per-node try/catch so a
       // genuine deadline throws cleanly to the outer handler.
-      // Cap at 3 per chapter — if more than 3 nodes are still empty after two
-      // attempts the source material is likely too sparse to help; further calls
-      // burn budget without improving results.
-      const finalMissing = emptyNodeIndexes(buckets).slice(0, 3)
+      const finalMissing = emptyNodeIndexes(buckets)
       for (const nodeIndex of finalMissing) {
         ensureTime(deadline)
         try {
@@ -331,13 +328,14 @@ async function generate(
         }
       }
     }
-    // After three retry levels, any node still empty is unrecoverable this run.
-    // Fail the course with a clear message rather than marking it 'ready' with
-    // missing lessons — a clean failure is retryable; a broken 'ready' state
-    // is confusing and harder to recover from.
-    if (emptyNodeCount > 0) {
+    // 1-2 empty nodes after all retries: mark the course ready and let the
+    // UI warning banner surface them — the owner can still use and study the
+    // vast majority of lessons. More than 2 empty is a signal the source
+    // material is too sparse across the board; fail so the owner sees a clear
+    // error rather than a partially-broken 'ready' state.
+    if (emptyNodeCount > 2) {
       throw new Error(
-        `Generation produced questions for most lessons but ${emptyNodeCount} lesson${emptyNodeCount === 1 ? '' : 's'} came back empty after multiple attempts. Retry — better-structured or smaller materials improve results.`,
+        `Generation left ${emptyNodeCount} lessons without questions after multiple attempts — too many to mark the course ready. Retry, or upload more detailed materials for those sections.`,
       )
     }
     if (totalQuestions === 0) {
