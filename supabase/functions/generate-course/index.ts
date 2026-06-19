@@ -9,7 +9,8 @@
 // Secrets (Supabase dashboard -> Edge Functions -> Secrets):
 //   AI_API_KEY   required — key for an OpenAI-compatible chat completions API
 //   AI_BASE_URL  optional — default Gemini's free-tier OpenAI-compatible URL
-//   AI_MODEL     optional — default gemini-2.5-flash
+//   AI_MODEL     optional — default gemini-2.5-flash (used for questions)
+//   AI_MODEL_LITE optional — default gemini-2.5-flash-lite (used for syllabus)
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
@@ -183,9 +184,10 @@ async function generate(
     }
 
     const language = course.output_language
+    const liteModel = Deno.env.get('AI_MODEL_LITE') ?? 'gemini-2.5-flash-lite'
     ensureTime(deadline)
     let syllabus = validateSyllabus(
-      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language)),
+      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, liteModel)),
       chunks.length,
     )
 
@@ -200,6 +202,7 @@ async function generate(
             await chatInLanguage(
               buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
               language,
+              liteModel,
             ),
           ),
           chunks.length,
@@ -415,11 +418,12 @@ async function extractMaterialsText(
 async function chatInLanguage(
   prompt: string,
   outputLanguage: string,
+  model?: string,
 ): Promise<string> {
   const system = buildSystemPrompt(outputLanguage)
-  const content = await chat(prompt, system)
+  const content = await chat(prompt, system, model)
   if (matchesOutputLanguage(content, outputLanguage)) return content
-  return chat(prompt + languageReminder(outputLanguage), system)
+  return chat(prompt + languageReminder(outputLanguage), system, model)
 }
 
 // One call to an OpenAI-compatible chat completions endpoint, with a short
@@ -427,12 +431,12 @@ async function chatInLanguage(
 // capped at 30 s so a hanging endpoint cannot silently consume the entire
 // pipeline budget: it throws, the outer catch in generate() marks the course
 // 'failed', and the user gets a retryable error instead of a stalled spinner.
-async function chat(prompt: string, system: string): Promise<string> {
+async function chat(prompt: string, system: string, modelOverride?: string): Promise<string> {
   const baseUrl = (
     Deno.env.get('AI_BASE_URL') ??
     'https://generativelanguage.googleapis.com/v1beta/openai'
   ).replace(/\/+$/, '')
-  const model = Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash'
+  const model = modelOverride ?? Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash'
   for (let attempt = 0; ; attempt += 1) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
