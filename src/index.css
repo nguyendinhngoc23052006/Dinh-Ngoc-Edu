@@ -1086,6 +1086,7 @@ button.danger {
 
 .pet-actions button {
   flex: 1;
+  width: auto;
 }
 
 .market-card button.danger {
