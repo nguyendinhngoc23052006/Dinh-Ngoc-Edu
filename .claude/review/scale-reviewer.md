@@ -1,13 +1,12 @@
-# Scale Review — 2026-06-19
+# Scale Review — 2026-06-19 (branch: claude/compassionate-meitner-chlzve)
 
 ## Verdict: PASS
 
-### Findings
+### What was checked
 
-**NOTE — `getCompletedNodeIds` has no `.limit()` (pre-existing)**
-The query filters by `.in('node_id', nodeIds)` with no `.limit()`. Caller caps at `MAX_NODES = 500`, so the practical ceiling holds, but the in-query guard is missing. Pre-existing, not introduced by this PR.
+- `supabase/functions/generate-course/index.ts` — the only changed file.
+- The `model` parameter addition does not introduce any new queries, indexes, or data access patterns.
+- No unbounded queries, N+1 patterns, or non-idempotent writes introduced.
+- Existing pagination, rate-limit delays, and timeout caps unchanged.
 
-**NOTE — Per-node `credit_prize` UPDATE is an N+1 write (pre-existing)**
-One `UPDATE nodes SET credit_prize = ?` per node inside the chapter loop. Hard-capped at 40 round-trips by generation constants. Acceptable within the 6-min pipeline budget. Pre-existing pattern.
-
-**PASS — Migration `20260619050000` introduces no tables, indexes, or queries. All existing pagination/limits intact. Pipeline timeouts and content caps verified. Idempotency keys self-prune. All filtered columns indexed.**
+No findings.

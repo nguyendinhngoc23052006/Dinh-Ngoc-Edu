@@ -1,22 +1,14 @@
-# Code Review — 2026-06-19
+# Code Review — 2026-06-19 (branch: claude/compassionate-meitner-chlzve)
 
-## Verdict: CONCERN
+## Verdict: PASS
 
-### Findings
+### What was checked
 
-**WARN — `lessonService.ts` `getCourseContent` changed but no test added (pre-existing gap)**
-`getCourseContent` was changed to add `questions(count)` and derive `question_count`, but `lessonService.test.ts` has zero coverage for this function. Pre-existing gap, not introduced by this PR's migration.
+- `supabase/functions/generate-course/index.ts` — the only changed file.
+- `chat()` and `chatInLanguage()` gained an optional `model?` parameter. When omitted, existing behavior is preserved (`AI_MODEL` env var / `gemini-2.5-flash` default).
+- Syllabus calls (initial + quality-gate retry) pass `liteModel`; question-generation calls omit it — clean separation.
+- No duplication introduced; the `model` parameter threads through naturally.
+- No dead code, no mixed responsibility, no missing UI states.
+- All 291 tests pass, lint and typecheck clean.
 
-**WARN — PR body describes syllabus excerpt as "1800 → 600 chars" but code uses `.slice(0, 1500)` (description inaccuracy)**
-The code value (1500) may be correct by design; the PR description should match actual values.
-
-**WARN — `matchesOutputLanguage` `\uXXXX` decode fix has no dedicated test (pre-existing)**
-The decode logic is one line but the bug was real; a test with JSON-escaped Vietnamese characters would prevent regression.
-
-### Checks that passed
-- No Supabase queries in `src/components/` — confirmed.
-- `CoursePage.tsx` renders UI only; all data access goes through services.
-- Loading, empty, error, and unauthorized states all present.
-- `generationService.ts` `force` parameter is tested.
-- Migration SQL is idempotent: REVOKE is no-op when privilege not held; `rls_auto_enable` uses IF EXISTS.
-- No duplicated logic. File sizes acceptable for their scope.
+No findings.
