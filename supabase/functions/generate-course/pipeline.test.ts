@@ -1,18 +1,21 @@
 import { describe, expect, test } from 'vitest'
 import { extractXmlText } from '../_shared/xml'
 import {
-  buildChapterQuestionsPrompt,
   buildNodeQuestionsPrompt,
+  buildNodeRetryPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
   chunkText,
   emptyNodeIndexes,
+  isLatinScript,
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
   parseJsonLoose,
+  QUESTIONS_PER_NODE,
   validateChapterQuestions,
   validateSyllabus,
+  validateSyllabusQuality,
   verifyQuestion,
 } from './pipeline'
 import type { GeneratedQuestion, SyllabusNode } from './pipeline'
@@ -337,40 +340,82 @@ describe('emptyNodeIndexes', () => {
   })
 })
 
-describe('buildChapterQuestionsPrompt', () => {
-  const chapter = {
-    title: 'Cells',
-    summary: 'Cell basics.',
-    nodes: [
-      { title: 'Organelles', chunk_index: 0 },
-      { title: 'Membranes', chunk_index: 0 },
-      { title: 'Energy', chunk_index: 1 },
-    ],
-  }
-
-  test('lists every lesson with its node_index and includes each chunk once', () => {
-    const prompt = buildChapterQuestionsPrompt(
-      chapter,
-      ['chunk zero text', 'chunk one text'],
-      'English',
-    )
-    expect(prompt).toContain('0: "Organelles"')
-    expect(prompt).toContain('2: "Energy"')
-    expect(prompt).toContain('node_index')
-    // Two nodes share chunk 0; it must appear only once.
-    expect(prompt.match(/chunk zero text/g)).toHaveLength(1)
-    expect(prompt).toContain('chunk one text')
+describe('validateSyllabusQuality', () => {
+  test('passes a well-proportioned syllabus', () => {
+    const syllabus = [
+      { title: 'Ch1', summary: '', nodes: [
+        { title: 'A', chunk_index: 0 },
+        { title: 'B', chunk_index: 1 },
+      ]},
+      { title: 'Ch2', summary: '', nodes: [
+        { title: 'C', chunk_index: 2 },
+        { title: 'D', chunk_index: 3 },
+      ]},
+    ]
+    const result = validateSyllabusQuality(syllabus, 4)
+    expect(result.pass).toBe(true)
   })
 
-  test('pins prompts and options to the output language', () => {
-    const prompt = buildChapterQuestionsPrompt(chapter, ['text'], 'Vietnamese')
-    expect(prompt).toContain('every prompt and every option in Vietnamese')
+  test('fails when too few lessons for the chunk count', () => {
+    const syllabus = [
+      { title: 'Ch1', summary: '', nodes: [
+        { title: 'A', chunk_index: 0 },
+      ]},
+    ]
+    // 10 chunks → minNodes = max(3, floor(10*0.6)) = 6
+    const result = validateSyllabusQuality(syllabus, 10)
+    expect(result.pass).toBe(false)
+    expect(result.feedback).toContain('only 1 lessons')
+    expect(result.feedback).toContain('at least 6')
   })
 
-  test('asks the model to ground difficulty in the material', () => {
-    const prompt = buildChapterQuestionsPrompt(chapter, ['text'], 'English')
-    expect(prompt).toContain('"difficulty"')
-    expect(prompt).toMatch(/Let the material decide the mix/i)
+  test('fails when chunks are not covered', () => {
+    const syllabus = [
+      { title: 'Ch1', summary: '', nodes: [
+        { title: 'A', chunk_index: 0 },
+        { title: 'B', chunk_index: 0 },
+        { title: 'C', chunk_index: 2 },
+      ]},
+    ]
+    const result = validateSyllabusQuality(syllabus, 3)
+    expect(result.pass).toBe(false)
+    expect(result.feedback).toContain('skipped chunks 1')
+  })
+
+  test('fails when chapters are badly unbalanced', () => {
+    const syllabus = [
+      { title: 'Big', summary: '', nodes: [
+        { title: 'A', chunk_index: 0 },
+        { title: 'B', chunk_index: 1 },
+        { title: 'C', chunk_index: 2 },
+        { title: 'D', chunk_index: 3 },
+        { title: 'E', chunk_index: 4 },
+      ]},
+      { title: 'Small', summary: '', nodes: [
+        { title: 'F', chunk_index: 5 },
+      ]},
+    ]
+    const result = validateSyllabusQuality(syllabus, 6)
+    expect(result.pass).toBe(false)
+    expect(result.feedback).toContain('Big')
+    expect(result.feedback).toContain('Small')
+  })
+
+  test('passes when ratio is exactly 2', () => {
+    const syllabus = [
+      { title: 'Big', summary: '', nodes: [
+        { title: 'A', chunk_index: 0 },
+        { title: 'B', chunk_index: 1 },
+        { title: 'C', chunk_index: 2 },
+        { title: 'D', chunk_index: 3 },
+      ]},
+      { title: 'Small', summary: '', nodes: [
+        { title: 'E', chunk_index: 4 },
+        { title: 'F', chunk_index: 5 },
+      ]},
+    ]
+    const result = validateSyllabusQuality(syllabus, 6)
+    expect(result.pass).toBe(true)
   })
 })
 
@@ -380,11 +425,30 @@ describe('language enforcement', () => {
     expect(prompt).toContain('every title and summary in Vietnamese')
   })
 
-  test('system prompt and reminder name the output language', () => {
-    expect(buildSystemPrompt('Vietnamese')).toContain(
-      'MUST be written in Vietnamese',
-    )
-    expect(languageReminder('Vietnamese')).toContain('Vietnamese')
+  test('system prompt for Vietnamese is written in Vietnamese', () => {
+    const prompt = buildSystemPrompt('Vietnamese')
+    expect(prompt).toContain('tiếng Việt')
+    expect(prompt).not.toContain('MUST be written in Vietnamese')
+  })
+
+  test('system prompt for English stays in English', () => {
+    expect(buildSystemPrompt('English')).toContain('MUST be written in English')
+  })
+
+  test('system prompt for non-Latin non-Vietnamese adds emphasis', () => {
+    const prompt = buildSystemPrompt('Japanese')
+    expect(prompt).toContain('MUST be written in Japanese')
+    expect(prompt).toContain('Repeat: ALL text values')
+  })
+
+  test('language reminder for Vietnamese is in Vietnamese', () => {
+    const reminder = languageReminder('Vietnamese')
+    expect(reminder).toContain('tiếng Việt')
+    expect(reminder).not.toContain('IMPORTANT')
+  })
+
+  test('language reminder for English stays in English', () => {
+    expect(languageReminder('English')).toContain('IMPORTANT')
   })
 
   test('detects English drift when Vietnamese was requested', () => {
@@ -517,16 +581,66 @@ describe('buildNodeQuestionsPrompt', () => {
   test('clamps an out-of-range chunk_index to the last valid chunk', () => {
     const farNode: SyllabusNode = { title: 'Lesson', chunk_index: 99 }
     const prompt = buildNodeQuestionsPrompt(farNode, chunks, 'English')
-    // ci clamps to 1; neighbours are chunks[0] and chunks[2] (undefined)
     expect(prompt).toContain('Cell biology source text')
     expect(prompt).toContain('Second chunk text')
   })
 
-  test('asks for fewer questions than the chapter prompt', () => {
+  test('asks for full QUESTIONS_PER_NODE questions', () => {
     const prompt = buildNodeQuestionsPrompt(node, chunks, 'English')
-    // target = Math.max(2, Math.ceil(6 / 2)) = 3, not QUESTIONS_PER_NODE (6)
-    expect(prompt).toContain('Write 3 quiz questions')
-    expect(prompt).not.toContain('Write 6 quiz questions')
+    expect(prompt).toContain(`Write ${QUESTIONS_PER_NODE} quiz questions`)
+  })
+
+  test('includes calc question instructions', () => {
+    const prompt = buildNodeQuestionsPrompt(node, chunks, 'English')
+    expect(prompt).toContain('"calc"')
+    expect(prompt).toContain('formula')
+    expect(prompt).toContain('variables')
+  })
+
+  test('includes difficulty tagging instructions', () => {
+    const prompt = buildNodeQuestionsPrompt(node, chunks, 'English')
+    expect(prompt).toContain('"difficulty"')
+    expect(prompt).toContain('Let the material decide the mix')
+  })
+})
+
+describe('buildNodeRetryPrompt', () => {
+  const node: SyllabusNode = { title: 'Organelles', chunk_index: 0 }
+  const chunks = ['Cell biology source text', 'Second chunk text']
+
+  test('asks for fewer questions than the primary prompt', () => {
+    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
+    const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
+    expect(prompt).toContain(`Write ${target} quiz questions`)
+  })
+
+  test('does not include calc instructions', () => {
+    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
+    expect(prompt).not.toContain('"calc"')
+  })
+
+  test('embeds neighbouring chunks for context', () => {
+    const midNode: SyllabusNode = { title: 'Membranes', chunk_index: 1 }
+    const threeChunks = ['prev chunk', 'main chunk', 'next chunk']
+    const prompt = buildNodeRetryPrompt(midNode, threeChunks, 'English')
+    expect(prompt).toContain('prev chunk')
+    expect(prompt).toContain('main chunk')
+    expect(prompt).toContain('next chunk')
+  })
+})
+
+describe('isLatinScript', () => {
+  test('identifies Latin-script languages', () => {
+    expect(isLatinScript('English')).toBe(true)
+    expect(isLatinScript('French')).toBe(true)
+    expect(isLatinScript('Spanish')).toBe(true)
+  })
+
+  test('identifies non-Latin-script languages', () => {
+    expect(isLatinScript('Vietnamese')).toBe(false)
+    expect(isLatinScript('Japanese')).toBe(false)
+    expect(isLatinScript('Chinese')).toBe(false)
+    expect(isLatinScript('Arabic')).toBe(false)
   })
 })
 
