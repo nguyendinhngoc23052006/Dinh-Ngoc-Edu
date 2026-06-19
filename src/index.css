@@ -956,6 +956,7 @@ button.danger {
   align-items: center;
   text-align: center;
   gap: 0.4rem;
+  overflow: hidden;
 }
 
 .market-card h3 {
@@ -1081,11 +1082,12 @@ button.danger {
 .pet-actions {
   display: flex;
   gap: 0.5rem;
-  width: 100%;
+  align-self: stretch;
 }
 
 .pet-actions button {
   flex: 1;
+  min-width: 0;
   width: auto;
 }
 
