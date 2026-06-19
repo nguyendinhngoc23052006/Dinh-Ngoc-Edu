@@ -973,7 +973,7 @@ button.danger {
   color: var(--gold-dark);
 }
 
-.market-card button {
+.market-card > button {
   width: 100%;
 }
 
