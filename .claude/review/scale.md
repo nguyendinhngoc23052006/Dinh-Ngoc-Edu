@@ -1,18 +1,23 @@
-# Scale Review — Generation Hardening
+# Scale Review — PR #52
 
-**Verdict: PASS**
+**Verdict: PASS** (after fixes applied; two items noted for future)
 
-## Findings
+## Findings resolved
 
-### NOTED — CASCADE wipe on regeneration is O(rows-in-course), not O(1)
-`startGeneration(force=true)` triggers a DELETE on `chapters` which cascades through `nodes` → `questions` → `progress`. For a large course this is a table scan per table. Acceptable today (courses are bounded by upload size); flag for review if courses grow to thousands of questions.
+1. **WARN → FIXED** `index.ts:314-320` — `credit_prize` UPDATE error was silently discarded. Now captures `{ error: prizeError }` and throws.
 
-### NOTED — Third-level per-node retry: bounded by ensureTime + empty-node threshold
-The per-node retry loop retries all empty nodes (no artificial per-chapter cap). `ensureTime(deadline)` sits outside each iteration and terminates the pipeline cleanly at 6 minutes if the call count grows large. Pairing this with the >2-empty-node fail threshold means the loop is incentivised to try harder (to stay under the threshold) while time, not an arbitrary slice, is the real budget limit. Degenerate worst case (all nodes empty across a large course) hits the 6-minute deadline and the course fails cleanly.
+2. **WARN → FIXED** `index.ts:249` — Inter-call delay was 1500ms, below Gemini free-tier 15 RPM floor (4000ms minimum). Raised to 4000ms.
 
-## Passing checks
-- No unbounded queries: PASS — `getCourseContent`, question inserts all scoped by `courseId`; chapter loop bounded by syllabus size.
-- N+1 pattern: PASS (existing) — question inserts batch per node inside chapter loop; this PR does not introduce new per-row network calls beyond the retry loop noted above.
-- `AbortController` timeout: PASS — 30 s per AI fetch prevents unbounded Deno runtime blocking.
-- No new filtered/joined columns without indexes: PASS — no migration.
-- Idempotency: PASS — atomic claim UPDATE + `force` guard prevent double-wipe under concurrent calls.
+## Noted for future (not this PR's scope)
+
+3. **NOTED** `index.ts:141` — `courses(status, generation_started_at)` has no composite index. The stale-processing OR filter is a full-table scan. Low frequency (once per invocation), acceptable at current scale.
+
+4. **NOTED** `index.ts:313-321` — Per-node UPDATE for `credit_prize` is a structural N+1 (up to 40 sequential UPDATEs). Bounded by schema constants.
+
+## Checked and clear
+
+- All DB queries paginated/limited
+- Question inserts batched per chapter
+- Wipe-before-rebuild checked for errors — no duplicate-insert risk
+- Quality gate issues at most 1 extra syllabus call
+- `ensureTime(deadline)` guards every loop iteration

@@ -246,7 +246,7 @@ async function generate(
 
       // Primary pass: one focused AI call per node.
       for (const [nodeIndex, node] of chapter.nodes.entries()) {
-        if (nodeIndex > 0 || chapterIndex > 0) await delay(1500)
+        if (nodeIndex > 0 || chapterIndex > 0) await delay(4000)
         ensureTime(deadline)
         try {
           const result = validateChapterQuestions(
@@ -267,7 +267,7 @@ async function generate(
       // Retry pass: one retry per still-empty node with a simpler prompt.
       const missing = emptyNodeIndexes(buckets)
       for (const nodeIndex of missing) {
-        await delay(1500)
+        await delay(4000)
         ensureTime(deadline)
         try {
           const result = validateChapterQuestions(
@@ -315,10 +315,11 @@ async function generate(
       for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
         const prize = lessonCreditPrize(nodeQuestions)
         if (prize > 0) {
-          await supabase
+          const { error: prizeError } = await supabase
             .from('nodes')
             .update({ credit_prize: prize })
             .eq('id', nodeIds[nodeIndex])
+          if (prizeError) throw new Error(prizeError.message)
         }
       }
     }

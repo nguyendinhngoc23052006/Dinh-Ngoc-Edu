@@ -386,8 +386,9 @@ export function validateSyllabusQuality(
     if (minSize > 0 && maxSize / minSize > 2) {
       const bigIdx = sizes.indexOf(maxSize)
       const smallIdx = sizes.indexOf(minSize)
+      const sanitize = (t: string) => t.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
       problems.push(
-        `Chapter "${syllabus[bigIdx].title}" has ${maxSize} lessons while "${syllabus[smallIdx].title}" has only ${minSize}. Redistribute more evenly.`,
+        `Chapter "${sanitize(syllabus[bigIdx].title)}" has ${maxSize} lessons while "${sanitize(syllabus[smallIdx].title)}" has only ${minSize}. Redistribute more evenly.`,
       )
     }
   }
@@ -409,7 +410,7 @@ export function buildNodeQuestionsPrompt(
   outputLanguage: string,
 ): string {
   const source = nodeSourceContext(node, chunks)
-  const safeTitle = node.title.replace(/"/g, "'")
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   return [
     `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
     `Base every question and answer ONLY on the source text below — never invent facts.`,
@@ -434,7 +435,7 @@ export function buildNodeRetryPrompt(
   outputLanguage: string,
 ): string {
   const source = nodeSourceContext(node, chunks)
-  const safeTitle = node.title.replace(/"/g, "'")
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
   return [
     `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
