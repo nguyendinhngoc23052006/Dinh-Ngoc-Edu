@@ -6,7 +6,7 @@ app. The change is **presentational only** — no schema, services, routes, env,
 or data flow changed, so every existing test, the build, and all client-side
 guards keep working untouched.
 
-Three things were asked for and delivered:
+Four things were asked for and delivered:
 
 - **Playful game world.** A full rewrite of `src/index.css`: richer tokens
   (deeper greens, a gold accent for credits/XP, layered shadows, rounder
@@ -23,6 +23,10 @@ Three things were asked for and delivered:
   light surface with fixed dark text, so they stay readable over every
   backdrop — which also **fixes a latent contrast bug** where the dark Midnight
   theme's light `--ink` was nearly invisible on white cards.
+- **Mobile scroll-hide header.** On small screens (≤ 640 px) the header slides
+  up and fades out while the user scrolls down, then reappears on any upward
+  movement. A 60 px scroll-start guard and an 8 px jitter threshold prevent
+  accidental hides. Desktop sticky behaviour is unchanged.
 
 Every class name the previous stylesheet defined is preserved, along with the
 pet-sprite keyframe math, `prefers-reduced-motion` handling, and the course-map
@@ -71,12 +75,15 @@ The code reviewer initially flagged two items; both were investigated:
   became fixed light surfaces — fixing the dark-theme card-contrast bug.
 - Promoted `.ghost`/`button.danger` to real button modifiers so the confirm
   dialog's cancel/confirm buttons are visually distinct.
+- On mobile, the header now hides on scroll-down and reappears on scroll-up
+  (smooth 0.28s fade + slide; desktop unchanged).
 
 **What you do next:** review the preview deployment on this PR — click through
 Landing, Dashboard, a Course map, the Market, Pets, and Settings; in Settings
 equip each theme (especially **Midnight**) and confirm every page reskins and
-all text stays readable. No env/secret action needed. Then merge.
+all text stays readable. On mobile, scroll a long page to confirm the header
+hides and reappears correctly. No env/secret action needed. Then merge.
 
-**How to roll it back:** revert this PR — it only touches `src/index.css`,
-`src/components/layout/AppLayout.tsx`, the review verdicts, and `MEMORY.md`;
+**How to roll it back:** revert this PR — it only touches `src/index.css` and
+`src/components/layout/AppLayout.tsx` (plus review verdicts and `MEMORY.md`);
 reverting fully restores the previous look with no data or schema implications.
