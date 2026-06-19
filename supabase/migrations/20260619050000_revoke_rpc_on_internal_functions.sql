@@ -33,8 +33,11 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 revoke execute on function public.clone_course(uuid) from public, anon;
 grant execute on function public.clone_course(uuid) to authenticated;
 
--- 3. owns_course: anon has no use for it; keep authenticated (RLS write policies).
-revoke execute on function public.owns_course(uuid) from anon;
+-- 3. owns_course: strip the default PUBLIC grant (which covers anon and
+--    authenticated alike), then re-grant to authenticated only — they need
+--    EXECUTE for the write RLS policies on chapters/nodes/questions.
+revoke execute on function public.owns_course(uuid) from public, anon;
+grant execute on function public.owns_course(uuid) to authenticated;
 
 -- 4. rls_auto_enable: guard against the function not existing in all environments.
 do $$ begin

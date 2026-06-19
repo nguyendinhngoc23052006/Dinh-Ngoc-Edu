@@ -14,7 +14,7 @@ Added a third retry level: after the existing chapter-level call and chapter re-
 Two fixes: (1) every `fetch()` in `chat()` now carries a 30-second `AbortController` timeout — a hanging AI endpoint throws cleanly to the outer catch, which writes `status: 'failed'`, so courses can never stay stuck in `'processing'` forever; (2) `matchesOutputLanguage()` now decodes `\uXXXX` JSON escape sequences before testing for Vietnamese characters, eliminating the false-negative that caused a language retry to fire on every AI call for Vietnamese courses.
 
 **Token / quality improvements (`pipeline.ts`, `index.ts`)**
-- Syllabus excerpt reduced from 1800 → 600 chars per chunk: saves ~10 000 input tokens on the syllabus call; topic-identification needs a hint, not full content.
+- Syllabus excerpt reduced from 1800 → 1500 chars per chunk: saves input tokens on the syllabus call; topic-identification needs a hint, not full content.
 - `max_tokens` raised from 8192 → 16 384: comfortable headroom for verbose questions and non-Latin scripts.
 
 **Security: revoke RPC exposure on internal functions (migration `20260619050000`)**

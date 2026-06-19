@@ -1,33 +1,22 @@
-# code-reviewer verdict — UI overhaul (playful game world)
+# Code Review — 2026-06-19
 
-**Verdict: PASS** (initial FAIL — both findings investigated; one was a false
-positive, one fixed before commit).
+## Verdict: CONCERN
 
-Reviewed: `src/index.css` (full rewrite), `src/components/layout/AppLayout.tsx`
-(brand-mark span + `route-view` wrapper keyed on `location.pathname`).
+### Findings
 
-FINDING 1 (raised: "six JSX classes dropped — silent regression") — **NOT a
-regression.** Verified against `origin/main:src/index.css`: `.course-card`,
-`.lesson-player`, `.question`, `.prompt`, `.hint`, and `.feedback` were never
-defined in the previous stylesheet (grep count 0 on main). They are unstyled
-JSX hooks that shipped unstyled; the rewrite preserves every selector the old
-file defined and drops none. No speculative styles added for them (project
-simplicity rule: no styling a hook with no demonstrated need).
+**WARN — `lessonService.ts` `getCourseContent` changed but no test added (pre-existing gap)**
+`getCourseContent` was changed to add `questions(count)` and derive `question_count`, but `lessonService.test.ts` has zero coverage for this function. Pre-existing gap, not introduced by this PR's migration.
 
-FINDING 2 (raised: `.ghost`/cancel-button contrast) — **FIXED.** The reviewer's
-PetsPage sub-claim was off (its buttons sit in `.card.market-card`, so they were
-already styled), but the core point held for `ConfirmDialog`: its `.ghost`
-cancel and `.danger` confirm both fell through to the green primary, leaving the
-modal's two buttons indistinguishable. Promoted `.ghost` to a standalone
-secondary modifier (transparent + brand outline) and added a destructive
-`button.danger` (solid red); the more-specific `.market-card button.danger`
-keeps market/pets visuals unchanged. Confirm/cancel now read distinctly.
+**WARN — PR body describes syllabus excerpt as "1800 → 600 chars" but code uses `.slice(0, 1500)` (description inaccuracy)**
+The code value (1500) may be correct by design; the PR description should match actual values.
 
-Checks that passed: AppLayout renders UI only (no data access; `useLocation`
-keys the wrapper, `signOut` delegated to the service); `route-in` keyframe reuse
-by `.modal-card` is intentional sharing, not duplication; `node-step-0..3`
-winding offsets correct; `prefers-reduced-motion` covers all newly
-added/modified animations (`route-view`, pet sprite/emoji, loading shimmer); all
-five `[data-dimension]` themes have both `.app` backdrop and `.course-map`
-rules; no data access in `src/components`; no service files changed.
-Lint/typecheck/test (272)/build/e2e (3) all green after the fix.
+**WARN — `matchesOutputLanguage` `\uXXXX` decode fix has no dedicated test (pre-existing)**
+The decode logic is one line but the bug was real; a test with JSON-escaped Vietnamese characters would prevent regression.
+
+### Checks that passed
+- No Supabase queries in `src/components/` — confirmed.
+- `CoursePage.tsx` renders UI only; all data access goes through services.
+- Loading, empty, error, and unauthorized states all present.
+- `generationService.ts` `force` parameter is tested.
+- Migration SQL is idempotent: REVOKE is no-op when privilege not held; `rls_auto_enable` uses IF EXISTS.
+- No duplicated logic. File sizes acceptable for their scope.
