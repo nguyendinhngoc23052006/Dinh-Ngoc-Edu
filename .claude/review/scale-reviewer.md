@@ -1,14 +1,13 @@
-# scale-reviewer verdict — UI overhaul (playful game world)
+# Scale Review — 2026-06-19
 
-**Verdict: PASS.**
+## Verdict: PASS
 
-Reviewed: `src/index.css` (full rewrite), `src/components/layout/AppLayout.tsx`
-(brand-mark span + `route-view` wrapper keyed on `location.pathname`).
+### Findings
 
-Presentational only — no query, no N+1, no unbounded fetch, no write, and no
-new index surface. The `route-view` wrapper uses `location.pathname` as a React
-`key`; this mounts/unmounts the subtree on navigation but does NOT trigger any
-data refetch that wasn't already happening (each page's `useAsync` calls fire on
-mount as before). No polling loop added; no data dependency changes. CSS is
-purely client-side rendering — zero DB reads. No new scale pattern introduced;
-existing memory lessons unchanged.
+**NOTE — `getCompletedNodeIds` has no `.limit()` (pre-existing)**
+The query filters by `.in('node_id', nodeIds)` with no `.limit()`. Caller caps at `MAX_NODES = 500`, so the practical ceiling holds, but the in-query guard is missing. Pre-existing, not introduced by this PR.
+
+**NOTE — Per-node `credit_prize` UPDATE is an N+1 write (pre-existing)**
+One `UPDATE nodes SET credit_prize = ?` per node inside the chapter loop. Hard-capped at 40 round-trips by generation constants. Acceptable within the 6-min pipeline budget. Pre-existing pattern.
+
+**PASS — Migration `20260619050000` introduces no tables, indexes, or queries. All existing pagination/limits intact. Pipeline timeouts and content caps verified. Idempotency keys self-prune. All filtered columns indexed.**
