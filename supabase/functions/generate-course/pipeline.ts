@@ -150,10 +150,9 @@ export function validateSyllabus(
   return chapters
 }
 
-// Format enforcement for step 2: one AI answer covers a whole chapter
-// (node_index routes each question to its lesson); anything that does not
-// match the database contract exactly (kind, options, answer key shape) is
-// dropped, never failing the chapter.
+// Format enforcement: parse an AI answer into per-node buckets. Each question
+// must carry a valid node_index (0 for single-node calls). Anything that does
+// not match the database contract (kind, options, answer key shape) is dropped.
 export function validateChapterQuestions(
   value: unknown,
   nodeCount: number,
@@ -179,9 +178,9 @@ export function validateChapterQuestions(
   return buckets
 }
 
-// After the chapter call: which lessons still have no questions (the model
-// omitted their node_index, or its answer was truncated/unparseable). These
-// get one smaller re-ask before the chapter is accepted.
+// After the per-node primary pass: which nodes in the bucket array are still
+// empty (the call failed, truncated, or returned unparseable output). These
+// get one retry with a simpler prompt.
 export function emptyNodeIndexes(buckets: GeneratedQuestion[][]): number[] {
   return buckets.flatMap((bucket, index) =>
     bucket.length === 0 ? [index] : [],

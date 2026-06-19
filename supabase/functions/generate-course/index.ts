@@ -279,13 +279,15 @@ async function generate(
             ),
             1,
           )
+          // One question is better than none after retry.
           if (result[0]?.length) buckets[nodeIndex] = result[0]
         } catch {
           // Node stays empty; tallied below.
         }
       }
 
-      emptyNodeCount += emptyNodeIndexes(buckets).length
+      const stillEmpty = emptyNodeIndexes(buckets)
+      emptyNodeCount += stillEmpty.length
 
       const questionRows = buckets.flatMap((questions, nodeIndex) => {
         const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
