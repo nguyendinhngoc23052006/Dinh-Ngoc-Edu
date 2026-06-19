@@ -338,13 +338,24 @@ export function buildNodeQuestionsPrompt(
   chunks: string[],
   outputLanguage: string,
 ): string {
-  const source = (chunks[node.chunk_index] ?? chunks[0] ?? '').slice(0, 8_000)
+  // Clamp the index, then gather the primary chunk plus its immediate
+  // neighbours. Wider context gives the AI more grounding material when
+  // the assigned chunk alone is sparse — this is a third-level retry, so
+  // the single-chunk path has already failed twice.
+  const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
+  const source = [chunks[ci - 1], chunks[ci], chunks[ci + 1]]
+    .filter((c): c is string => typeof c === 'string')
+    .join('\n\n')
+    .slice(0, 8_000)
   // Strip double-quotes from the AI-generated title before embedding it inside
   // a double-quoted instruction segment — a title that contains `"` would
   // otherwise distort the prompt boundary and could cause unexpected output.
   const safeTitle = node.title.replace(/"/g, "'")
+  // Ask for fewer questions than normal — a lower target reduces hallucination
+  // risk when the material is thin, making it more likely we get valid output.
+  const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
   return [
-    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
+    `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
     `Base every question and answer ONLY on the source text below — never invent facts.`,
     `Mix "mcq", "mcq_multi", and "fill_blank" kinds. Tag each with "difficulty": "easy", "medium", or "hard".`,
     `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give short accepted answers copied verbatim from the source.`,
