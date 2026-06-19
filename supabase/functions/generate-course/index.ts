@@ -14,8 +14,8 @@
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
-  buildChapterQuestionsPrompt,
   buildNodeQuestionsPrompt,
+  buildNodeRetryPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
   chunkText,
@@ -26,6 +26,7 @@ import {
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,
+  validateSyllabusQuality,
   verifyQuestion,
 } from './pipeline.ts'
 import type { GeneratedQuestion } from './pipeline.ts'
@@ -157,16 +158,16 @@ function ensureTime(deadline: number): void {
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function generate(
   supabase: SupabaseClient,
   course: CourseRow,
 ): Promise<void> {
   const deadline = Date.now() + MAX_PIPELINE_MS
   try {
-    // A failed or interrupted earlier run may have left partial content;
-    // wiping the chapters (cascades to nodes/questions) makes retries clean.
-    // An unchecked failure here would surface later as a misleading
-    // unique-violation on the rebuild inserts.
     const { error: wipeError } = await supabase
       .from('chapters')
       .delete()
@@ -183,13 +184,34 @@ async function generate(
 
     const language = course.output_language
     ensureTime(deadline)
-    const syllabus = validateSyllabus(
+    let syllabus = validateSyllabus(
       parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language)),
       chunks.length,
     )
 
+    // Quality gates: re-ask once if the syllabus is too thin, skips chunks,
+    // or is badly unbalanced.
+    const quality = validateSyllabusQuality(syllabus, chunks.length)
+    if (!quality.pass) {
+      ensureTime(deadline)
+      try {
+        syllabus = validateSyllabus(
+          parseJsonLoose(
+            await chatInLanguage(
+              buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
+              language,
+            ),
+          ),
+          chunks.length,
+        )
+      } catch {
+        // Accept the first syllabus if the re-ask fails.
+      }
+    }
+
     let totalQuestions = 0
     let emptyNodeCount = 0
+    let totalNodes = 0
     for (const [chapterIndex, chapter] of syllabus.entries()) {
       const { data: chapterRow, error: chapterError } = await supabase
         .from('chapters')
@@ -219,78 +241,53 @@ async function generate(
         .sort((a, b) => a.position - b.position)
         .map((row) => row.id)
 
-      // One AI call per chapter (instead of one per node) keeps a full
-      // course within free-tier request-per-minute limits.
-      ensureTime(deadline)
-      let buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
-      try {
-        buckets = validateChapterQuestions(
-          parseJsonLoose(
-            await chatInLanguage(
-              buildChapterQuestionsPrompt(chapter, chunks, language),
-              language,
-            ),
-          ),
-          chapter.nodes.length,
-        )
-      } catch {
-        // A chapter with no questions is better than failing the course.
-      }
-      // Second try: re-ask covering only the lessons the first answer left empty
-      // (an omitted node_index, or a max_tokens-truncated answer that failed to
-      // parse) — the smaller prompt routinely succeeds where the full-chapter
-      // one didn't.
-      const missing = emptyNodeIndexes(buckets)
-      if (missing.length > 0) {
-        ensureTime(deadline)
-        try {
-          const retried = validateChapterQuestions(
-            parseJsonLoose(
-              await chatInLanguage(
-                buildChapterQuestionsPrompt(
-                  { ...chapter, nodes: missing.map((i) => chapter.nodes[i]) },
-                  chunks,
-                  language,
-                ),
-                language,
-              ),
-            ),
-            missing.length,
-          )
-          for (const [retryIndex, questions] of retried.entries()) {
-            buckets[missing[retryIndex]] = questions
-          }
-        } catch {
-          // Fall through to the per-node third try below.
-        }
-      }
+      const buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
+      totalNodes += chapter.nodes.length
 
-      // Third try: one individual call per node still empty after the chapter
-      // re-ask. The minimal single-lesson prompt is far less likely to truncate
-      // or hit rate limits — it sends one chunk and asks for one lesson's worth
-      // of questions. ensureTime is called outside the per-node try/catch so a
-      // genuine deadline throws cleanly to the outer handler.
-      const finalMissing = emptyNodeIndexes(buckets)
-      for (const nodeIndex of finalMissing) {
+      // Primary pass: one focused AI call per node.
+      for (const [nodeIndex, node] of chapter.nodes.entries()) {
+        if (nodeIndex > 0 || chapterIndex > 0) await delay(4000)
         ensureTime(deadline)
         try {
-          const solo = validateChapterQuestions(
+          const result = validateChapterQuestions(
             parseJsonLoose(
               await chatInLanguage(
-                buildNodeQuestionsPrompt(chapter.nodes[nodeIndex], chunks, language),
+                buildNodeQuestionsPrompt(node, chunks, language),
                 language,
               ),
             ),
             1,
           )
-          if (solo[0]?.length) buckets[nodeIndex] = solo[0]
+          if (result[0]?.length >= 2) buckets[nodeIndex] = result[0]
+        } catch {
+          // Node stays empty, will be retried below.
+        }
+      }
+
+      // Retry pass: one retry per still-empty node with a simpler prompt.
+      const missing = emptyNodeIndexes(buckets)
+      for (const nodeIndex of missing) {
+        await delay(4000)
+        ensureTime(deadline)
+        try {
+          const result = validateChapterQuestions(
+            parseJsonLoose(
+              await chatInLanguage(
+                buildNodeRetryPrompt(chapter.nodes[nodeIndex], chunks, language),
+                language,
+              ),
+            ),
+            1,
+          )
+          // One question is better than none after retry.
+          if (result[0]?.length) buckets[nodeIndex] = result[0]
         } catch {
           // Node stays empty; tallied below.
         }
       }
 
-      // Tally any nodes that are still empty after all three attempts.
-      emptyNodeCount += emptyNodeIndexes(buckets).length
+      const stillEmpty = emptyNodeIndexes(buckets)
+      emptyNodeCount += stillEmpty.length
 
       const questionRows = buckets.flatMap((questions, nodeIndex) => {
         const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
@@ -315,27 +312,21 @@ async function generate(
         totalQuestions += questionRows.length
       }
 
-      // Mark each lesson's credit prize from how hard its questions turned out
-      // (easy=1, medium=2, hard=3, summed) — the AI's difficulty calls decide
-      // what a flawless run is worth.
       for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
         const prize = lessonCreditPrize(nodeQuestions)
         if (prize > 0) {
-          await supabase
+          const { error: prizeError } = await supabase
             .from('nodes')
             .update({ credit_prize: prize })
             .eq('id', nodeIds[nodeIndex])
+          if (prizeError) throw new Error(prizeError.message)
         }
       }
     }
-    // 1-2 empty nodes after all retries: mark the course ready and let the
-    // UI warning banner surface them — the owner can still use and study the
-    // vast majority of lessons. More than 2 empty is a signal the source
-    // material is too sparse across the board; fail so the owner sees a clear
-    // error rather than a partially-broken 'ready' state.
-    if (emptyNodeCount > 2) {
+
+    if (totalNodes > 0 && emptyNodeCount / totalNodes > 0.4) {
       throw new Error(
-        `Generation left ${emptyNodeCount} lessons without questions after multiple attempts — too many to mark the course ready. Retry, or upload more detailed materials for those sections.`,
+        `Generation left ${emptyNodeCount}/${totalNodes} lessons without questions — retry, or upload more detailed materials.`,
       )
     }
     if (totalQuestions === 0) {

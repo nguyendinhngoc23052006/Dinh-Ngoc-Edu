@@ -1,19 +1,20 @@
-# Code Review — Generation Hardening
+# Code Quality Review — PR #52
 
-**Verdict: FLAG (blockers resolved)**
+**Verdict: PASS** (after fixes applied)
 
-## Findings (all resolved before commit)
+## Findings (all resolved)
 
-### RESOLVED BLOCKER — `buildNodeQuestionsPrompt` untested
-The function was exported and used in the critical third-retry path but had no test coverage. Fixed: added `describe('buildNodeQuestionsPrompt', ...)` block to `pipeline.test.ts` covering title inclusion, double-quote sanitisation (injection guard), source chunk embedding, and out-of-range chunk_index fallback.
+1. **WARN → FIXED** `pipeline.ts:153-156` — Stale docstring on `validateChapterQuestions` described old per-chapter architecture. Updated to reflect single-node usage.
 
-### RESOLVED BLOCKER — `force=true` branch of `startGeneration` untested
-The new `force` parameter path in `generationService.ts` had no test. Fixed: added `'invokes with force:true when the flag is set'` test to `generationService.test.ts`.
+2. **WARN → FIXED** `pipeline.ts:182-184` — Stale docstring on `emptyNodeIndexes` referenced old cascade. Updated to describe per-node primary pass.
 
-## Passing checks
-- Single responsibility per function: PASS — `buildNodeQuestionsPrompt` handles only one node; chapter-level vs node-level prompts remain separate.
-- No speculative abstraction: PASS — third-retry loop is inline, not extracted prematurely.
-- Error propagation: PASS — `ensureTime(deadline)` outside the try/catch propagates correctly; AbortError preserves `{ cause: err }`.
-- `force` guard: PASS — strict `=== true` equality prevents type coercion attacks.
-- Existing style matched: PASS — new code follows the same `void run(...)` pattern in `CoursePage.tsx`.
-- No unused exports or dead code introduced: PASS.
+3. **WARN → FIXED** `index.ts:282` — Asymmetric acceptance threshold (primary ≥2, retry ≥1) was undocumented. Added comment explaining intent.
+
+4. **WARN → FIXED** `index.ts:288` — Second `emptyNodeIndexes(buckets)` call looked like a duplicate. Named the result `stillEmpty` for clarity.
+
+## Checked and clear
+
+- `buildChapterQuestionsPrompt` fully removed — no dead imports or references
+- `nodeSourceContext` shared by two callers — justified extraction
+- File sizes (~450 lines each) above 200-line smell but responsibilities are cleanly split
+- All new exports have dedicated test `describe` blocks

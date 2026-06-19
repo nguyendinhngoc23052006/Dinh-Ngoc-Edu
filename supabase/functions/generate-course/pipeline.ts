@@ -150,10 +150,9 @@ export function validateSyllabus(
   return chapters
 }
 
-// Format enforcement for step 2: one AI answer covers a whole chapter
-// (node_index routes each question to its lesson); anything that does not
-// match the database contract exactly (kind, options, answer key shape) is
-// dropped, never failing the chapter.
+// Format enforcement: parse an AI answer into per-node buckets. Each question
+// must carry a valid node_index (0 for single-node calls). Anything that does
+// not match the database contract (kind, options, answer key shape) is dropped.
 export function validateChapterQuestions(
   value: unknown,
   nodeCount: number,
@@ -179,9 +178,9 @@ export function validateChapterQuestions(
   return buckets
 }
 
-// After the chapter call: which lessons still have no questions (the model
-// omitted their node_index, or its answer was truncated/unparseable). These
-// get one smaller re-ask before the chapter is accepted.
+// After the per-node primary pass: which nodes in the bucket array are still
+// empty (the call failed, truncated, or returned unparseable output). These
+// get one retry with a simpler prompt.
 export function emptyNodeIndexes(buckets: GeneratedQuestion[][]): number[] {
   return buckets.flatMap((bucket, index) =>
     bucket.length === 0 ? [index] : [],
@@ -262,24 +261,40 @@ export function verifyQuestion(
   )
 }
 
-// One system message pins the output language on every call. The user prompts
-// are written in English, which pulls small models toward English output —
-// especially when the source material is in yet another language — so the
-// language rule is stated up front, per field, with the only exception named.
+const LATIN_LANGUAGES = new Set([
+  'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian',
+  'Dutch', 'Romanian', 'Polish', 'Czech', 'Slovak', 'Hungarian',
+  'Swedish', 'Norwegian', 'Danish', 'Finnish', 'Turkish', 'Indonesian',
+  'Malay', 'Tagalog', 'Swahili',
+])
+
+export function isLatinScript(language: string): boolean {
+  return LATIN_LANGUAGES.has(language)
+}
+
 export function buildSystemPrompt(outputLanguage: string): string {
-  return [
+  if (outputLanguage === 'Vietnamese') {
+    return [
+      'Bạn viết nội dung giáo dục bằng tiếng Việt.',
+      'Mọi tiêu đề chương, tóm tắt, tiêu đề bài học, câu hỏi, lựa chọn và đáp án PHẢI viết bằng tiếng Việt, dù hướng dẫn bằng tiếng Anh và tài liệu gốc có thể bằng ngôn ngữ khác.',
+      'Chỉ danh từ riêng, công thức và thuật ngữ chuyên môn trích nguyên văn từ tài liệu gốc mới được giữ nguyên ngôn ngữ.',
+      'Chỉ trả lời bằng JSON — không văn xuôi, không code fence.',
+    ].join(' ')
+  }
+  const base = [
     `You write educational content strictly in ${outputLanguage}.`,
     `Every chapter title, summary, lesson title, question, option, and accepted answer MUST be written in ${outputLanguage}, even though these instructions are in English and even when the source material is in a different language.`,
     `Only proper nouns, formulas, and technical terms quoted verbatim from the source may stay in their original language.`,
     `Respond with JSON only — no prose, no code fences.`,
   ].join(' ')
+  if (isLatinScript(outputLanguage)) return base
+  return base + ` (Repeat: ALL text values in the JSON must be in ${outputLanguage}.)`
 }
 
-// Appended to the prompt on the single retry after a language-drift detection.
-// Covers both failures the post-check catches: a wrong-language answer, and an
-// answer that mixed in stray text from another language (the reported bug — a
-// Vietnamese phrase inside an English course).
 export function languageReminder(outputLanguage: string): string {
+  if (outputLanguage === 'Vietnamese') {
+    return '\n\nQUAN TRỌNG: câu trả lời trước đó của bạn chứa nội dung không phải tiếng Việt. Mọi giá trị PHẢI viết bằng tiếng Việt. Dịch bất kỳ từ hoặc cụm từ nào sang tiếng Việt — không sao chép cụm từ từ tài liệu gốc bằng ngôn ngữ gốc của chúng.'
+  }
   return `\n\nIMPORTANT: your previous answer contained text that was not in ${outputLanguage}. Every value must be written in ${outputLanguage}. Translate any word or phrase that is in another language — do not copy phrases from the source material in their original language.`
 }
 
@@ -314,13 +329,16 @@ export function buildSyllabusPrompt(
   chunks: string[],
   outputLanguage: string,
 ): string {
+  const minNodes = Math.max(3, Math.floor(chunks.length * 0.6))
+  const maxNodes = MAX_CHAPTERS * MAX_NODES_PER_CHAPTER
   const excerpts = chunks
-    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 600)}`)
+    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 1500)}`)
     .join('\n\n')
   return [
     `You are designing a study course in ${outputLanguage} from a student's uploaded materials.`,
     `The materials were split into ${chunks.length} chunks, excerpted below.`,
     `Design a syllabus: at most ${MAX_CHAPTERS} chapters, each with 2-${MAX_NODES_PER_CHAPTER} short lessons ("nodes").`,
+    `The material has ${chunks.length} chunks — design ${minNodes}-${maxNodes} total lessons, ensuring every chunk is covered by at least one lesson.`,
     `Each node names the chunk (by index) its content comes from.`,
     `Write every title and summary in ${outputLanguage}, regardless of the materials' language.`,
     `Respond with ONLY this JSON:`,
@@ -330,74 +348,103 @@ export function buildSyllabusPrompt(
   ].join('\n')
 }
 
-// Minimal single-lesson prompt used as a last-resort third retry when the
-// full-chapter and chapter-re-ask calls both failed to produce questions for a
-// node. One chunk, one lesson, no calc example — far less likely to truncate.
+export interface SyllabusQualityResult {
+  pass: boolean
+  feedback: string
+}
+
+export function validateSyllabusQuality(
+  syllabus: SyllabusChapter[],
+  chunkCount: number,
+): SyllabusQualityResult {
+  const totalNodes = syllabus.reduce((sum, ch) => sum + ch.nodes.length, 0)
+  const minNodes = Math.max(3, Math.floor(chunkCount * 0.6))
+  const problems: string[] = []
+
+  if (totalNodes < minNodes) {
+    problems.push(
+      `Your syllabus has only ${totalNodes} lessons for ${chunkCount} chunks of material. Design at least ${minNodes} lessons to cover the content adequately.`,
+    )
+  }
+
+  const used = new Set(
+    syllabus.flatMap((ch) => ch.nodes.map((n) => n.chunk_index)),
+  )
+  const missed = Array.from({ length: chunkCount }, (_, i) => i).filter(
+    (i) => !used.has(i),
+  )
+  if (missed.length > 0) {
+    problems.push(
+      `Your syllabus skipped chunks ${missed.join(', ')}. Every chunk contains material that must appear in at least one lesson.`,
+    )
+  }
+
+  const sizes = syllabus.map((ch) => ch.nodes.length)
+  if (sizes.length > 1) {
+    const maxSize = Math.max(...sizes)
+    const minSize = Math.min(...sizes)
+    if (minSize > 0 && maxSize / minSize > 2) {
+      const bigIdx = sizes.indexOf(maxSize)
+      const smallIdx = sizes.indexOf(minSize)
+      const sanitize = (t: string) => t.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+      problems.push(
+        `Chapter "${sanitize(syllabus[bigIdx].title)}" has ${maxSize} lessons while "${sanitize(syllabus[smallIdx].title)}" has only ${minSize}. Redistribute more evenly.`,
+      )
+    }
+  }
+
+  return { pass: problems.length === 0, feedback: problems.join('\n') }
+}
+
+function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
+  const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
+  return [chunks[ci - 1], chunks[ci], chunks[ci + 1]]
+    .filter((c): c is string => typeof c === 'string')
+    .join('\n\n')
+    .slice(0, 8_000)
+}
+
 export function buildNodeQuestionsPrompt(
   node: SyllabusNode,
   chunks: string[],
   outputLanguage: string,
 ): string {
-  // Clamp the index, then gather the primary chunk plus its immediate
-  // neighbours. Wider context gives the AI more grounding material when
-  // the assigned chunk alone is sparse — this is a third-level retry, so
-  // the single-chunk path has already failed twice.
-  const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
-  const source = [chunks[ci - 1], chunks[ci], chunks[ci + 1]]
-    .filter((c): c is string => typeof c === 'string')
-    .join('\n\n')
-    .slice(0, 8_000)
-  // Strip double-quotes from the AI-generated title before embedding it inside
-  // a double-quoted instruction segment — a title that contains `"` would
-  // otherwise distort the prompt boundary and could cause unexpected output.
-  const safeTitle = node.title.replace(/"/g, "'")
-  // Ask for fewer questions than normal — a lower target reduces hallucination
-  // risk when the material is thin, making it more likely we get valid output.
-  const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
+  const source = nodeSourceContext(node, chunks)
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   return [
-    `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
+    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
     `Base every question and answer ONLY on the source text below — never invent facts.`,
-    `Mix "mcq", "mcq_multi", and "fill_blank" kinds. Tag each with "difficulty": "easy", "medium", or "hard".`,
-    `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give short accepted answers copied verbatim from the source.`,
-    `Respond with ONLY this JSON (use node_index 0 for all questions):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]}]}`,
+    `Mix these kinds:`,
+    `- "mcq": one correct option, 3-4 options, give correct_indexes`,
+    `- "mcq_multi": several correct options, 3-4 options, give correct_indexes`,
+    `- "fill_blank": student types a missing word/phrase, give accepted answers copied verbatim from the source`,
+    `- "calc": ONLY when the source states a formula or numeric relationship — give a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" using ONLY those names (+ - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance". Use realistic ranges. Never invent a calc question without a formula in the source.`,
+    ``,
+    `Tag every question with "difficulty": "easy" (recall a stated fact), "medium" (apply or connect ideas), "hard" (multi-step reasoning). Let the material decide the mix.`,
+    `Write every prompt and option in ${outputLanguage}.`,
+    `Respond with ONLY this JSON (use node_index 0 for all):`,
+    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["..."],"correct_indexes":[0]}]}`,
     '',
     source,
   ].join('\n')
 }
 
-// One prompt covers a whole chapter — one AI call per chapter instead of one
-// per node keeps a full course within free-tier request limits.
-export function buildChapterQuestionsPrompt(
-  chapter: SyllabusChapter,
+export function buildNodeRetryPrompt(
+  node: SyllabusNode,
   chunks: string[],
   outputLanguage: string,
 ): string {
-  const lessonList = chapter.nodes
-    .map(
-      (node, index) =>
-        `${index}: "${node.title}" (source chunk ${node.chunk_index})`,
-    )
-    .join('\n')
-  const usedIndexes = [...new Set(chapter.nodes.map((n) => n.chunk_index))]
-  const sources = usedIndexes
-    .map(
-      (i) => `[Chunk ${i}]\n${(chunks[i] ?? chunks[0] ?? '').slice(0, 8000)}`,
-    )
-    .join('\n\n')
+  const source = nodeSourceContext(node, chunks)
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+  const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
   return [
-    `Write quiz questions in ${outputLanguage} for the chapter "${chapter.title}" of a study course.`,
-    `The chapter has these lessons (node_index: title, with its source chunk):`,
-    lessonList,
-    `Write exactly ${QUESTIONS_PER_NODE} questions per lesson. Base every question and answer ONLY on that lesson's source chunk below — never invent facts.`,
-    `Mix the kinds: "mcq" (one correct option), "mcq_multi" (several correct options), "fill_blank" (the student types a missing word or phrase).`,
-    `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give the accepted answers (short, copied from the source) and no options.`,
-    `Only when the source states a formula or numeric relationship, you MAY use kind "calc": give a short "prompt" instruction and a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" over ONLY those names (operators + - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance" for the answer. Use realistic ranges from the material. Never invent a calc question when the source has no formula.`,
-    `Tag every question with "difficulty": "easy", "medium", or "hard", judged from the source itself — recalling a single stated fact is "easy", applying or connecting ideas is "medium", multi-step reasoning or synthesis is "hard". Let the material decide the mix: do not make every question the same difficulty, and do not force hard questions onto simple material.`,
-    `Write every prompt and every option in ${outputLanguage}, regardless of the source chunk's language — a question in one language must never expect an answer in another.`,
-    `Respond with ONLY this JSON (node_index says which lesson the question belongs to):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]},{"node_index":1,"kind":"fill_blank","difficulty":"hard","prompt":"... ____ ...","accepted":["..."]},{"node_index":0,"kind":"calc","difficulty":"medium","prompt":"Compute the simple interest.","calc":{"variables":[{"name":"P","min":1000,"max":5000,"decimals":0},{"name":"r","min":1,"max":10,"decimals":0},{"name":"t","min":1,"max":5,"decimals":0}],"formula":"P*r*t/100","prompt_template":"Principal {P} at {r}% for {t} years — interest?","decimals":2,"tolerance":0.01}}]}`,
+    `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
+    `Base every question and answer ONLY on the source text below — never invent facts.`,
+    `Use only "mcq", "mcq_multi", and "fill_blank" kinds. Tag each with "difficulty": "easy", "medium", or "hard".`,
+    `For mcq/mcq_multi give 3-4 options and correct_indexes. For fill_blank give accepted answers copied from the source.`,
+    `Respond with ONLY this JSON (use node_index 0 for all):`,
+    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]}]}`,
     '',
-    sources,
+    source,
   ].join('\n')
 }

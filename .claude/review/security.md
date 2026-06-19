@@ -1,18 +1,19 @@
-# Security Review — Generation Hardening
+# Security Review — PR #52
 
-**Verdict: PASS**
+**Verdict: PASS** (after fixes applied)
 
-## Findings
+## Findings (all resolved)
 
-### FIXED — `pipeline.ts` `buildNodeQuestionsPrompt()` — AI-generated title in double-quoted prompt
-The AI-generated `node.title` was interpolated unescaped inside a double-quoted instruction segment. A title containing `"` or a prompt-injection phrase could distort the next AI call's instruction boundary. Fixed: `node.title.replace(/"/g, "'")` applied before interpolation.
+1. **WARN → FIXED** `pipeline.ts:391` — AI chapter titles flowed unsanitized into quality-gate feedback appended to re-ask prompt. Fixed: titles now sanitized (quotes + newlines stripped) before interpolation.
 
-### FIXED — Regenerating a public course resets student progress without warning
-An owner regenerating a public course wipes all chapters/nodes/questions via CASCADE, resetting progress rows for any students studying that course. Fixed: `handleRegenerate` in `CoursePage.tsx` now shows a `window.confirm` dialog when `course.visibility === 'public'`, making the consequence explicit and requiring deliberate confirmation before proceeding.
+2. **WARN → FIXED** `pipeline.ts:413,438` — `safeTitle` only escaped double-quotes, not newlines. Fixed: added `.replace(/[\r\n]+/g, ' ')` to both prompt builders.
 
-## Passing checks
-- `force=true` cross-owner: PASS — 404 guard at `index.ts:91` + RLS on the atomic claim UPDATE; attacker cannot reach the wipe path for a course they don't own.
-- AbortController timing: PASS — 30 s timeout is server-side only; no timing oracle visible to callers who already have a 202.
-- Unvalidated input: PASS — `force` is `=== true` strict equality; `courseId` is type-checked; `output_language` is read from DB, not request body.
-- No secrets in client code: PASS — `AI_API_KEY` only in `Deno.env.get()` inside the Edge Function.
-- No new tables without RLS: PASS — no migration.
+3. **NOTED** `index.ts:97` — explicit `owner_id` check is load-bearing for public courses (prevents IDOR on regeneration). No change needed; documented for maintenance.
+
+## Checked and clear
+
+- No new tables, no RLS gaps
+- `AI_API_KEY` stays server-side (`Deno.env`), no secrets in client code
+- `courseId` validated as non-empty string, used only as equality filter
+- `output_language` comes from DB row (validated at creation time), not request body
+- Quality-gate re-ask is a single retry, not a loop
