@@ -25,6 +25,16 @@ describe('startGeneration', () => {
     ])
   })
 
+  test('invokes with force:true when the flag is set', async () => {
+    supabaseMock.reset([{ data: { status: 'processing' }, error: null }])
+    await startGeneration('c1', true)
+    const invoke = supabaseMock.calls.find((c) => c.path.endsWith('invoke'))
+    expect(invoke?.args).toEqual([
+      'generate-course',
+      { body: { courseId: 'c1', force: true } },
+    ])
+  })
+
   test('maps invoke failures to a readable error', async () => {
     supabaseMock.reset([{ data: null, error: { name: 'FunctionsFetchError' } }])
     await expect(startGeneration('c1')).rejects.toThrow(/could not start/i)

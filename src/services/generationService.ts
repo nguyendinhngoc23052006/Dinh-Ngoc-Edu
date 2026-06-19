@@ -4,10 +4,12 @@ import { supabase } from '../lib/supabaseClient'
 // Kicks off the generate-course Edge Function for a course the caller owns.
 // The function answers immediately and works in the background; CoursePage
 // polls course.status until it leaves 'processing'.
-export async function startGeneration(courseId: string): Promise<void> {
+// Pass force=true to rebuild a fully-generated 'ready' course (e.g. after
+// uploading new materials); without it a complete course is a no-op.
+export async function startGeneration(courseId: string, force?: boolean): Promise<void> {
   if (courseId === '') throw new Error('courseId is required.')
   const { error } = await supabase.functions.invoke('generate-course', {
-    body: { courseId },
+    body: force ? { courseId, force: true } : { courseId },
   })
   if (error) {
     if (error instanceof FunctionsHttpError) {

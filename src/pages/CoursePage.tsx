@@ -180,6 +180,21 @@ function CoursePage() {
     }, 'Could not start generation.')
   }
 
+  function handleRegenerate() {
+    if (
+      course.visibility === 'public' &&
+      !window.confirm(
+        'This course is public. Regenerating it will reset progress for any students currently studying it. Proceed?',
+      )
+    )
+      return
+    setStalled(false)
+    void run(async () => {
+      await startGeneration(course.id, true)
+      state.reload()
+    }, 'Could not start regeneration.')
+  }
+
   function handleRenameTest(id: string, title: string) {
     void run(async () => {
       await renameMockTest(id, title)
@@ -285,6 +300,14 @@ function CoursePage() {
             ? `: ${course.generation_error}`
             : '.'}{' '}
           {isOwner ? startButton : null}
+        </p>
+      ) : null}
+      {isOwner && course.status === 'ready' ? (
+        <p className="course-meta">
+          <button type="button" disabled={busy} onClick={handleRegenerate}>
+            Regenerate course
+          </button>{' '}
+          Rebuilds all chapters and questions from the current materials.
         </p>
       ) : null}
       {isOwner ? (

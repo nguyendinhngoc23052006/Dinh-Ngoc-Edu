@@ -301,7 +301,12 @@ export function matchesOutputLanguage(
   text: string,
   outputLanguage: string,
 ): boolean {
-  const hasVietnamese = VIETNAMESE_CHARS.test(text)
+  // Some API responses JSON-escape non-ASCII as \uXXXX; decode before testing
+  // so Vietnamese characters are detected even when serialised that way.
+  const decoded = text.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) =>
+    String.fromCharCode(parseInt(h, 16)),
+  )
+  const hasVietnamese = VIETNAMESE_CHARS.test(decoded)
   return outputLanguage === 'Vietnamese' ? hasVietnamese : !hasVietnamese
 }
 
@@ -310,7 +315,7 @@ export function buildSyllabusPrompt(
   outputLanguage: string,
 ): string {
   const excerpts = chunks
-    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 1800)}`)
+    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 600)}`)
     .join('\n\n')
   return [
     `You are designing a study course in ${outputLanguage} from a student's uploaded materials.`,
@@ -322,6 +327,42 @@ export function buildSyllabusPrompt(
     `{"chapters":[{"title":"...","summary":"one sentence","nodes":[{"title":"...","chunk_index":0}]}]}`,
     '',
     excerpts,
+  ].join('\n')
+}
+
+// Minimal single-lesson prompt used as a last-resort third retry when the
+// full-chapter and chapter-re-ask calls both failed to produce questions for a
+// node. One chunk, one lesson, no calc example — far less likely to truncate.
+export function buildNodeQuestionsPrompt(
+  node: SyllabusNode,
+  chunks: string[],
+  outputLanguage: string,
+): string {
+  // Clamp the index, then gather the primary chunk plus its immediate
+  // neighbours. Wider context gives the AI more grounding material when
+  // the assigned chunk alone is sparse — this is a third-level retry, so
+  // the single-chunk path has already failed twice.
+  const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
+  const source = [chunks[ci - 1], chunks[ci], chunks[ci + 1]]
+    .filter((c): c is string => typeof c === 'string')
+    .join('\n\n')
+    .slice(0, 8_000)
+  // Strip double-quotes from the AI-generated title before embedding it inside
+  // a double-quoted instruction segment — a title that contains `"` would
+  // otherwise distort the prompt boundary and could cause unexpected output.
+  const safeTitle = node.title.replace(/"/g, "'")
+  // Ask for fewer questions than normal — a lower target reduces hallucination
+  // risk when the material is thin, making it more likely we get valid output.
+  const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
+  return [
+    `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
+    `Base every question and answer ONLY on the source text below — never invent facts.`,
+    `Mix "mcq", "mcq_multi", and "fill_blank" kinds. Tag each with "difficulty": "easy", "medium", or "hard".`,
+    `For mcq/mcq_multi give 3-4 options and the correct option indexes. For fill_blank give short accepted answers copied verbatim from the source.`,
+    `Respond with ONLY this JSON (use node_index 0 for all questions):`,
+    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]}]}`,
+    '',
+    source,
   ].join('\n')
 }
 
