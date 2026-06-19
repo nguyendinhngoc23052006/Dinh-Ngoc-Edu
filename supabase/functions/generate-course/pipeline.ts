@@ -448,3 +448,82 @@ export function buildNodeRetryPrompt(
     source,
   ].join('\n')
 }
+
+export const SYLLABUS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    chapters: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          summary: { type: 'string' },
+          nodes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                chunk_index: { type: 'integer' },
+              },
+              required: ['title', 'chunk_index'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['title', 'summary', 'nodes'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['chapters'],
+  additionalProperties: false,
+}
+
+export const QUESTIONS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    questions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          node_index: { type: 'integer' },
+          kind: { type: 'string', enum: ['mcq', 'mcq_multi', 'fill_blank', 'calc'] },
+          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+          prompt: { type: 'string' },
+          options: { type: 'array', items: { type: 'string' } },
+          correct_indexes: { type: 'array', items: { type: 'integer' } },
+          accepted: { type: 'array', items: { type: 'string' } },
+          calc: {
+            type: 'object',
+            properties: {
+              variables: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    min: { type: 'number' },
+                    max: { type: 'number' },
+                    decimals: { type: 'integer' },
+                  },
+                  required: ['name', 'min', 'max', 'decimals'],
+                },
+              },
+              formula: { type: 'string' },
+              prompt_template: { type: 'string' },
+              decimals: { type: 'integer' },
+              tolerance: { type: 'number' },
+            },
+            required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
+          },
+        },
+        required: ['node_index', 'kind', 'difficulty', 'prompt'],
+      },
+    },
+  },
+  required: ['questions'],
+  additionalProperties: false,
+}

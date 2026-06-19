@@ -9,8 +9,12 @@
 // Secrets (Supabase dashboard -> Edge Functions -> Secrets):
 //   AI_API_KEY   required — key for an OpenAI-compatible chat completions API
 //   AI_BASE_URL  optional — default Gemini's free-tier OpenAI-compatible URL
-//   AI_MODEL     optional — default gemini-2.5-flash (used for questions)
-//   AI_MODEL_LITE optional — default gemini-2.5-flash-lite (used for syllabus)
+//   AI_MODEL     optional — default gemini-2.5-flash
+//
+// Thinking budget is capped per-call via the Gemini thinking_config extension
+// to prevent unbounded thinking tokens from consuming the max_tokens output
+// budget and inflating cost. json_schema structured output is attempted first
+// with automatic fallback to json_object if the endpoint rejects it.
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
@@ -29,6 +33,8 @@ import {
   validateSyllabus,
   validateSyllabusQuality,
   verifyQuestion,
+  SYLLABUS_SCHEMA,
+  QUESTIONS_SCHEMA,
 } from './pipeline.ts'
 import type { GeneratedQuestion } from './pipeline.ts'
 
@@ -45,6 +51,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
 }
+
+let jsonSchemaSupported = true
 
 interface CourseRow {
   id: string
@@ -184,10 +192,9 @@ async function generate(
     }
 
     const language = course.output_language
-    const liteModel = Deno.env.get('AI_MODEL_LITE') ?? 'gemini-2.5-flash-lite'
     ensureTime(deadline)
     let syllabus = validateSyllabus(
-      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, liteModel)),
+      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, 1024, SYLLABUS_SCHEMA)),
       chunks.length,
     )
 
@@ -202,7 +209,8 @@ async function generate(
             await chatInLanguage(
               buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
               language,
-              liteModel,
+              1024,
+              SYLLABUS_SCHEMA,
             ),
           ),
           chunks.length,
@@ -257,6 +265,8 @@ async function generate(
               await chatInLanguage(
                 buildNodeQuestionsPrompt(node, chunks, language),
                 language,
+                2048,
+                QUESTIONS_SCHEMA,
               ),
             ),
             1,
@@ -278,6 +288,8 @@ async function generate(
               await chatInLanguage(
                 buildNodeRetryPrompt(chapter.nodes[nodeIndex], chunks, language),
                 language,
+                1024,
+                QUESTIONS_SCHEMA,
               ),
             ),
             1,
@@ -412,32 +424,34 @@ async function extractMaterialsText(
   return parts.join('\n\n')
 }
 
-// One model call pinned to the output language by a system message, with a
-// single re-ask when the answer detectably drifted to the wrong language
-// (the known failure: English questions over Vietnamese materials).
 async function chatInLanguage(
   prompt: string,
   outputLanguage: string,
-  model?: string,
+  thinkingBudget: number,
+  jsonSchema?: Record<string, unknown>,
 ): Promise<string> {
   const system = buildSystemPrompt(outputLanguage)
-  const content = await chat(prompt, system, model)
+  const content = await chat(prompt, system, thinkingBudget, jsonSchema)
   if (matchesOutputLanguage(content, outputLanguage)) return content
-  return chat(prompt + languageReminder(outputLanguage), system, model)
+  return chat(prompt + languageReminder(outputLanguage), system, thinkingBudget, jsonSchema)
 }
 
-// One call to an OpenAI-compatible chat completions endpoint, with a short
-// retry on rate limits — free-tier keys hit 429 routinely. Each fetch is
-// capped at 30 s so a hanging endpoint cannot silently consume the entire
-// pipeline budget: it throws, the outer catch in generate() marks the course
-// 'failed', and the user gets a retryable error instead of a stalled spinner.
-async function chat(prompt: string, system: string, modelOverride?: string): Promise<string> {
+async function chat(
+  prompt: string,
+  system: string,
+  thinkingBudget: number,
+  jsonSchema?: Record<string, unknown>,
+): Promise<string> {
   const baseUrl = (
     Deno.env.get('AI_BASE_URL') ??
     'https://generativelanguage.googleapis.com/v1beta/openai'
   ).replace(/\/+$/, '')
-  const model = modelOverride ?? Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash'
+  const model = Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash'
   for (let attempt = 0; ; attempt += 1) {
+    const useSchema = jsonSchema != null && jsonSchemaSupported
+    const responseFormat = useSchema
+      ? { type: 'json_schema' as const, json_schema: { name: 'response', schema: jsonSchema } }
+      : { type: 'json_object' as const }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
     let response: Response
@@ -451,17 +465,14 @@ async function chat(prompt: string, system: string, modelOverride?: string): Pro
         },
         body: JSON.stringify({
           model,
-          // Low temperature + JSON mode + a hard output cap: the pipeline wants
-          // consistent, schema-shaped output at a bounded per-call cost, not
-          // creative variance. 16 384 gives comfortable headroom for chapters
-          // with verbose questions or non-Latin scripts.
           temperature: 0.2,
-          response_format: { type: 'json_object' },
+          response_format: responseFormat,
           max_tokens: 16_384,
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: prompt },
           ],
+          google: { thinking_config: { thinking_budget: thinkingBudget } },
         }),
       })
     } catch (err) {
@@ -486,6 +497,10 @@ async function chat(prompt: string, system: string, modelOverride?: string): Pro
       return content
     }
     const detail = (await response.text()).slice(0, 300)
+    if (useSchema && response.status === 400) {
+      jsonSchemaSupported = false
+      continue
+    }
     if (attempt < 2 && (response.status === 429 || response.status >= 500)) {
       await new Promise((resolve) => setTimeout(resolve, 5000 * (attempt + 1)))
       continue
