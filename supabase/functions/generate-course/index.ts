@@ -270,7 +270,10 @@ async function generate(
       // or hit rate limits — it sends one chunk and asks for one lesson's worth
       // of questions. ensureTime is called outside the per-node try/catch so a
       // genuine deadline throws cleanly to the outer handler.
-      const finalMissing = emptyNodeIndexes(buckets)
+      // Cap at 3 per chapter — if more than 3 nodes are still empty after two
+      // attempts the source material is likely too sparse to help; further calls
+      // burn budget without improving results.
+      const finalMissing = emptyNodeIndexes(buckets).slice(0, 3)
       for (const nodeIndex of finalMissing) {
         ensureTime(deadline)
         try {

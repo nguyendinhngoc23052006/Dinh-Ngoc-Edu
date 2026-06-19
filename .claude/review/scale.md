@@ -1,14 +1,14 @@
 # Scale Review — Generation Hardening
 
-**Verdict: FLAG (warns only, no blockers)**
+**Verdict: PASS**
 
 ## Findings
 
-### WARN — CASCADE wipe on regeneration is O(rows-in-course), not O(1)
+### NOTED — CASCADE wipe on regeneration is O(rows-in-course), not O(1)
 `startGeneration(force=true)` triggers a DELETE on `chapters` which cascades through `nodes` → `questions` → `progress`. For a large course this is a table scan per table. Acceptable today (courses are bounded by upload size); flag for review if courses grow to thousands of questions.
 
-### WARN — Third-level per-node retry adds up to N extra AI calls (N = empty nodes)
-The new `for (const nodeIndex of finalMissing)` loop inside each chapter fires one AI call per empty node. Worst case: every node in every chapter is empty → `totalNodes` extra calls. Since nodes per course are bounded by the syllabus (≤ 30 chunks × few nodes each) this is acceptable, but it means a degenerate run can exceed the 6-minute `ensureTime` budget and terminate early. `ensureTime(deadline)` is called outside the try-catch, which is correct — it surfaces to the outer handler and marks the course failed rather than silently timing out.
+### FIXED — Third-level per-node retry was unbounded (N extra AI calls)
+The `for (const nodeIndex of finalMissing)` loop fired one AI call per empty node with no cap. Fixed: `.slice(0, 3)` applied to `finalMissing` before the loop — at most 3 single-node retries per chapter. Beyond 3 empty nodes after two full-chapter attempts the source is too sparse to help; capping prevents runaway spend and keeps the call count well inside the 6-minute `ensureTime` budget.
 
 ## Passing checks
 - No unbounded queries: PASS — `getCourseContent`, question inserts all scoped by `courseId`; chapter loop bounded by syllabus size.

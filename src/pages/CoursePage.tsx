@@ -181,6 +181,13 @@ function CoursePage() {
   }
 
   function handleRegenerate() {
+    if (
+      course.visibility === 'public' &&
+      !window.confirm(
+        'This course is public. Regenerating it will reset progress for any students currently studying it. Proceed?',
+      )
+    )
+      return
     setStalled(false)
     void run(async () => {
       await startGeneration(course.id, true)

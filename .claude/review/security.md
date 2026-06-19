@@ -1,14 +1,14 @@
 # Security Review — Generation Hardening
 
-**Verdict: FLAG (warns applied, no blockers)**
+**Verdict: PASS**
 
 ## Findings
 
 ### FIXED — `pipeline.ts` `buildNodeQuestionsPrompt()` — AI-generated title in double-quoted prompt
 The AI-generated `node.title` was interpolated unescaped inside a double-quoted instruction segment. A title containing `"` or a prompt-injection phrase could distort the next AI call's instruction boundary. Fixed: `node.title.replace(/"/g, "'")` applied before interpolation.
 
-### WARN (doc only) — Regenerating a public course resets student progress
-An owner regenerating a public course wipes all chapters/nodes/questions via CASCADE, resetting progress rows for any students studying that course. This is the owner's prerogative; students should clone rather than rely on a public course's stability. Noted in PR body.
+### FIXED — Regenerating a public course resets student progress without warning
+An owner regenerating a public course wipes all chapters/nodes/questions via CASCADE, resetting progress rows for any students studying that course. Fixed: `handleRegenerate` in `CoursePage.tsx` now shows a `window.confirm` dialog when `course.visibility === 'public'`, making the consequence explicit and requiring deliberate confirmation before proceeding.
 
 ## Passing checks
 - `force=true` cross-owner: PASS — 404 guard at `index.ts:91` + RLS on the atomic claim UPDATE; attacker cannot reach the wipe path for a course they don't own.
