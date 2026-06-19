@@ -1,44 +1,42 @@
-# Generation hardening + security-definer lockdown
+# Cap thinking tokens and add structured output to course generation
 
-Fixes three production generation bugs, improves pipeline reliability, and revokes unnecessary RPC exposure on internal SECURITY DEFINER functions flagged by the Supabase linter.
+Replaces the Flash Lite model split (PR #54 v1) with two changes that deliver better cost savings without quality risk: capped thinking budgets and json_schema structured output.
 
 ## What changed
 
-**Bug 1 — Regenerate after new file upload (`generationService.ts`, `CoursePage.tsx`, `index.ts`)**
-The server-side guard at `index.ts:99–109` returned `{status:'ready'}` immediately for any fully-generated course, silently no-oping any regeneration attempt. Added a `force` boolean to the request body: when `true`, the guard is skipped and the existing wipe+rebuild path runs normally. Wired through `startGeneration(courseId, force?)` and added a "Regenerate course" button on the course page for 'ready' owners.
+**Reverted Flash Lite split (`index.ts`)**
+- Removed `AI_MODEL_LITE` env var and `liteModel` variable — all calls use the single `AI_MODEL` again.
+- Removed optional `model` parameter from `chat()` and `chatInLanguage()`.
 
-**Bug 2 — Empty lessons after generation (`index.ts`, `pipeline.ts`)**
-Added a third retry level: after the existing chapter-level call and chapter re-ask both fail for a node, a single-node call via `buildNodeQuestionsPrompt` (one chunk, one lesson, no calc example) is tried for each remaining empty node. Much smaller prompt, virtually impossible to truncate. If any node is still empty after all three retries the course is marked `'failed'` with a descriptive message — eliminating the confusing "ready with empty lessons" state.
+**Thinking budget control (`index.ts`)**
+- `chat()` now sends `google.thinking_config.thinking_budget` on every call, capping the invisible thinking tokens that Gemini 2.5 Flash generates by default (billed as output at $2.50/1M, counted against `max_tokens`).
+- Syllabus calls: budget 1024 (structuring task). Question generation: budget 2048 (needs reasoning for answer correctness, difficulty, calc formulas). Retries: budget 1024 (simpler prompts).
+- This prevents the latent bug where unbounded thinking tokens consume the 16,384 `max_tokens` budget, causing truncated/empty JSON → validation failures → retries → wasted calls.
 
-**Bug 3 — Vietnamese PDF stalls indefinitely (`index.ts`, `pipeline.ts`)**
-Two fixes: (1) every `fetch()` in `chat()` now carries a 30-second `AbortController` timeout — a hanging AI endpoint throws cleanly to the outer catch, which writes `status: 'failed'`, so courses can never stay stuck in `'processing'` forever; (2) `matchesOutputLanguage()` now decodes `\uXXXX` JSON escape sequences before testing for Vietnamese characters, eliminating the false-negative that caused a language retry to fire on every AI call for Vietnamese courses.
+**json_schema structured output (`index.ts`, `pipeline.ts`)**
+- `chat()` accepts an optional `jsonSchema` parameter. When provided, uses `response_format: { type: 'json_schema', json_schema: { name: 'response', schema } }` instead of `json_object`.
+- Automatic fallback: if the endpoint returns 400 (doesn't support json_schema), a module-level flag disables it for the rest of the pipeline run and retries with `json_object`.
+- Two schemas exported from `pipeline.ts`: `SYLLABUS_SCHEMA` and `QUESTIONS_SCHEMA`, matching the shapes `validateSyllabus` and `validateChapterQuestions` already enforce.
+- `parseJsonLoose` + validators still run on every response as defense in depth.
 
-**Token / quality improvements (`pipeline.ts`, `index.ts`)**
-- Syllabus excerpt reduced from 1800 → 1500 chars per chunk: saves input tokens on the syllabus call; topic-identification needs a hint, not full content.
-- `max_tokens` raised from 8192 → 16 384: comfortable headroom for verbose questions and non-Latin scripts.
-
-**Security: revoke RPC exposure on internal functions (migration `20260619050000`)**
-The Supabase linter flagged 1 ERROR + 19 WARNINGs on SECURITY DEFINER functions/views. After investigating each against the application flow:
-- **Fixed (4):** `handle_new_user()` (trigger-only, was callable as RPC), `clone_course()` (CREATE OR REPLACE in later migrations re-inherited the default PUBLIC grant — anon could deep-copy courses without auth), `owns_course()` (revoked from anon — only used in write RLS policies), `rls_auto_enable()` (utility function, not an RPC).
-- **Skipped (15):** `public_profiles` view (intentional SECURITY DEFINER to project two safe columns past own-row-only RLS), `can_view_course` (anon needs EXECUTE for SELECT RLS policies on public courses), all pet/food/cosmetic RPCs (intentionally SECURITY DEFINER, already auth-only with uid checks).
-- **Dashboard action (1):** Leaked password protection — Pro Plan feature, to be enabled when the app goes live.
-
-**Plain-English migration explanation:**
-The migration revokes the ability to call four internal database functions as HTTP endpoints. `handle_new_user` is a signup trigger that should only fire automatically; `clone_course` was accidentally re-exposed to anonymous users when the function was updated; `owns_course` was unnecessarily callable by anonymous users; `rls_auto_enable` is a utility function.
+**Why this is better than the Lite split:**
+- The Lite split saved ~$0.10-0.40/1M on 2-4 calls out of 13-25 per course, with real quality risk on the pipeline's most structurally important call (syllabus).
+- Thinking budget caps cut cost across ALL calls by preventing 5-15k unbounded thinking tokens per call ($0.01-0.04 each × 13-25 calls = $0.13-1.00 saved per course).
+- json_schema reduces retries from malformed output, saving entire wasted calls.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — no migration
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — 291 tests pass, lint + typecheck clean
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
-- [x] irreversible actions guarded + idempotent + flagged — `force=true` still goes through atomic claim; no double-billing. **Abuse case:** owner regenerating a public course wipes all chapters/nodes/questions via CASCADE and resets any students' progress rows — this is the owner's prerogative; students who need a stable version should clone.
+- [x] irreversible actions guarded + idempotent + flagged — no new irreversible actions
 - [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English
+- [x] migrations explained in plain English — n/a, no migration
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Generation is now significantly more reliable (Vietnamese stalls fixed, empty lessons retry properly, owners can regenerate), and four internal database functions are no longer exposed as callable HTTP endpoints to unauthorized roles.
-**What you do next:** Review the preview, then merge. No env/secret changes needed. When you upgrade to Pro Plan, enable leaked password protection in Dashboard > Authentication > Providers > Email.
-**How to roll it back:** Revert this PR; the migration is purely additive (revokes only — no schema changes). All other changes are application code with no data side-effects.
+**What changed:** Course generation now caps AI thinking tokens per-call (preventing truncation and cutting cost) and uses json_schema structured output (reducing parse failures), replacing the Flash Lite model split which had marginal savings with quality risk.
+**What you do next:** Review the preview, then merge. No env/secret changes needed — `AI_MODEL_LITE` is no longer used and can be removed from Edge Function secrets if you set it previously.
+**How to roll it back:** Revert this PR — the change is two files with no schema or data side-effects. The `google.thinking_config` field is ignored by non-Gemini endpoints; json_schema falls back to json_object automatically.

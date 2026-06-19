@@ -49,7 +49,7 @@ the browser. Required by `generate-course`:
 | --- | --- | --- |
 | `AI_API_KEY` | yes | — |
 | `AI_BASE_URL` | no | Gemini free-tier endpoint |
-| `AI_MODEL` | no | Gemini free-tier model |
+| `AI_MODEL` | no | `gemini-2.5-flash` |
 
 Setting them — click-path: **Supabase → the project → Edge Functions →
 Secrets (or `npx supabase secrets set AI_API_KEY=…`).** Deployed functions:
