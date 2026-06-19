@@ -1,4 +1,7 @@
 :root {
+  /* Themeable tokens — CosmeticsLayer overrides these 7 from the equipped theme
+     (THEME_VARS). Everything else below is structural and stays constant so a
+     theme can recolor the world without breaking contrast or layout. */
   --green: #16a34a;
   --green-dark: #15803d;
   --green-soft: #dcfce7;
@@ -6,10 +9,30 @@
   --muted: #64748b;
   --line: #e2e8f0;
   --bg: #f6f8fb;
+
+  /* Accents that give the app its game-world character. */
+  --gold: #f59e0b;
+  --gold-dark: #b45309;
   --red: #b91c1c;
   --red-soft: #fee2e2;
-  --radius: 0.75rem;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+
+  /* Floating cards are a fixed light surface with fixed dark text, so they read
+     the same over every themed backdrop (including the dark Midnight world). */
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --card-ink: #1f2937;
+  --card-muted: #5b6b85;
+
+  /* Shape + depth: rounder and softer than before, with layered shadows that
+     lift interactive elements off the world. */
+  --radius: 1rem;
+  --radius-sm: 0.6rem;
+  --radius-lg: 1.5rem;
+  --shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 30px -16px rgba(15, 23, 42, 0.35);
+  --shadow-lg:
+    0 2px 4px rgba(15, 23, 42, 0.06), 0 24px 60px -24px rgba(15, 23, 42, 0.45);
+
   font-family:
     'Segoe UI',
     system-ui,
@@ -19,49 +42,151 @@
   color: var(--ink);
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background: var(--bg);
 }
 
-h1 {
-  font-size: 1.9rem;
+/* ---- The world: a persistent, immersive backdrop behind every page ----
+   .app wraps the whole router, so this layer is continuous as you navigate.
+   The base is a soft aurora over a faint dotted grid; data-dimension swaps it
+   for a themed world further down. */
+.app {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      900px 500px at 12% -8%,
+      var(--green-soft),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 500px at 100% 0%,
+      rgba(245, 158, 11, 0.16),
+      transparent 55%
+    ),
+    radial-gradient(
+      1100px 700px at 50% 120%,
+      rgba(22, 163, 74, 0.12),
+      transparent 60%
+    ),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+.app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    rgba(15, 23, 42, 0.05) 1px,
+    transparent 1px
+  );
+  background-size: 26px 26px;
+  mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+}
+
+h1,
+h2,
+h3 {
   letter-spacing: -0.02em;
 }
 
+h1 {
+  font-size: 1.95rem;
+  font-weight: 800;
+}
+
+a {
+  color: var(--green-dark);
+}
+
+/* ---- Buttons & CTAs: chunky, tactile, a little bouncy ---- */
 button,
 .cta {
   font: inherit;
-  font-weight: 600;
+  font-weight: 700;
   border: none;
   border-radius: var(--radius);
-  padding: 0.55rem 1.1rem;
-  background: var(--green);
+  padding: 0.6rem 1.15rem;
+  background: linear-gradient(180deg, var(--green), var(--green-dark));
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 2px 0 var(--green-dark);
+  box-shadow:
+    0 4px 0 var(--green-dark),
+    0 8px 18px -8px rgba(21, 128, 61, 0.7);
   transition:
-    transform 0.06s ease,
+    transform 0.08s ease,
+    box-shadow 0.12s ease,
     filter 0.12s ease;
 }
 
 button:hover,
 .cta:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 button:active,
 .cta:active {
-  transform: translateY(1px);
-  box-shadow: none;
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--green-dark);
+}
+
+button:focus-visible,
+.cta:focus-visible,
+a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--green) 55%, #fff);
+  outline-offset: 2px;
 }
 
 button:disabled {
   background: #cbd5e1;
+  color: #f8fafc;
   box-shadow: none;
   cursor: not-allowed;
+  transform: none;
 }
 
+/* Secondary "ghost" action: transparent with the brand outline — used by the
+   market, the pets page, and the confirm dialog's cancel button so it reads as
+   clearly distinct from the primary/destructive button beside it. */
+button.ghost {
+  background: transparent;
+  color: var(--green-dark);
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+
+button.ghost:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--green) 12%, #fff);
+}
+
+button.ghost:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+
+/* Destructive primary (e.g. the confirm dialog's confirm button). The
+   market/pets "release" buttons keep their lighter outline via the more
+   specific .market-card rule. */
+button.danger {
+  background: linear-gradient(180deg, #ef4444, var(--red));
+  color: #fff;
+  box-shadow:
+    0 4px 0 #7f1d1d,
+    0 8px 18px -8px rgba(185, 28, 28, 0.7);
+}
+
+/* ---- Persistent shell: the HUD-style top bar ----
+   A frosted light bar so nav text reads over any themed world; it stays put as
+   you move between pages so the app feels like one continuous space. */
 .app-header {
   position: sticky;
   top: 0;
@@ -69,39 +194,140 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  background: #fff;
-  border-bottom: 1px solid var(--line);
+  gap: 1rem;
+  padding: 0.7rem 1.5rem;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 6px 24px -20px rgba(15, 23, 42, 0.6);
+  transition:
+    transform 0.28s ease,
+    opacity 0.28s ease;
+}
+
+@media (max-width: 640px) {
+  .app-header.header-hidden {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .brand {
-  font-weight: 800;
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 900;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
   text-decoration: none;
-  color: var(--green);
+  color: var(--green-dark);
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.7rem;
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  color: #fff;
+  font-size: 1rem;
+  box-shadow: 0 4px 10px -4px rgba(21, 128, 61, 0.8);
 }
 
 .app-nav {
   display: flex;
-  gap: 1.25rem;
+  gap: 0.35rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .app-nav a {
   color: var(--muted);
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.app-nav a.active,
 .app-nav a:hover {
   color: var(--green-dark);
+  background: color-mix(in srgb, var(--green) 14%, #fff);
+}
+
+.app-nav a.active {
+  color: #fff;
+  background: linear-gradient(180deg, var(--green), var(--green-dark));
+  box-shadow: 0 3px 8px -4px rgba(21, 128, 61, 0.9);
+}
+
+.app-nav button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.95rem;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.app-nav button:hover {
+  color: var(--green-dark);
+  box-shadow: inset 0 0 0 1.5px var(--green);
+  transform: none;
+  filter: none;
+}
+
+/* Credits HUD chip — a gold "coin purse" that links to the market. */
+.credit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 800;
+  color: var(--gold-dark);
+  background: linear-gradient(180deg, #fffbeb, #fde68a);
+  text-decoration: none;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(245, 158, 11, 0.55),
+    0 3px 10px -6px rgba(180, 83, 9, 0.8);
+  transition: transform 0.1s ease;
+}
+
+.credit-badge:hover {
+  transform: translateY(-1px) scale(1.03);
 }
 
 .app-main {
+  position: relative;
+  z-index: 1;
   max-width: 56rem;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 4rem;
+  padding: 1.75rem 1.5rem 4.5rem;
+}
+
+/* ---- Route transitions: each page fades and rises in, so navigation reads as
+   movement through one space rather than a hard swap. Keyed by pathname in
+   AppLayout. ---- */
+.route-view {
+  animation: route-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes route-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .page-header {
@@ -111,75 +337,128 @@ button:disabled {
   gap: 1rem;
 }
 
+/* ---- Cards: floating light surfaces, readable over any themed world ---- */
 .card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  margin: 0.75rem 0;
+  position: relative;
+  background: var(--surface);
+  color: var(--card-ink);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem;
+  margin: 0.85rem 0;
   box-shadow: var(--shadow);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+/* Cards inside a grid behave like collectible tiles: lift on hover. */
+.card-grid .card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.card a {
+  color: var(--green-dark);
 }
 
 .form label {
   display: block;
-  margin-bottom: 0.75rem;
-  font-weight: 600;
+  margin-bottom: 0.85rem;
+  font-weight: 700;
+  color: var(--card-ink);
 }
 
 .form input,
-.form select {
+.form select,
+.form textarea {
   display: block;
   width: 100%;
-  padding: 0.55rem 0.65rem;
-  margin-top: 0.3rem;
+  padding: 0.6rem 0.7rem;
+  margin-top: 0.35rem;
   box-sizing: border-box;
   font: inherit;
   font-weight: 400;
-  border: 1px solid var(--line);
-  border-radius: 0.5rem;
-  background: #fff;
+  color: var(--card-ink);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .form input:focus,
-.form select:focus {
-  outline: 2px solid var(--green);
-  outline-offset: 1px;
+.form select:focus,
+.form textarea:focus {
+  outline: none;
   border-color: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent);
+  background: var(--surface);
 }
 
 .state {
-  padding: 0.85rem 1rem;
+  padding: 0.95rem 1.1rem;
   border-radius: var(--radius);
+  font-weight: 600;
 }
 
 .state-loading,
 .state-empty {
   color: #475569;
-  background: #eef2f7;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--line);
+}
+
+/* A gentle shimmer tells the user the world is loading, not stuck. */
+.state-loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.state-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(22, 163, 74, 0.12),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 .state-error {
   color: var(--red);
   background: var(--red-soft);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, #fff);
 }
 
 .state-correct {
   color: var(--green-dark);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .course-meta {
-  color: var(--muted);
+  color: var(--card-muted);
 }
 
 .course-author {
-  color: var(--muted);
+  color: var(--card-muted);
   font-size: 0.85rem;
   margin: 0.1rem 0 0;
 }
@@ -199,28 +478,32 @@ button:disabled {
 }
 
 .danger-zone {
-  border-color: var(--danger, #c0392b);
+  border-color: color-mix(in srgb, var(--red) 45%, #fff);
 }
 
 /* Scoped to the danger zone so it doesn't restyle other .danger buttons. */
 .danger-zone button.danger {
-  background: var(--danger, #c0392b);
+  background: linear-gradient(180deg, #ef4444, var(--red));
   color: #fff;
+  box-shadow: 0 4px 0 #7f1d1d;
 }
 
-/* ---- Landing ---- */
-
+/* ---- Landing / hero ---- */
 .hero {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
   gap: 1.5rem;
   align-items: stretch;
-  margin: -1.5rem -1.5rem 1.5rem;
-  padding: 2.5rem 1.5rem;
+  margin: -1.75rem -1.5rem 1.75rem;
+  padding: 3rem 1.75rem;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background:
-    radial-gradient(1200px 400px at 10% -10%, var(--green-soft), transparent),
+    radial-gradient(900px 360px at 8% -20%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(600px 400px at 110% 120%, rgba(245, 158, 11, 0.35), transparent),
     linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
   color: #fff;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
 .hero-copy {
@@ -229,21 +512,23 @@ button:disabled {
 
 .hero-kicker {
   display: inline-block;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-size: 0.8rem;
-  opacity: 0.85;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .hero-copy h1 {
-  font-size: 2.6rem;
-  line-height: 1.1;
-  margin: 0.3rem 0 0.6rem;
+  font-size: 2.7rem;
+  line-height: 1.08;
+  margin: 0.5rem 0 0.6rem;
 }
 
 .hero-copy > p {
-  font-size: 1.1rem;
+  font-size: 1.12rem;
   max-width: 34rem;
   opacity: 0.95;
 }
@@ -251,9 +536,9 @@ button:disabled {
 .hero-points {
   list-style: none;
   padding: 0;
-  margin: 1rem 0 0;
+  margin: 1.1rem 0 0;
   display: grid;
-  gap: 0.4rem;
+  gap: 0.45rem;
 }
 
 .hero-points li {
@@ -262,7 +547,7 @@ button:disabled {
 
 .hero-card {
   margin: 0;
-  color: var(--ink);
+  align-self: center;
 }
 
 .hero-card h2 {
@@ -274,28 +559,34 @@ button:disabled {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .landing-steps li {
-  background: #fff;
+  background: var(--surface);
+  color: var(--card-ink);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 1rem;
+  padding: 1.1rem;
   box-shadow: var(--shadow);
   font-weight: 600;
+  transition: transform 0.12s ease;
+}
+
+.landing-steps li:hover {
+  transform: translateY(-3px);
 }
 
 .landing-steps li span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  margin-right: 0.5rem;
+  width: 1.8rem;
+  height: 1.8rem;
+  margin-right: 0.55rem;
   border-radius: 50%;
-  background: var(--green-soft);
-  color: var(--green-dark);
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
+  color: #fff;
   font-weight: 800;
 }
 
@@ -304,13 +595,12 @@ button:disabled {
     grid-template-columns: 1fr;
   }
   .hero-copy h1 {
-    font-size: 2rem;
+    font-size: 2.1rem;
   }
 }
 
-/* ---- Small screens: keep the header usable ----
-   The nav is a 6+ item flex row that overflowed the header on phones. Let the
-   header stack and the nav wrap/scroll instead of running off-screen. */
+/* ---- Small screens: keep the HUD usable ----
+   The nav wraps below the brand and credits instead of overflowing. */
 @media (max-width: 640px) {
   .app-header {
     flex-wrap: wrap;
@@ -319,8 +609,7 @@ button:disabled {
   }
   .app-nav {
     width: 100%;
-    gap: 0.85rem;
-    flex-wrap: wrap;
+    gap: 0.35rem;
     row-gap: 0.4rem;
     font-size: 0.95rem;
   }
@@ -330,28 +619,28 @@ button:disabled {
 }
 
 /* ---- Auth ---- */
-
 .auth-card {
   max-width: 24rem;
   margin: 2.5rem auto;
 }
 
 /* ---- Course map (Duolingo-style path) ---- */
-
 .course-map {
   margin-top: 1.5rem;
 }
 
 .chapter {
-  margin-bottom: 2rem;
+  margin-bottom: 2.25rem;
 }
 
 .chapter-banner {
-  background: var(--green);
+  background: linear-gradient(135deg, var(--green), var(--green-dark));
   color: #fff;
   border-radius: var(--radius);
-  padding: 0.9rem 1.25rem;
-  box-shadow: 0 3px 0 var(--green-dark);
+  padding: 1rem 1.35rem;
+  box-shadow:
+    0 5px 0 var(--green-dark),
+    0 16px 30px -16px rgba(21, 128, 61, 0.9);
 }
 
 .chapter-banner h3 {
@@ -360,13 +649,13 @@ button:disabled {
 
 .chapter-banner p {
   margin: 0.25rem 0 0;
-  opacity: 0.9;
+  opacity: 0.92;
   font-size: 0.95rem;
 }
 
 .node-path {
   list-style: none;
-  padding: 1.25rem 0 0;
+  padding: 1.5rem 0 0;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -376,7 +665,7 @@ button:disabled {
 
 .node-step {
   position: relative;
-  padding-bottom: 1.6rem;
+  padding-bottom: 1.7rem;
 }
 
 /* The connector between nodes. */
@@ -384,8 +673,8 @@ button:disabled {
   content: '';
   position: absolute;
   left: 50%;
-  top: -1.6rem;
-  height: 1.6rem;
+  top: -1.7rem;
+  height: 1.7rem;
   border-left: 4px dotted #cbd5e1;
 }
 
@@ -402,7 +691,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   text-decoration: none;
   color: var(--ink);
   max-width: 11rem;
@@ -413,71 +702,90 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.6rem;
-  height: 3.6rem;
+  width: 3.8rem;
+  height: 3.8rem;
   border-radius: 50%;
-  font-size: 1.4rem;
-  background: #d6dde7;
+  font-size: 1.45rem;
+  background: linear-gradient(180deg, #e4eaf2, #d6dde7);
   color: #fff;
-  box-shadow: 0 4px 0 #b6c0cf;
-  transition: transform 0.06s ease;
+  box-shadow:
+    0 5px 0 #b6c0cf,
+    0 12px 22px -12px rgba(15, 23, 42, 0.6);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
 }
 
 .node:hover .node-circle {
-  transform: translateY(1px);
+  transform: translateY(-2px);
+}
+
+.node:active .node-circle {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #b6c0cf;
 }
 
 .node-done .node-circle {
-  background: var(--green);
-  box-shadow: 0 4px 0 var(--green-dark);
+  background: linear-gradient(180deg, #22c55e, var(--green));
+  box-shadow:
+    0 5px 0 var(--green-dark),
+    0 12px 22px -12px rgba(21, 128, 61, 0.9);
 }
 
 .node-next .node-circle {
-  background: #f59e0b;
-  box-shadow: 0 4px 0 #b45309;
+  background: linear-gradient(180deg, #fbbf24, var(--gold));
+  box-shadow:
+    0 5px 0 var(--gold-dark),
+    0 0 0 6px rgba(245, 158, 11, 0.18),
+    0 12px 22px -10px rgba(180, 83, 9, 0.9);
 }
 
 .node-start {
   position: absolute;
-  top: -0.5rem;
+  top: -0.6rem;
   background: #fff;
-  color: var(--green-dark);
-  border: 2px solid var(--line);
+  color: var(--gold-dark);
+  border: 2px solid var(--gold);
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 800;
-  padding: 0.1rem 0.5rem;
+  padding: 0.1rem 0.55rem;
   letter-spacing: 0.05em;
+  box-shadow: 0 4px 10px -6px rgba(180, 83, 9, 0.9);
 }
 
 .node-label {
   font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .node-prize {
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--green-dark);
+  color: var(--gold-dark);
 }
 
-/* ---- Theme dimensions: re-skin the course map into a themed world ---- */
-/* Driven by <html data-dimension="..."> set from the equipped theme. */
+/* ---- Themed worlds: data-dimension re-skins BOTH the whole app backdrop and
+   the course map, so the equipped theme is felt on every page (the "unified
+   theme system"). Driven by <html data-dimension="..."> from the equipped
+   theme. Backdrops track each theme's --bg lightness so --ink text stays
+   readable; only Midnight/cosmos is dark. ---- */
 
 [data-dimension] .course-map {
-  padding: 0.5rem 0.75rem 1.5rem;
-  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem 1.5rem;
+  border-radius: var(--radius-lg);
   background-size: cover;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
 /* A decorative scenery strip at the top of each themed map. */
 [data-dimension] .course-map::before {
   display: block;
   text-align: center;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   letter-spacing: 0.5rem;
-  padding: 0.6rem 0 0.2rem;
+  padding: 0.6rem 0 0.3rem;
 }
 
 /* Solid, themed connectors instead of the default grey dots. */
@@ -488,10 +796,16 @@ button:disabled {
 
 /* A glowing ring around every node so the path reads as "magical". */
 [data-dimension] .node-circle {
-  border: 3px solid rgba(255, 255, 255, 0.65);
+  border: 3px solid rgba(255, 255, 255, 0.7);
 }
 
 /* Meadow (Classic) — soft greens. */
+[data-dimension='meadow'] .app {
+  background:
+    radial-gradient(800px 420px at 10% -10%, #d7f0cf, transparent 60%),
+    radial-gradient(700px 460px at 100% 0%, #eafbe3, transparent 55%),
+    linear-gradient(180deg, #f1faec, #eaf7e6);
+}
 [data-dimension='meadow'] .course-map {
   background: linear-gradient(180deg, #eaf7e6, #f6fbf2);
 }
@@ -499,7 +813,13 @@ button:disabled {
   content: '🌿 🌳 🌸 🌳 🌿';
 }
 
-/* Volcano (Sunset) — dark rock and embers. */
+/* Volcano (Sunset) — warm light world (theme --bg is a light peach). */
+[data-dimension='volcano'] .app {
+  background:
+    radial-gradient(820px 440px at 12% -10%, #ffe2c2, transparent 60%),
+    radial-gradient(720px 460px at 100% 10%, #ffd0a8, transparent 55%),
+    linear-gradient(180deg, #fff3e8, #ffe8d6);
+}
 [data-dimension='volcano'] .course-map {
   background: linear-gradient(180deg, #3a0d0d, #7c2d12);
 }
@@ -511,6 +831,12 @@ button:disabled {
 }
 
 /* Tide (Ocean) — bright shallows. */
+[data-dimension='tide'] .app {
+  background:
+    radial-gradient(820px 440px at 12% -10%, #c7ecfd, transparent 60%),
+    radial-gradient(720px 460px at 100% 10%, #d8f3ff, transparent 55%),
+    linear-gradient(180deg, #eef9ff, #ddf1fb);
+}
 [data-dimension='tide'] .course-map {
   background: linear-gradient(180deg, #cdeffd, #eaf7ff);
 }
@@ -518,7 +844,13 @@ button:disabled {
   content: '🌊 🐚 🐠 🐚 🌊';
 }
 
-/* Twilight (Grape) — deep purples. */
+/* Twilight (Grape) — light lavender world. */
+[data-dimension='twilight'] .app {
+  background:
+    radial-gradient(820px 440px at 12% -10%, #ecdcff, transparent 60%),
+    radial-gradient(720px 460px at 100% 10%, #f3e8ff, transparent 55%),
+    linear-gradient(180deg, #f7f0ff, #efe2ff);
+}
 [data-dimension='twilight'] .course-map {
   background: linear-gradient(180deg, #2e1065, #4c1d95);
 }
@@ -529,7 +861,24 @@ button:disabled {
   color: #e9d5ff;
 }
 
-/* Cosmos (Midnight) — starfield. */
+/* Cosmos (Midnight) — the one dark world; a starfield (theme --bg is dark and
+   --ink is light, so a dark backdrop keeps page text readable). */
+[data-dimension='cosmos'] .app {
+  background:
+    radial-gradient(2px 2px at 20% 30%, #fff, transparent),
+    radial-gradient(2px 2px at 70% 20%, #cbd5e1, transparent),
+    radial-gradient(1.5px 1.5px at 40% 70%, #fff, transparent),
+    radial-gradient(2px 2px at 85% 60%, #93c5fd, transparent),
+    radial-gradient(1.5px 1.5px at 55% 85%, #fff, transparent),
+    radial-gradient(900px 600px at 20% 10%, #1e293b, transparent 60%),
+    linear-gradient(180deg, #0b1220, #0f172a);
+}
+[data-dimension='cosmos'] .app::before {
+  background-image: radial-gradient(
+    rgba(148, 163, 184, 0.12) 1px,
+    transparent 1px
+  );
+}
 [data-dimension='cosmos'] .course-map {
   background: radial-gradient(circle at 20% 10%, #1e293b, #0f172a);
 }
@@ -541,8 +890,8 @@ button:disabled {
 }
 [data-dimension='cosmos'] .node-circle {
   box-shadow:
-    0 0 12px #38bdf8,
-    0 4px 0 #1e3a8a;
+    0 0 14px #38bdf8,
+    0 5px 0 #1e3a8a;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -552,7 +901,6 @@ button:disabled {
 }
 
 /* ---- Lesson player ---- */
-
 .options,
 .chapter-picker {
   list-style: none;
@@ -570,17 +918,8 @@ button:disabled {
 }
 
 .lesson-progress {
-  color: var(--muted);
+  color: var(--card-muted);
   font-size: 0.9rem;
-}
-
-.credit-badge {
-  font-weight: 700;
-  color: var(--green-dark);
-  background: var(--green-soft);
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  white-space: nowrap;
 }
 
 .lesson-result {
@@ -597,11 +936,11 @@ button:disabled {
 }
 
 .market-section {
-  margin-top: 1.5rem;
+  margin-top: 1.75rem;
 }
 
 .market-blurb {
-  color: var(--muted);
+  color: var(--card-muted);
   margin-top: -0.4rem;
 }
 
@@ -614,9 +953,9 @@ button:disabled {
 .market-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   text-align: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .market-card h3 {
@@ -624,24 +963,18 @@ button:disabled {
 }
 
 .market-desc {
-  color: var(--muted);
+  color: var(--card-muted);
   font-size: 0.9rem;
   flex: 1;
 }
 
 .market-price {
-  font-weight: 700;
-  color: var(--green-dark);
+  font-weight: 800;
+  color: var(--gold-dark);
 }
 
-.market-card button {
+.market-card > button {
   width: 100%;
-}
-
-.market-card button.ghost {
-  background: transparent;
-  color: var(--green-dark);
-  box-shadow: inset 0 0 0 2px var(--green);
 }
 
 .theme-swatch {
@@ -658,6 +991,7 @@ button:disabled {
   width: 24px;
   height: 24px;
   border-radius: 50%;
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .pet-preview {
@@ -671,7 +1005,7 @@ button:disabled {
 
 .food-owned {
   font-size: 0.85rem;
-  color: var(--muted);
+  color: var(--card-muted);
   margin: 0;
 }
 
@@ -726,7 +1060,7 @@ button:disabled {
 
 .pet-active {
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--green-dark);
 }
 
@@ -747,7 +1081,6 @@ button:disabled {
 .pet-actions {
   display: flex;
   gap: 0.5rem;
-  width: 100%;
 }
 
 .pet-actions button {
@@ -757,6 +1090,11 @@ button:disabled {
 .market-card button.danger {
   background: transparent;
   color: var(--red);
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+
+.market-card button.danger:active {
+  transform: translateY(2px);
   box-shadow: inset 0 0 0 2px var(--red);
 }
 
@@ -775,11 +1113,11 @@ button:disabled {
 
 .setting-row select {
   margin-left: auto;
-  padding: 0.4rem 0.6rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line);
+  background: var(--surface-2);
+  color: var(--card-ink);
 }
 
 /* ---- Roaming pet companion ----
@@ -827,12 +1165,13 @@ button:disabled {
   transform: translateX(-25%);
   max-width: 14rem;
   background: #fff;
-  color: var(--ink);
+  color: var(--card-ink);
   border: 2px solid var(--green);
-  border-radius: 12px;
-  padding: 0.35rem 0.6rem;
+  border-radius: 14px;
+  padding: 0.4rem 0.65rem;
   font-size: 0.8rem;
   line-height: 1.2;
+  font-weight: 600;
   box-shadow: var(--shadow);
 }
 
@@ -862,6 +1201,12 @@ button:disabled {
   .pet-emoji {
     animation: none;
   }
+  .route-view {
+    animation: none;
+  }
+  .state-loading::after {
+    animation: none;
+  }
 }
 
 /* ---- Centered confirmation modal (replaces window.confirm) ---- */
@@ -873,26 +1218,30 @@ button:disabled {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .modal-card {
-  background: #fff;
-  border-radius: var(--radius);
-  padding: 1.5rem;
+  background: var(--surface);
+  color: var(--card-ink);
+  border-radius: var(--radius-lg);
+  padding: 1.6rem;
   max-width: 24rem;
   width: 100%;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--shadow-lg);
+  animation: route-in 0.2s ease both;
 }
 
 .modal-title {
   margin: 0 0 0.5rem;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
 }
 
 .modal-message {
   margin: 0 0 1.25rem;
-  color: var(--muted);
+  color: var(--card-muted);
 }
 
 .modal-actions {
@@ -902,20 +1251,23 @@ button:disabled {
 }
 
 .credit-earned {
-  font-size: 1.2rem;
-  color: var(--green-dark);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--gold-dark);
 }
 
 .button-link {
   display: inline-block;
   margin-top: 0.5rem;
-  padding: 0.6rem 1.1rem;
-  background: var(--green);
+  padding: 0.65rem 1.15rem;
+  background: linear-gradient(180deg, var(--green), var(--green-dark));
   color: #fff;
   border-radius: var(--radius);
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
-  box-shadow: 0 2px 0 var(--green-dark);
+  box-shadow:
+    0 4px 0 var(--green-dark),
+    0 8px 18px -8px rgba(21, 128, 61, 0.7);
 }
 
 /* AI-assigned, material-grounded difficulty tag, shown per question. */
@@ -947,16 +1299,17 @@ button:disabled {
 }
 
 .question-prompt {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* The filled-in numeric statement of a calculation question. */
 .calc-statement {
   margin: 0.5rem 0 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.8rem 1.05rem;
   background: var(--green-soft);
   border-radius: var(--radius);
   font-size: 1.05rem;
+  font-weight: 600;
 }
 
 /* Duolingo-style result sheet: slides over the bottom of the screen. */
@@ -966,10 +1319,10 @@ button:disabled {
   right: 0;
   bottom: 0;
   z-index: 20;
-  padding: 1.25rem 1.5rem 1.75rem;
-  border-top-left-radius: 1.25rem;
-  border-top-right-radius: 1.25rem;
-  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.15);
+  padding: 1.35rem 1.5rem 1.85rem;
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+  box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.22);
   animation: feedback-rise 0.18s ease-out;
 }
 
@@ -1005,8 +1358,8 @@ button:disabled {
 }
 
 .feedback-popup-partial button {
-  background: #d97706;
-  box-shadow: 0 2px 0 #92400e;
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+  box-shadow: 0 4px 0 #92400e;
 }
 
 .feedback-popup-wrong {
@@ -1015,17 +1368,16 @@ button:disabled {
 }
 
 .feedback-popup-wrong button {
-  background: var(--red);
-  box-shadow: 0 2px 0 #7f1d1d;
+  background: linear-gradient(180deg, #ef4444, var(--red));
+  box-shadow: 0 4px 0 #7f1d1d;
 }
 
 .feedback-title {
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   font-weight: 800;
 }
 
 /* ---- Misc ---- */
-
 .cta {
   display: inline-block;
   text-decoration: none;
@@ -1043,6 +1395,7 @@ button:disabled {
 
 .link-button:hover {
   filter: none;
+  transform: none;
   text-decoration: underline;
 }
 
@@ -1060,7 +1413,7 @@ button:disabled {
 }
 
 .course-progress {
-  color: #475569;
+  color: var(--card-muted);
   font-size: 0.9rem;
 }
 
@@ -1076,7 +1429,7 @@ button:disabled {
 
 .settings-row input {
   flex: 1;
-  padding: 0.4rem;
+  padding: 0.45rem;
 }
 
 .danger {

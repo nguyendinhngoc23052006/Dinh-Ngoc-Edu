@@ -1,16 +1,14 @@
-# scale-reviewer verdict — remove dead "Regenerate course" button
+# scale-reviewer verdict — UI overhaul (playful game world)
 
 **Verdict: PASS.**
 
-Checked: src/components/courses/OwnerCourseControls.tsx,
-src/pages/CoursePage.tsx, src/components/courses/MaterialsManager.tsx,
-src/components/courses/OwnerCourseControls.test.tsx.
+Reviewed: `src/index.css` (full rewrite), `src/components/layout/AppLayout.tsx`
+(brand-mark span + `route-view` wrapper keyed on `location.pathname`).
 
-Presentational removal only — no query, no N+1, no unbounded fetch, no missing
-index, and no write (idempotent or otherwise) is added. CoursePage's existing
-query paths (`getCourse`, `getCourseContent`, `listMaterials`,
-`getCompletedNodeIds`, `getDisplayNames`) are unchanged. The generating poll
-loop (`useEffect`, keyed on `status === 'pending' | 'processing'`) is unaffected
-by removing the button — it still exits when status leaves the generating
-states, so there is no staleness/escape regression. The new test does no
-network round-trips. No new scale pattern; existing memory lessons unchanged.
+Presentational only — no query, no N+1, no unbounded fetch, no write, and no
+new index surface. The `route-view` wrapper uses `location.pathname` as a React
+`key`; this mounts/unmounts the subtree on navigation but does NOT trigger any
+data refetch that wasn't already happening (each page's `useAsync` calls fire on
+mount as before). No polling loop added; no data dependency changes. CSS is
+purely client-side rendering — zero DB reads. No new scale pattern introduced;
+existing memory lessons unchanged.
