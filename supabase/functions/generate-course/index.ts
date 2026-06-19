@@ -496,11 +496,11 @@ async function chat(
       }
       return content
     }
-    const detail = (await response.text()).slice(0, 300)
     if (useSchema && response.status === 400) {
       jsonSchemaSupported = false
       continue
     }
+    const detail = (await response.text()).slice(0, 300)
     if (attempt < 2 && (response.status === 429 || response.status >= 500)) {
       await new Promise((resolve) => setTimeout(resolve, 5000 * (attempt + 1)))
       continue

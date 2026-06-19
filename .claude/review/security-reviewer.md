@@ -2,16 +2,19 @@
 
 ## Verdict: PASS
 
-### Findings
-
-SEVERITY warn — `docs/RUNBOOK.md` — `AI_MODEL_LITE` is not listed in the Edge Function secrets table; an operator setting up from the runbook will not know the env var exists. Add a row for `AI_MODEL_LITE | no | Lite model for syllabus generation (default: gemini-2.5-flash-lite)`.
-
-No blockers found.
-
 ### What was checked
 
-- `supabase/functions/generate-course/index.ts` — the only changed file; new `model?` parameter on `chatInLanguage()` and `chat()`, the `AI_MODEL_LITE` env-var read at line 187, all call sites.
-- `liteModel` sourced exclusively from `Deno.env.get('AI_MODEL_LITE')` with a hardcoded safe default. Never derived from the request body. Feeds only into the `model` field of an upstream JSON API call — not SQL, storage path, or prompt string. No injection surface.
-- Grepped `src/` for `AI_MODEL`, `AI_MODEL_LITE`, `AI_API_KEY`, `AI_BASE_URL` — zero matches; no secret or model name leaks to client code.
-- All existing security controls unchanged: caller JWT, owner check, `AI_API_KEY` guard, atomic claim, 30 s fetch timeout, output length caps.
-- No new table, no migration, no RLS change, no new external call.
+- `supabase/functions/generate-course/index.ts` — new `thinkingBudget` parameter, module-level `jsonSchemaSupported` flag, `google.thinking_config` field in fetch body, all 4 `chatInLanguage` call sites.
+- `supabase/functions/generate-course/pipeline.ts` — new `SYLLABUS_SCHEMA` and `QUESTIONS_SCHEMA` constants.
+- `docs/RUNBOOK.md` — Edge Function secrets table after `AI_MODEL_LITE` removal.
+- Grepped for `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `thinkingBudget`, `jsonSchemaSupported` — no leaks to client code.
+- No new migration, no RLS change.
+
+### Findings
+
+No security findings.
+
+- `thinkingBudget` is always a hardcoded integer (1024/2048) at every call site — never derived from user input. No injection surface.
+- `jsonSchemaSupported` module-level flag controls only output-format preference. No cross-user data accessible via this path. Fallback (`json_object`) is the pre-existing safe default.
+- `google.thinking_config` in the fetch body: `thinking_budget` is always a number via `JSON.stringify`. No user-controlled string reaches this field.
+- All existing security controls unchanged: caller JWT, owner check, `AI_API_KEY` guard, atomic claim, 30s fetch timeout, output length caps.
