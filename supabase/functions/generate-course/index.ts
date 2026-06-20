@@ -7,14 +7,14 @@
 // EdgeRuntime.waitUntil; the client gets a 202 and polls course.status.
 //
 // Secrets (Supabase dashboard -> Edge Functions -> Secrets):
-//   AI_API_KEY   required — key for an OpenAI-compatible chat completions API
-//   AI_BASE_URL  optional — default Gemini's free-tier OpenAI-compatible URL
+//   AI_API_KEY   required — Gemini API key
+//   AI_BASE_URL  optional — default https://generativelanguage.googleapis.com/v1beta
 //   AI_MODEL     optional — default gemini-2.5-flash
 //
-// Thinking budget is capped per-call via the Gemini thinking_config extension
-// to prevent unbounded thinking tokens from consuming the max_tokens output
-// budget and inflating cost. json_schema structured output is attempted first
-// with automatic fallback to json_object if the endpoint rejects it.
+// Uses Gemini's native generateContent API (not the OpenAI-compat wrapper)
+// so we can control thinking_budget per call and use native responseSchema.
+// Thinking and max-output tokens are right-sized per call type to cut cost
+// without hurting quality.
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
@@ -52,7 +52,11 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 }
 
-let jsonSchemaSupported = true
+interface ChatOptions {
+  thinkingBudget: number
+  maxOutputTokens: number
+  jsonSchema?: Record<string, unknown>
+}
 
 interface CourseRow {
   id: string
@@ -194,7 +198,9 @@ async function generate(
     const language = course.output_language
     ensureTime(deadline)
     let syllabus = validateSyllabus(
-      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, 1024, SYLLABUS_SCHEMA)),
+      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
+        thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
+      })),
       chunks.length,
     )
 
@@ -209,8 +215,7 @@ async function generate(
             await chatInLanguage(
               buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
               language,
-              1024,
-              SYLLABUS_SCHEMA,
+              { thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
             ),
           ),
           chunks.length,
@@ -265,8 +270,7 @@ async function generate(
               await chatInLanguage(
                 buildNodeQuestionsPrompt(node, chunks, language),
                 language,
-                2048,
-                QUESTIONS_SCHEMA,
+                { thinkingBudget: 2048, maxOutputTokens: 8192, jsonSchema: QUESTIONS_SCHEMA },
               ),
             ),
             1,
@@ -288,8 +292,7 @@ async function generate(
               await chatInLanguage(
                 buildNodeRetryPrompt(chapter.nodes[nodeIndex], chunks, language),
                 language,
-                1024,
-                QUESTIONS_SCHEMA,
+                { thinkingBudget: 0, maxOutputTokens: 4096, jsonSchema: QUESTIONS_SCHEMA },
               ),
             ),
             1,
@@ -427,54 +430,59 @@ async function extractMaterialsText(
 async function chatInLanguage(
   prompt: string,
   outputLanguage: string,
-  thinkingBudget: number,
-  jsonSchema?: Record<string, unknown>,
+  opts: ChatOptions,
 ): Promise<string> {
   const system = buildSystemPrompt(outputLanguage)
-  const content = await chat(prompt, system, thinkingBudget, jsonSchema)
+  const content = await chat(prompt, system, opts)
   if (matchesOutputLanguage(content, outputLanguage)) return content
-  return chat(prompt + languageReminder(outputLanguage), system, thinkingBudget, jsonSchema)
+  return chat(prompt + languageReminder(outputLanguage), system, opts)
 }
 
 async function chat(
   prompt: string,
   system: string,
-  thinkingBudget: number,
-  jsonSchema?: Record<string, unknown>,
+  opts: ChatOptions,
 ): Promise<string> {
+  const apiKey = Deno.env.get('AI_API_KEY')
   const baseUrl = (
     Deno.env.get('AI_BASE_URL') ??
-    'https://generativelanguage.googleapis.com/v1beta/openai'
+    'https://generativelanguage.googleapis.com/v1beta'
   ).replace(/\/+$/, '')
   const model = Deno.env.get('AI_MODEL') ?? 'gemini-2.5-flash'
+
+  const generationConfig: Record<string, unknown> = {
+    temperature: 0.2,
+    maxOutputTokens: opts.maxOutputTokens,
+    responseMimeType: 'application/json',
+    thinkingConfig: { thinkingBudget: opts.thinkingBudget },
+  }
+  if (opts.jsonSchema) {
+    generationConfig.responseSchema = opts.jsonSchema
+  }
+
+  const body = {
+    system_instruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig,
+  }
+
   for (let attempt = 0; ; attempt += 1) {
-    const useSchema = jsonSchema != null && jsonSchemaSupported
-    const responseFormat = useSchema
-      ? { type: 'json_schema' as const, json_schema: { name: 'response', schema: jsonSchema } }
-      : { type: 'json_object' as const }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
     let response: Response
     try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        signal: controller.signal,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${Deno.env.get('AI_API_KEY')}`,
+      response = await fetch(
+        `${baseUrl}/models/${model}:generateContent`,
+        {
+          signal: controller.signal,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey ?? '',
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          response_format: responseFormat,
-          max_tokens: 16_384,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: prompt },
-          ],
-          google: { thinking_config: { thinking_budget: thinkingBudget } },
-        }),
-      })
+      )
     } catch (err) {
       clearTimeout(timer)
       if (err instanceof Error && err.name === 'AbortError') {
@@ -488,17 +496,19 @@ async function chat(
     clearTimeout(timer)
     if (response.ok) {
       const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: unknown } }>
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string; thought?: boolean }> }
+        }>
       }
-      const content = payload.choices?.[0]?.message?.content
-      if (typeof content !== 'string' || content === '') {
+      const parts = payload.candidates?.[0]?.content?.parts
+      const text = parts
+        ?.filter((p) => typeof p.text === 'string' && !p.thought)
+        ?.map((p) => p.text)
+        ?.join('') ?? ''
+      if (text === '') {
         throw new Error('The AI returned an empty response.')
       }
-      return content
-    }
-    if (useSchema && response.status === 400) {
-      jsonSchemaSupported = false
-      continue
+      return text
     }
     const detail = (await response.text()).slice(0, 300)
     if (attempt < 2 && (response.status === 429 || response.status >= 500)) {
