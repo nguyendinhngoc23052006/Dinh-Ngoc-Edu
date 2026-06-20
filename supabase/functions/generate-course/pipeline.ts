@@ -449,6 +449,11 @@ export function buildNodeRetryPrompt(
   ].join('\n')
 }
 
+// These feed Gemini's generationConfig.responseSchema, which accepts only the
+// OpenAPI 3.0 subset — NOT full JSON Schema. Stick to type/properties/items/
+// required/enum; do NOT add `additionalProperties` (the API rejects it with a
+// 400 "Unknown name additionalProperties"). Strictness is enforced after the
+// call by validateSyllabus/validateChapterQuestions, not by the schema.
 export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -468,17 +473,14 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
                 chunk_index: { type: 'integer' },
               },
               required: ['title', 'chunk_index'],
-              additionalProperties: false,
             },
           },
         },
         required: ['title', 'summary', 'nodes'],
-        additionalProperties: false,
       },
     },
   },
   required: ['chapters'],
-  additionalProperties: false,
 }
 
 export const QUESTIONS_SCHEMA: Record<string, unknown> = {
@@ -525,5 +527,4 @@ export const QUESTIONS_SCHEMA: Record<string, unknown> = {
     },
   },
   required: ['questions'],
-  additionalProperties: false,
 }

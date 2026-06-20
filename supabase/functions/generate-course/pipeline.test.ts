@@ -13,6 +13,8 @@ import {
   matchesOutputLanguage,
   parseJsonLoose,
   QUESTIONS_PER_NODE,
+  QUESTIONS_SCHEMA,
+  SYLLABUS_SCHEMA,
   validateChapterQuestions,
   validateSyllabus,
   validateSyllabusQuality,
@@ -641,6 +643,30 @@ describe('isLatinScript', () => {
     expect(isLatinScript('Japanese')).toBe(false)
     expect(isLatinScript('Chinese')).toBe(false)
     expect(isLatinScript('Arabic')).toBe(false)
+  })
+})
+
+describe('response schemas (Gemini OpenAPI subset)', () => {
+  // Gemini's responseSchema accepts only the OpenAPI 3.0 subset. These keywords
+  // are full-JSON-Schema-only and trigger a 400 "Unknown name" if they appear.
+  const FORBIDDEN = ['additionalProperties', '$schema', '$ref', 'patternProperties', 'definitions']
+
+  function forbiddenKeysIn(value: unknown): string[] {
+    if (Array.isArray(value)) return value.flatMap(forbiddenKeysIn)
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>).flatMap(([key, v]) =>
+        (FORBIDDEN.includes(key) ? [key] : []).concat(forbiddenKeysIn(v)),
+      )
+    }
+    return []
+  }
+
+  test('SYLLABUS_SCHEMA uses no keywords Gemini rejects', () => {
+    expect(forbiddenKeysIn(SYLLABUS_SCHEMA)).toEqual([])
+  })
+
+  test('QUESTIONS_SCHEMA uses no keywords Gemini rejects', () => {
+    expect(forbiddenKeysIn(QUESTIONS_SCHEMA)).toEqual([])
   })
 })
 
