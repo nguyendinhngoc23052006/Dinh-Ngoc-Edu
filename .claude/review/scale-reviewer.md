@@ -1,22 +1,21 @@
-# Scale Review — 2026-06-19 (branch: claude/compassionate-meitner-chlzve)
+# Scale Review — 2026-06-20 (generate-course: native Gemini API switch)
 
 ## Verdict: PASS
 
 ### What was checked
 
-- `supabase/functions/generate-course/index.ts` — all DB queries, retry loops, idempotency guards, and the new `thinking_budget`/`json_schema` paths.
-- `supabase/functions/generate-course/pipeline.ts` — the two new schema constants (`SYLLABUS_SCHEMA`, `QUESTIONS_SCHEMA`).
-- All migration files — confirmed indexes on every column used in a filter or FK join.
+- `supabase/functions/generate-course/index.ts` — all DB queries, retry loops, idempotency guards, per-call token budgets.
+- All migration files — confirmed indexes on every filtered/joined column.
 
 ### Findings
 
-No blocker findings.
-
-WARN — `index.ts:330-338` — Per-node `UPDATE nodes SET credit_prize WHERE id = ?` inside the chapter loop: up to 40 individual UPDATE round-trips per pipeline run (pre-existing, not introduced by this PR). Each is a PK lookup, and the pipeline runs in the background with an enforced time budget.
+WARN — `index.ts:333-342` — Per-node `UPDATE nodes SET credit_prize` inside the chapter loop: up to 40 individual PK-update round-trips per pipeline run. Pre-existing, not introduced by this PR.
 
 ### What passed cleanly
 
-- **json_schema fallback retries:** Not unbounded. On a 400 with `useSchema=true`, sets `jsonSchemaSupported = false` and continues without incrementing `attempt`. Next iteration `useSchema` is false so a 400 no longer triggers the schema branch. Maximum one extra attempt for the fallback.
-- **Thinking budget vs. max_tokens:** Values (1024/2048) don't crowd out output — each `chat()` call has an independent 30s timeout, and `ensureTime(deadline)` gates every AI call against the 6-minute pipeline budget.
-- **Schema constants memory:** Module-level plain objects, allocated once per worker instance, under 2 KB each.
-- **Idempotency:** Atomic claim, wipe-before-rebuild cascade, staleness window all unchanged.
+- **Unbounded queries:** All DB queries are bounded by PK lookups, `.limit()`, or syllabus constants (`MAX_CHAPTERS * MAX_NODES_PER_CHAPTER * MAX_QUESTIONS_PER_NODE = 480`).
+- **Missing indexes:** All filtered columns have indexes confirmed in migrations. Atomic claim filter is `AND id = $pk` first, so secondary `OR` columns evaluate on a single row.
+- **N+1:** Language re-ask is at most one extra call per node. Retry loop bounded to 2. No new N+1s.
+- **Idempotent writes:** `body` object constructed once before retry loop, never mutated inside. Wipe-before-rebuild cascade unchanged.
+- **Token budgets:** Syllabus 4096 (down from 16384), questions 8192, retry 4096. All appropriate for their output sizes. `thinkingBudget: 0` with `responseSchema` is valid.
+- **Language re-ask:** Reuses same `opts` as primary call (conservative but bounded to one extra call, dwarfed by 4s inter-call delay).
