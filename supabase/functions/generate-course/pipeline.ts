@@ -5,6 +5,14 @@
 export const MAX_CHAPTERS = 8
 export const MAX_NODES_PER_CHAPTER = 5
 export const QUESTIONS_PER_NODE = 6
+// Primary acceptance floor: a node with fewer than this many usable questions
+// after the primary pass is retried. Below this, the lesson reads as sparse.
+export const MIN_QUESTIONS_PER_NODE = 4
+// One Gemini call covers up to this many nodes — fewer total calls, lower
+// inter-call delay overhead, less rate-limit pressure. Capped at 4 so the
+// 16384-token output budget comfortably fits 4 × 6 questions including
+// rationales.
+export const NODES_PER_BATCH = 4
 const MAX_QUESTIONS_PER_NODE = 12
 const MAX_OPTIONS = 6
 
@@ -178,9 +186,10 @@ export function validateChapterQuestions(
   return buckets
 }
 
-// After the per-node primary pass: which nodes in the bucket array are still
-// empty (the call failed, truncated, or returned unparseable output). These
-// get one retry with a simpler prompt.
+// After the batched primary pass: which nodes were left empty — either the
+// batch call failed/truncated, or the primary acceptance gate
+// (length >= MIN_QUESTIONS_PER_NODE) wasn't met for that node, so its bucket
+// was never written. Both classes get one focused retry.
 export function emptyNodeIndexes(buckets: GeneratedQuestion[][]): number[] {
   return buckets.flatMap((bucket, index) =>
     bucket.length === 0 ? [index] : [],
@@ -404,7 +413,85 @@ function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
     .slice(0, 8_000)
 }
 
-export function buildNodeQuestionsPrompt(
+// Union of every batch node's primary chunk + its two neighbours, deduped and
+// presented in chunk order so the model can read it as continuous source.
+function batchSourceContext(
+  nodes: SyllabusNode[],
+  chunks: string[],
+): string {
+  const wanted = new Set<number>()
+  for (const node of nodes) {
+    const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
+    for (const i of [ci - 1, ci, ci + 1]) {
+      if (i >= 0 && i < chunks.length) wanted.add(i)
+    }
+  }
+  return [...wanted]
+    .sort((a, b) => a - b)
+    .map((i) => `[Chunk ${i}]\n${chunks[i]}`)
+    .join('\n\n')
+    .slice(0, 12_000)
+}
+
+const FEW_SHOT_EXAMPLE =
+  '{"rationale":"The source defines mitosis as the process by which a single cell divides into two identical daughter cells with the same chromosome count. Tests recall of the defining property at easy difficulty.","node_index":0,"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0]}'
+
+// One Gemini call covers up to NODES_PER_BATCH lessons. Each question carries
+// a node_index so validateChapterQuestions can fan results back into per-node
+// buckets. Few-shot + negative constraints + rationale-first ordering all
+// raise per-question quality; rationale is auto-stripped by validateQuestion
+// (it constructs new objects by picking known fields), so the field never
+// reaches the database.
+export function buildBatchQuestionsPrompt(
+  nodes: SyllabusNode[],
+  chunks: string[],
+  outputLanguage: string,
+): string {
+  const source = batchSourceContext(nodes, chunks)
+  const safeTitles = nodes.map((node, index) => {
+    const safe = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+    return `  [${index}] "${safe}"`
+  })
+  const totalQuestions = QUESTIONS_PER_NODE * nodes.length
+  return [
+    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for EACH of the ${nodes.length} lessons listed below — ${totalQuestions} questions total.`,
+    `Set "node_index" on every question to the listed index (0 to ${nodes.length - 1}).`,
+    ``,
+    `Lessons:`,
+    ...safeTitles,
+    ``,
+    `For every question:`,
+    `- Write a brief "rationale" FIRST explaining your reasoning (why this concept, why this difficulty).`,
+    `- Base the question and answer ONLY on the source text below — never invent facts.`,
+    `- Tag "difficulty" as "easy" (recall a stated fact), "medium" (apply or connect ideas), or "hard" (multi-step reasoning). Let the material decide the mix.`,
+    `- Write the prompt and every option in ${outputLanguage}.`,
+    ``,
+    `Mix these kinds across each lesson:`,
+    `- "mcq": one correct option, 3-4 options, give correct_indexes`,
+    `- "mcq_multi": several correct options, 3-4 options, give correct_indexes`,
+    `- "fill_blank": student types a missing word/phrase, give accepted answers copied verbatim from the source`,
+    `- "calc": ONLY when the source states a formula or numeric relationship — give a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" using ONLY those names (+ - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance". Use realistic ranges. Never invent a calc question without a formula in the source.`,
+    ``,
+    `Constraints:`,
+    `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
+    `- DO NOT repeat the same concept across questions or across lessons.`,
+    `- DO NOT cluster every question on one paragraph — distribute coverage evenly across each lesson's material.`,
+    ``,
+    `Example of one well-formed question:`,
+    FEW_SHOT_EXAMPLE,
+    ``,
+    `Respond with ONLY this JSON:`,
+    `{"questions":[{...},{...}]}`,
+    ``,
+    source,
+  ].join('\n')
+}
+
+// Retry path: same full target as primary, but single-node and without "calc"
+// (a failed primary usually means the source had no formula, so re-asking for
+// one wastes tokens). Few-shot + rationale-first matches the primary so the
+// model reasons before answering.
+export function buildNodeRetryPrompt(
   node: SyllabusNode,
   chunks: string[],
   outputLanguage: string,
@@ -413,47 +500,38 @@ export function buildNodeQuestionsPrompt(
   const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   return [
     `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
-    `Base every question and answer ONLY on the source text below — never invent facts.`,
-    `Mix these kinds:`,
-    `- "mcq": one correct option, 3-4 options, give correct_indexes`,
-    `- "mcq_multi": several correct options, 3-4 options, give correct_indexes`,
-    `- "fill_blank": student types a missing word/phrase, give accepted answers copied verbatim from the source`,
-    `- "calc": ONLY when the source states a formula or numeric relationship — give a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" using ONLY those names (+ - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance". Use realistic ranges. Never invent a calc question without a formula in the source.`,
+    `Set "node_index" on every question to 0.`,
     ``,
-    `Tag every question with "difficulty": "easy" (recall a stated fact), "medium" (apply or connect ideas), "hard" (multi-step reasoning). Let the material decide the mix.`,
-    `Write every prompt and option in ${outputLanguage}.`,
-    `Respond with ONLY this JSON (use node_index 0 for all):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["..."],"correct_indexes":[0]}]}`,
-    '',
-    source,
-  ].join('\n')
-}
-
-export function buildNodeRetryPrompt(
-  node: SyllabusNode,
-  chunks: string[],
-  outputLanguage: string,
-): string {
-  const source = nodeSourceContext(node, chunks)
-  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
-  const target = Math.max(2, Math.ceil(QUESTIONS_PER_NODE / 2))
-  return [
-    `Write ${target} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
-    `Base every question and answer ONLY on the source text below — never invent facts.`,
-    `Use only "mcq", "mcq_multi", and "fill_blank" kinds. Tag each with "difficulty": "easy", "medium", or "hard".`,
-    `For mcq/mcq_multi give 3-4 options and correct_indexes. For fill_blank give accepted answers copied from the source.`,
-    `Respond with ONLY this JSON (use node_index 0 for all):`,
-    `{"questions":[{"node_index":0,"kind":"mcq","difficulty":"easy","prompt":"...","options":["...","..."],"correct_indexes":[0]}]}`,
-    '',
+    `For every question:`,
+    `- Write a brief "rationale" FIRST explaining your reasoning.`,
+    `- Base the question and answer ONLY on the source text below — never invent facts.`,
+    `- Tag "difficulty" as "easy", "medium", or "hard".`,
+    `- Write the prompt and every option in ${outputLanguage}.`,
+    ``,
+    `Use only "mcq", "mcq_multi", and "fill_blank" kinds.`,
+    `For mcq/mcq_multi give 3-4 options and correct_indexes. For fill_blank give accepted answers copied verbatim from the source.`,
+    ``,
+    `Constraints:`,
+    `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
+    `- DO NOT repeat the same concept across questions.`,
+    `- DO NOT cluster every question on one paragraph — distribute coverage evenly.`,
+    ``,
+    `Example of one well-formed question:`,
+    FEW_SHOT_EXAMPLE,
+    ``,
+    `Respond with ONLY this JSON:`,
+    `{"questions":[{...},{...}]}`,
+    ``,
     source,
   ].join('\n')
 }
 
 // These feed Gemini's generationConfig.responseSchema, which accepts only the
 // OpenAPI 3.0 subset — NOT full JSON Schema. Stick to type/properties/items/
-// required/enum; do NOT add `additionalProperties` (the API rejects it with a
-// 400 "Unknown name additionalProperties"). Strictness is enforced after the
-// call by validateSyllabus/validateChapterQuestions, not by the schema.
+// required/enum/description/minItems/maxItems; do NOT add `additionalProperties`
+// or `propertyOrdering` (the API 400s on both). Key-definition order is the
+// supported way to influence emit order. Strictness is enforced after the call
+// by validateSyllabus/validateChapterQuestions, not by the schema.
 export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -483,48 +561,102 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   required: ['chapters'],
 }
 
-export const QUESTIONS_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  properties: {
-    questions: {
+// Built per call so the array-level minItems scales with the batch's node
+// count: a batch of N nodes must return at least N * MIN_QUESTIONS_PER_NODE
+// questions. "rationale" is the first property so Gemini emits it first
+// (the OpenAPI subset has no `propertyOrdering`; key definition order is the
+// supported lever) — the validator field-picks the question shape, so the
+// rationale CoT never reaches the database. Callers pass `includeCalc: false`
+// to align the kind enum with prompts that exclude calc (the retry path,
+// where a failed primary almost always means the source has no formula).
+export function buildQuestionsSchema(
+  nodeCount: number,
+  options: { includeCalc?: boolean } = {},
+): Record<string, unknown> {
+  const includeCalc = options.includeCalc ?? true
+  const kindEnum = includeCalc
+    ? ['mcq', 'mcq_multi', 'fill_blank', 'calc']
+    : ['mcq', 'mcq_multi', 'fill_blank']
+  const itemProperties: Record<string, unknown> = {
+    rationale: {
+      type: 'string',
+      description:
+        'Brief reasoning written BEFORE the question: why this concept, why this difficulty, which part of the source supports the answer.',
+    },
+    node_index: {
+      type: 'integer',
+      description: `Index of the lesson this question belongs to (0 to ${Math.max(0, nodeCount - 1)}).`,
+    },
+    kind: {
+      type: 'string',
+      enum: kindEnum,
+      description: 'Question kind.',
+    },
+    difficulty: {
+      type: 'string',
+      enum: ['easy', 'medium', 'hard'],
+      description: 'Cognitive difficulty — let the source material decide the mix.',
+    },
+    prompt: {
+      type: 'string',
+      description: 'The question text shown to the student.',
+    },
+    options: {
       type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          node_index: { type: 'integer' },
-          kind: { type: 'string', enum: ['mcq', 'mcq_multi', 'fill_blank', 'calc'] },
-          difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
-          prompt: { type: 'string' },
-          options: { type: 'array', items: { type: 'string' } },
-          correct_indexes: { type: 'array', items: { type: 'integer' } },
-          accepted: { type: 'array', items: { type: 'string' } },
-          calc: {
+      items: { type: 'string' },
+      minItems: 2,
+      description: 'Answer options for mcq/mcq_multi; omit for fill_blank and calc.',
+    },
+    correct_indexes: {
+      type: 'array',
+      items: { type: 'integer' },
+      description: 'Zero-based indexes of correct options.',
+    },
+    accepted: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'For fill_blank: accepted answer strings, copied verbatim from the source.',
+    },
+  }
+  if (includeCalc) {
+    itemProperties.calc = {
+      type: 'object',
+      description: 'For calc only: parametric formula spec.',
+      properties: {
+        variables: {
+          type: 'array',
+          items: {
             type: 'object',
             properties: {
-              variables: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    min: { type: 'number' },
-                    max: { type: 'number' },
-                    decimals: { type: 'integer' },
-                  },
-                  required: ['name', 'min', 'max', 'decimals'],
-                },
-              },
-              formula: { type: 'string' },
-              prompt_template: { type: 'string' },
+              name: { type: 'string' },
+              min: { type: 'number' },
+              max: { type: 'number' },
               decimals: { type: 'integer' },
-              tolerance: { type: 'number' },
             },
-            required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
+            required: ['name', 'min', 'max', 'decimals'],
           },
         },
-        required: ['node_index', 'kind', 'difficulty', 'prompt'],
+        formula: { type: 'string' },
+        prompt_template: { type: 'string' },
+        decimals: { type: 'integer' },
+        tolerance: { type: 'number' },
+      },
+      required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
+    }
+  }
+  return {
+    type: 'object',
+    properties: {
+      questions: {
+        type: 'array',
+        minItems: nodeCount * MIN_QUESTIONS_PER_NODE,
+        items: {
+          type: 'object',
+          properties: itemProperties,
+          required: ['node_index', 'kind', 'difficulty', 'prompt'],
+        },
       },
     },
-  },
-  required: ['questions'],
+    required: ['questions'],
+  }
 }

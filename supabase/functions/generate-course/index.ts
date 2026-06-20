@@ -19,8 +19,9 @@
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
-  buildNodeQuestionsPrompt,
+  buildBatchQuestionsPrompt,
   buildNodeRetryPrompt,
+  buildQuestionsSchema,
   buildSyllabusPrompt,
   buildSystemPrompt,
   chunkText,
@@ -28,13 +29,14 @@ import {
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
+  MIN_QUESTIONS_PER_NODE,
+  NODES_PER_BATCH,
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,
   validateSyllabusQuality,
   verifyQuestion,
   SYLLABUS_SCHEMA,
-  QUESTIONS_SCHEMA,
 } from './pipeline.ts'
 import type { GeneratedQuestion } from './pipeline.ts'
 
@@ -44,7 +46,11 @@ const MAX_SOURCE_CHARS = 200_000
 // A run older than this is considered crashed and may be re-claimed; the
 // pipeline budgets its own time well below it so it normally fails cleanly.
 const STALE_PROCESSING_MS = 15 * 60 * 1000
-const MAX_PIPELINE_MS = 6 * 60 * 1000
+// Per-chapter batched primary at ~30-45 s × up to 10 batches (8 chapters ×
+// ceil(5/4) batches) + ~4 s inter-call delays + per-node retries. 10 min
+// fits a max-size 8×5-node course comfortably and stays well under the
+// 15-min stale window so concurrent re-claim still works.
+const MAX_PIPELINE_MS = 10 * 60 * 1000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -56,7 +62,15 @@ interface ChatOptions {
   thinkingBudget: number
   maxOutputTokens: number
   jsonSchema?: Record<string, unknown>
+  // Per-call request timeout. A batched question call with 4096-thinking +
+  // 16K-output routinely takes >30s, so callers bump this above the default.
+  timeoutMs?: number
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
+// Headroom for batched question calls and retries: 4 nodes × 6 questions with
+// rationales + 4096 thinking tokens can take 40-50 s end-to-end.
+const QUESTION_REQUEST_TIMEOUT_MS = 60_000
 
 interface CourseRow {
   id: string
@@ -260,28 +274,45 @@ async function generate(
       const buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
       totalNodes += chapter.nodes.length
 
-      // Primary pass: one focused AI call per node.
-      for (const [nodeIndex, node] of chapter.nodes.entries()) {
-        if (nodeIndex > 0 || chapterIndex > 0) await delay(4000)
+      // Primary pass: batched AI calls — one call per NODES_PER_BATCH nodes.
+      // Fewer calls means fewer inter-call delays and less rate-limit pressure;
+      // the larger thinking budget per call also lifts per-question quality
+      // above the old per-node setting.
+      for (let start = 0; start < chapter.nodes.length; start += NODES_PER_BATCH) {
+        const batch = chapter.nodes.slice(start, start + NODES_PER_BATCH)
+        if (start > 0 || chapterIndex > 0) await delay(4000)
         ensureTime(deadline)
         try {
           const result = validateChapterQuestions(
             parseJsonLoose(
               await chatInLanguage(
-                buildNodeQuestionsPrompt(node, chunks, language),
+                buildBatchQuestionsPrompt(batch, chunks, language),
                 language,
-                { thinkingBudget: 2048, maxOutputTokens: 8192, jsonSchema: QUESTIONS_SCHEMA },
+                {
+                  thinkingBudget: 4096,
+                  maxOutputTokens: 16384,
+                  jsonSchema: buildQuestionsSchema(batch.length),
+                  timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+                },
               ),
             ),
-            1,
+            batch.length,
           )
-          if (result[0]?.length >= 2) buckets[nodeIndex] = result[0]
+          for (let i = 0; i < batch.length; i += 1) {
+            if ((result[i]?.length ?? 0) >= MIN_QUESTIONS_PER_NODE) {
+              buckets[start + i] = result[i]
+            }
+          }
         } catch {
-          // Node stays empty, will be retried below.
+          // Batch failed — every node in it stays empty, will be retried below.
         }
       }
 
-      // Retry pass: one retry per still-empty node with a simpler prompt.
+      // Retry pass: the primary acceptance gate (length >= MIN_QUESTIONS_PER_NODE)
+      // skipped writing thin or failed nodes, so those buckets are empty here.
+      // Each gets one focused per-node retry — same target as the primary, but
+      // schema and prompt both exclude "calc" since a failed primary almost
+      // always means the source has no formula to anchor one.
       const missing = emptyNodeIndexes(buckets)
       for (const nodeIndex of missing) {
         await delay(4000)
@@ -292,7 +323,12 @@ async function generate(
               await chatInLanguage(
                 buildNodeRetryPrompt(chapter.nodes[nodeIndex], chunks, language),
                 language,
-                { thinkingBudget: 0, maxOutputTokens: 4096, jsonSchema: QUESTIONS_SCHEMA },
+                {
+                  thinkingBudget: 4096,
+                  maxOutputTokens: 8192,
+                  jsonSchema: buildQuestionsSchema(1, { includeCalc: false }),
+                  timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+                },
               ),
             ),
             1,
@@ -466,9 +502,10 @@ async function chat(
     generationConfig,
   }
 
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   for (let attempt = 0; ; attempt += 1) {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30_000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     let response: Response
     try {
       response = await fetch(
@@ -487,7 +524,7 @@ async function chat(
       clearTimeout(timer)
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error(
-          'AI request timed out after 30 s — retry, or upload smaller materials.',
+          `AI request timed out after ${Math.round(timeoutMs / 1000)} s — retry, or upload smaller materials.`,
           { cause: err },
         )
       }
