@@ -1,21 +1,13 @@
-# Scale Review — 2026-06-20 (generate-course: native Gemini API switch)
+# Scale Review — 2026-06-20 (generate-course: remove additionalProperties from response schemas)
 
 ## Verdict: PASS
 
 ### What was checked
 
-- `supabase/functions/generate-course/index.ts` — all DB queries, retry loops, idempotency guards, per-call token budgets.
-- All migration files — confirmed indexes on every filtered/joined column.
+- `supabase/functions/generate-course/pipeline.ts` — the only change is removal of `additionalProperties: false` from two static in-memory schema constants. Zero DB queries, zero writes, zero loops over data.
+- `supabase/functions/generate-course/pipeline.test.ts` — new test block walks two fixed-depth static objects in memory. Not a DB pattern.
+- No migration added; no index check required.
 
 ### Findings
 
-WARN — `index.ts:333-342` — Per-node `UPDATE nodes SET credit_prize` inside the chapter loop: up to 40 individual PK-update round-trips per pipeline run. Pre-existing, not introduced by this PR.
-
-### What passed cleanly
-
-- **Unbounded queries:** All DB queries are bounded by PK lookups, `.limit()`, or syllabus constants (`MAX_CHAPTERS * MAX_NODES_PER_CHAPTER * MAX_QUESTIONS_PER_NODE = 480`).
-- **Missing indexes:** All filtered columns have indexes confirmed in migrations. Atomic claim filter is `AND id = $pk` first, so secondary `OR` columns evaluate on a single row.
-- **N+1:** Language re-ask is at most one extra call per node. Retry loop bounded to 2. No new N+1s.
-- **Idempotent writes:** `body` object constructed once before retry loop, never mutated inside. Wipe-before-rebuild cascade unchanged.
-- **Token budgets:** Syllabus 4096 (down from 16384), questions 8192, retry 4096. All appropriate for their output sizes. `thinkingBudget: 0` with `responseSchema` is valid.
-- **Language re-ask:** Reuses same `opts` as primary call (conservative but bounded to one extra call, dwarfed by 4s inter-call delay).
+No scale findings. All four checks (unbounded queries, missing index, N+1, non-idempotent writes) pass trivially — the changed code contains no data access of any kind.

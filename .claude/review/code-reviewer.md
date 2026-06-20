@@ -1,23 +1,21 @@
-# Code Review — 2026-06-20 (generate-course: native Gemini API switch)
+# Code Review — 2026-06-20 (schema: remove additionalProperties for Gemini OpenAPI subset)
 
 ## Verdict: PASS
 
 ### What was checked
 
-- `supabase/functions/generate-course/index.ts` — native API request/response shape, `ChatOptions` interface, thinking budget, `responseSchema`, removed `jsonSchemaSupported` fallback.
-- `supabase/functions/generate-course/pipeline.ts` — `SYLLABUS_SCHEMA` and `QUESTIONS_SCHEMA` constants.
+- `supabase/functions/generate-course/pipeline.ts` lines 452-530: documenting comment, SYLLABUS_SCHEMA, QUESTIONS_SCHEMA (four additionalProperties entries removed).
+- `supabase/functions/generate-course/pipeline.test.ts` lines 649-671: new `describe('response schemas')` block with `forbiddenKeysIn` helper and two schema tests.
 
 ### Findings
 
-WARN — `index.ts:201-218` — The `ChatOptions` literal `{ thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA }` is spelled out identically twice: initial syllabus call and quality re-ask. Future maintenance trap if budgets change. Fix: extract a const.
+WARN — pipeline.test.ts:664-670 — `forbiddenKeysIn` has no negative-path test; a helper bug (e.g. failing to recurse) would let both assertions pass silently. Fix: add one positive-detection assertion such as `expect(forbiddenKeysIn({ additionalProperties: false, nested: { $ref: '#' } })).toEqual(['additionalProperties', '$ref'])`.
 
 ### What passed cleanly
 
-- No duplicated logic introduced. `chat()`/`chatInLanguage()` remain the single AI call path.
-- `ChatOptions` interface is clean. All three fields used in `chat()`, `jsonSchema` is optional.
-- Response parsing: `thought` parts correctly filtered. Concatenating non-thought text parts is correct. Empty-string guard catches thinking-only responses.
-- `responseMimeType: 'application/json'` coexists with `responseSchema` correctly per Gemini API.
-- `thinkingBudget: 0` for retry calls is valid (disables thinking tokens).
-- Retry loop bounded: non-retriable errors throw immediately, retriable (429/5xx) back off up to 2 retries.
-- Removed `jsonSchemaSupported` flag and fallback retry logic — no surviving dead code.
-- File size (520 lines) and mixed responsibility (handler + orchestrator + AI client) are pre-existing.
+- Recursive helper is logically correct: array/object/primitive cases are correctly ordered and terminate; `.concat(string[])` is correct.
+- Comment accurately names the constraint (OpenAPI 3.0 subset), the rejected keyword, the 400 error message, and both post-call validators.
+- SYLLABUS_SCHEMA fields align exactly with what validateSyllabus reads.
+- QUESTIONS_SCHEMA and its calc sub-object align exactly with validateChapterQuestions/validateQuestion and the CalcSpec/CalcVariable interface in _shared/calc.ts.
+- No additionalProperties, $schema, $ref, patternProperties, or definitions in either schema (grep-confirmed).
+- No duplication, no missing test coverage for the changed constants, no Supabase access in components.

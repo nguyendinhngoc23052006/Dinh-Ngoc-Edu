@@ -1,26 +1,23 @@
-# Security Review — 2026-06-20 (generate-course: native Gemini API switch)
+# Security Review — 2026-06-20 (generate-course: remove additionalProperties from Gemini schemas)
 
-## Verdict: PASS (with 2 warnings, neither a blocker)
+## Verdict: PASS
 
 ### What was checked
 
-- `supabase/functions/generate-course/index.ts` — full file read; new `ChatOptions` interface, `x-goog-api-key` header, `/v1beta/models/{model}:generateContent` URL, `candidates/parts` response parsing, `thought` filter.
-- `supabase/functions/generate-course/pipeline.ts` — full validation layer: `validateSyllabus`, `validateChapterQuestions`, `validateQuestion`, all length caps.
-- `.env.example` — confirmed AI secrets not in Vite namespace.
-- Grepped all of `src/` for `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `x-goog-api-key`, `gemini` — zero matches.
-- No new migration in this diff; no RLS check needed.
+- `supabase/functions/generate-course/pipeline.ts` — full file; `SYLLABUS_SCHEMA`, `QUESTIONS_SCHEMA` constants; `validateSyllabus`, `validateChapterQuestions`, `validateQuestion` enforcement layer; all string length caps.
+- `supabase/functions/generate-course/pipeline.test.ts` — new `describe('response schemas')` block; `FORBIDDEN` keyword list; recursive `forbiddenKeysIn` checker.
+- `supabase/functions/generate-course/index.ts` — confirmed `AI_API_KEY` read only via `Deno.env.get`; schemas used only as `generationConfig.responseSchema` hints, not as runtime validators.
+- Grepped all of `src/` for `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL` — zero matches.
+- No new migration in this diff; RLS check not applicable.
 
 ### Findings
 
-WARN — `index.ts:475` — Operator-controlled SSRF: `AI_BASE_URL` and `AI_MODEL` are read from Deno.env and interpolated directly into the fetch URL without sanitisation. If dashboard secrets are compromised, `x-goog-api-key` is forwarded to an attacker-chosen host. Low exploitability (requires dashboard access).
-
-WARN — `.env.example:11` — Stale comment still reads "key for an OpenAI-compatible chat completions API" after switch to native Gemini API. No security impact; maintenance risk only.
+No security findings.
 
 ### Verified as secure
 
-1. Secret exposure: `AI_API_KEY` read only via `Deno.env` in the Edge Function; zero matches in `src/`; never hardcoded; key is not forwarded to the client.
-2. User input validation: only `courseId` (string, non-empty) and `force` (strict `=== true`) enter from the request body; both are validated before use.
-3. AI output validation: every persisted field is length-capped in `validateQuestion` (prompt 1000, options 300) and `validateSyllabus` (title 200, summary 500).
-4. `thought` parts: correctly filtered by `!p.thought` before returning text; thinking tokens are never persisted or returned.
-5. No new migration; RLS check not applicable.
-6. Auth/money/PII: no new surface; existing atomic claim guard, owner check, and 30s timeout unchanged.
+1. **Schema hint vs. enforcement boundary:** The two schemas are generation hints sent to Gemini's `generationConfig.responseSchema`. Removing `additionalProperties: false` does not affect the actual enforcement layer. `validateSyllabus` and `validateQuestion` enforce by constructing new typed objects explicitly — unknown fields are dropped by omission, not by schema rejection. All persisted strings are capped (prompt ≤ 1000, options/accepted ≤ 300, title ≤ 200, summary ≤ 500) before any DB write.
+2. **Secret exposure:** `AI_API_KEY` read exclusively via `Deno.env.get` in the Edge Function; zero matches in `src/`; never hardcoded.
+3. **New table without RLS:** No migrations in this diff.
+4. **Missing abuse case:** No new auth, money, PII, or upload surface introduced.
+5. **Regression test:** Now enforces that neither schema contains `additionalProperties`, `$schema`, `$ref`, `patternProperties`, or `definitions`, preventing recurrence.
