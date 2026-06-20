@@ -20,17 +20,15 @@ import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
   buildBatchQuestionsPrompt,
-  buildNodeRetryPrompt,
+  buildDeltaRetryPrompt,
   buildQuestionsSchema,
   buildSyllabusPrompt,
   buildSystemPrompt,
   chunkText,
-  emptyNodeIndexes,
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
   MIN_QUESTIONS_PER_NODE,
-  NODES_PER_BATCH,
   parseJsonLoose,
   validateChapterQuestions,
   validateSyllabus,
@@ -38,7 +36,7 @@ import {
   verifyQuestion,
   SYLLABUS_SCHEMA,
 } from './pipeline.ts'
-import type { GeneratedQuestion } from './pipeline.ts'
+import type { GeneratedQuestion, SyllabusChapter } from './pipeline.ts'
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
@@ -46,10 +44,11 @@ const MAX_SOURCE_CHARS = 200_000
 // A run older than this is considered crashed and may be re-claimed; the
 // pipeline budgets its own time well below it so it normally fails cleanly.
 const STALE_PROCESSING_MS = 15 * 60 * 1000
-// Per-chapter batched primary at ~30-45 s × up to 10 batches (8 chapters ×
-// ceil(5/4) batches) + ~4 s inter-call delays + per-node retries. 10 min
-// fits a max-size 8×5-node course comfortably and stays well under the
-// 15-min stale window so concurrent re-claim still works.
+// Chapters run in parallel (paid-tier RPM, 150-300 RPM Tier 1, easily
+// absorbs 8 concurrent primary calls). Wall-clock is gated by the slowest
+// single chapter's primary + its delta retries (~60-90 s typical), not by
+// the chapter count. 10 min keeps headroom for a worst-case slow chapter
+// while staying well under the 15-min stale reclaim window.
 const MAX_PIPELINE_MS = 10 * 60 * 1000
 
 const corsHeaders = {
@@ -185,10 +184,6 @@ function ensureTime(deadline: number): void {
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 async function generate(
   supabase: SupabaseClient,
   course: CourseRow,
@@ -213,7 +208,7 @@ async function generate(
     ensureTime(deadline)
     let syllabus = validateSyllabus(
       parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
-        thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
+        thinkingBudget: 512, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
       })),
       chunks.length,
     )
@@ -229,7 +224,7 @@ async function generate(
             await chatInLanguage(
               buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
               language,
-              { thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
+              { thinkingBudget: 512, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
             ),
           ),
           chunks.length,
@@ -239,154 +234,37 @@ async function generate(
       }
     }
 
-    let totalQuestions = 0
-    let emptyNodeCount = 0
-    let totalNodes = 0
-    for (const [chapterIndex, chapter] of syllabus.entries()) {
-      const { data: chapterRow, error: chapterError } = await supabase
-        .from('chapters')
-        .insert({
-          course_id: course.id,
-          position: chapterIndex + 1,
-          title: chapter.title,
-          summary: chapter.summary,
-        })
-        .select('id')
-        .single()
-      if (chapterError) throw new Error(chapterError.message)
+    // Chapters run in parallel — paid-tier RPM (Tier 1: 150-300 RPM on
+    // 2.5 Flash) absorbs ≤8 concurrent primary calls easily, and the slow
+    // path is each chapter's primary + delta retries sequence, not the
+    // chapter count. A failure in one chapter's task never poisons another's
+    // writes (each task owns its chapter insert).
+    const chapterResults = await Promise.all(
+      syllabus.map((chapter, chapterIndex) =>
+        generateChapter(
+          supabase,
+          course.id,
+          chapter,
+          chapterIndex,
+          chunks,
+          language,
+          deadline,
+        ),
+      ),
+    )
+    const totalQuestions = chapterResults.reduce(
+      (sum, r) => sum + r.questionsWritten,
+      0,
+    )
 
-      const { data: nodeRows, error: nodesError } = await supabase
-        .from('nodes')
-        .insert(
-          chapter.nodes.map((node, nodeIndex) => ({
-            course_id: course.id,
-            chapter_id: (chapterRow as { id: string }).id,
-            position: nodeIndex + 1,
-            title: node.title,
-          })),
-        )
-        .select('id, position')
-      if (nodesError) throw new Error(nodesError.message)
-      const nodeIds = (nodeRows as Array<{ id: string; position: number }>)
-        .sort((a, b) => a.position - b.position)
-        .map((row) => row.id)
-
-      const buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
-      totalNodes += chapter.nodes.length
-
-      // Primary pass: batched AI calls — one call per NODES_PER_BATCH nodes.
-      // Fewer calls means fewer inter-call delays and less rate-limit pressure;
-      // the larger thinking budget per call also lifts per-question quality
-      // above the old per-node setting.
-      for (let start = 0; start < chapter.nodes.length; start += NODES_PER_BATCH) {
-        const batch = chapter.nodes.slice(start, start + NODES_PER_BATCH)
-        if (start > 0 || chapterIndex > 0) await delay(4000)
-        ensureTime(deadline)
-        try {
-          const result = validateChapterQuestions(
-            parseJsonLoose(
-              await chatInLanguage(
-                buildBatchQuestionsPrompt(batch, chunks, language),
-                language,
-                {
-                  thinkingBudget: 4096,
-                  maxOutputTokens: 16384,
-                  jsonSchema: buildQuestionsSchema(batch.length),
-                  timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
-                },
-              ),
-            ),
-            batch.length,
-          )
-          for (let i = 0; i < batch.length; i += 1) {
-            if ((result[i]?.length ?? 0) >= MIN_QUESTIONS_PER_NODE) {
-              buckets[start + i] = result[i]
-            }
-          }
-        } catch {
-          // Batch failed — every node in it stays empty, will be retried below.
-        }
-      }
-
-      // Retry pass: the primary acceptance gate (length >= MIN_QUESTIONS_PER_NODE)
-      // skipped writing thin or failed nodes, so those buckets are empty here.
-      // Each gets one focused per-node retry — same target as the primary, but
-      // schema and prompt both exclude "calc" since a failed primary almost
-      // always means the source has no formula to anchor one.
-      const missing = emptyNodeIndexes(buckets)
-      for (const nodeIndex of missing) {
-        await delay(4000)
-        ensureTime(deadline)
-        try {
-          const result = validateChapterQuestions(
-            parseJsonLoose(
-              await chatInLanguage(
-                buildNodeRetryPrompt(chapter.nodes[nodeIndex], chunks, language),
-                language,
-                {
-                  thinkingBudget: 4096,
-                  maxOutputTokens: 8192,
-                  jsonSchema: buildQuestionsSchema(1, { includeCalc: false }),
-                  timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
-                },
-              ),
-            ),
-            1,
-          )
-          // One question is better than none after retry.
-          if (result[0]?.length) buckets[nodeIndex] = result[0]
-        } catch {
-          // Node stays empty; tallied below.
-        }
-      }
-
-      const stillEmpty = emptyNodeIndexes(buckets)
-      emptyNodeCount += stillEmpty.length
-
-      const questionRows = buckets.flatMap((questions, nodeIndex) => {
-        const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
-        return questions.map((question, index) => ({
-          course_id: course.id,
-          node_id: nodeIds[nodeIndex],
-          position: index + 1,
-          kind: question.kind,
-          difficulty: question.difficulty,
-          prompt: question.prompt,
-          options: question.options,
-          answer: question.answer,
-          calc: question.calc ?? null,
-          verified: verifyQuestion(question, chunk),
-        }))
-      })
-      if (questionRows.length > 0) {
-        const { error: questionsError } = await supabase
-          .from('questions')
-          .insert(questionRows)
-        if (questionsError) throw new Error(questionsError.message)
-        totalQuestions += questionRows.length
-      }
-
-      for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
-        const prize = lessonCreditPrize(nodeQuestions)
-        if (prize > 0) {
-          const { error: prizeError } = await supabase
-            .from('nodes')
-            .update({ credit_prize: prize })
-            .eq('id', nodeIds[nodeIndex])
-          if (prizeError) throw new Error(prizeError.message)
-        }
-      }
-    }
-
-    if (totalNodes > 0 && emptyNodeCount / totalNodes > 0.4) {
-      throw new Error(
-        `Generation left ${emptyNodeCount}/${totalNodes} lessons without questions — retry, or upload more detailed materials.`,
-      )
-    }
     if (totalQuestions === 0) {
       throw new Error('The AI did not produce any usable questions.')
     }
 
+    // Partial completion no longer fails the course. The CoursePage banner
+    // (existing question_count === 0 check) surfaces empty lessons with a
+    // one-tap "fill" button; a paying user gets the lessons that worked
+    // instead of the whole run being thrown away.
     await supabase
       .from('courses')
       .update({ status: 'ready' })
@@ -400,6 +278,157 @@ async function generate(
       })
       .eq('id', course.id)
   }
+}
+
+// One chapter, end-to-end: insert chapter row + node rows, ask the model for
+// every lesson's questions in a single primary call, top up any short nodes
+// with a delta retry that lists what's already there, then insert questions
+// and update each node's credit prize. Returns the chapter's totals so the
+// outer pipeline can sum across parallel chapter tasks.
+async function generateChapter(
+  supabase: SupabaseClient,
+  courseId: string,
+  chapter: SyllabusChapter,
+  chapterIndex: number,
+  chunks: string[],
+  language: string,
+  deadline: number,
+): Promise<{ questionsWritten: number }> {
+  const { data: chapterRow, error: chapterError } = await supabase
+    .from('chapters')
+    .insert({
+      course_id: courseId,
+      position: chapterIndex + 1,
+      title: chapter.title,
+      summary: chapter.summary,
+    })
+    .select('id')
+    .single()
+  if (chapterError) throw new Error(chapterError.message)
+
+  const { data: nodeRows, error: nodesError } = await supabase
+    .from('nodes')
+    .insert(
+      chapter.nodes.map((node, nodeIndex) => ({
+        course_id: courseId,
+        chapter_id: (chapterRow as { id: string }).id,
+        position: nodeIndex + 1,
+        title: node.title,
+      })),
+    )
+    .select('id, position')
+  if (nodesError) throw new Error(nodesError.message)
+  const nodeIds = (nodeRows as Array<{ id: string; position: number }>)
+    .sort((a, b) => a.position - b.position)
+    .map((row) => row.id)
+
+  const buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
+
+  // Primary: one batch for the whole chapter (NODES_PER_BATCH = MAX_NODES_PER_CHAPTER).
+  // SOFT-KEEP: whatever the model returned for each node is kept as-is, even
+  // if below MIN_QUESTIONS_PER_NODE. The delta retry below tops up short
+  // nodes without throwing existing questions away — a 5/10 result becomes
+  // 5 + retry, not 0 then retry-might-be-0.
+  ensureTime(deadline)
+  try {
+    const result = validateChapterQuestions(
+      parseJsonLoose(
+        await chatInLanguage(
+          buildBatchQuestionsPrompt(chapter.nodes, chunks, language),
+          language,
+          {
+            thinkingBudget: 1024,
+            maxOutputTokens: 24576,
+            jsonSchema: buildQuestionsSchema(chapter.nodes.length),
+            timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+          },
+        ),
+      ),
+      chapter.nodes.length,
+    )
+    for (let i = 0; i < chapter.nodes.length; i += 1) {
+      buckets[i] = result[i] ?? []
+    }
+  } catch {
+    // Primary failed — every node stays empty; delta retries below try to
+    // fill each one with a needed-count of MIN_QUESTIONS_PER_NODE.
+  }
+
+  // Delta retry: only the nodes below MIN, only for the missing count.
+  // Existing questions are listed in the prompt so the model can't duplicate
+  // them; calc IS allowed (a short primary often means the model ran low
+  // on tokens, not that the source has no formula).
+  for (let i = 0; i < chapter.nodes.length; i += 1) {
+    const have = buckets[i].length
+    if (have >= MIN_QUESTIONS_PER_NODE) continue
+    const needed = MIN_QUESTIONS_PER_NODE - have
+    ensureTime(deadline)
+    try {
+      const result = validateChapterQuestions(
+        parseJsonLoose(
+          await chatInLanguage(
+            buildDeltaRetryPrompt(
+              chapter.nodes[i],
+              buckets[i],
+              needed,
+              chunks,
+              language,
+            ),
+            language,
+            {
+              thinkingBudget: 512,
+              maxOutputTokens: 12288,
+              jsonSchema: buildQuestionsSchema(1, { minItems: needed }),
+              timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+            },
+          ),
+        ),
+        1,
+      )
+      if (result[0]?.length) {
+        buckets[i] = buckets[i].concat(result[0])
+      }
+    } catch {
+      // Stays partial; the CoursePage banner surfaces it for a one-tap fill.
+    }
+  }
+
+  const questionRows = buckets.flatMap((questions, nodeIndex) => {
+    const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
+    return questions.map((question, index) => ({
+      course_id: courseId,
+      node_id: nodeIds[nodeIndex],
+      position: index + 1,
+      kind: question.kind,
+      difficulty: question.difficulty,
+      prompt: question.prompt,
+      options: question.options,
+      answer: question.answer,
+      calc: question.calc ?? null,
+      verified: verifyQuestion(question, chunk),
+    }))
+  })
+  let questionsWritten = 0
+  if (questionRows.length > 0) {
+    const { error: questionsError } = await supabase
+      .from('questions')
+      .insert(questionRows)
+    if (questionsError) throw new Error(questionsError.message)
+    questionsWritten = questionRows.length
+  }
+
+  for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
+    const prize = lessonCreditPrize(nodeQuestions)
+    if (prize > 0) {
+      const { error: prizeError } = await supabase
+        .from('nodes')
+        .update({ credit_prize: prize })
+        .eq('id', nodeIds[nodeIndex])
+      if (prizeError) throw new Error(prizeError.message)
+    }
+  }
+
+  return { questionsWritten }
 }
 
 async function extractMaterialsText(

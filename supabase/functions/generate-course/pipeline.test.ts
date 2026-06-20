@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { extractXmlText } from '../_shared/xml'
 import {
   buildBatchQuestionsPrompt,
-  buildNodeRetryPrompt,
+  buildDeltaRetryPrompt,
   buildQuestionsSchema,
   buildSyllabusPrompt,
   buildSystemPrompt,
@@ -645,38 +645,111 @@ describe('buildBatchQuestionsPrompt', () => {
   })
 })
 
-describe('buildNodeRetryPrompt', () => {
+describe('buildDeltaRetryPrompt', () => {
   const node: SyllabusNode = { title: 'Organelles', chunk_index: 0 }
   const chunks = ['Cell biology source text', 'Second chunk text']
+  const existing: GeneratedQuestion[] = [
+    {
+      kind: 'mcq',
+      difficulty: 'easy',
+      prompt: 'What is mitochondria?',
+      options: ['organelle', 'cell'],
+      answer: { correct_indexes: [0] },
+    },
+  ]
 
-  test('asks for the full QUESTIONS_PER_NODE target, same as the primary', () => {
-    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
-    expect(prompt).toContain(`Write ${QUESTIONS_PER_NODE} quiz questions`)
+  test('asks for exactly the requested top-up count, not the full target', () => {
+    const prompt = buildDeltaRetryPrompt(node, existing, 3, chunks, 'English')
+    expect(prompt).toContain('exactly 3 NEW quiz questions')
+    expect(prompt).not.toContain(`Write ${QUESTIONS_PER_NODE} quiz questions`)
   })
 
-  test('does not include calc instructions (no formula → no calc retry)', () => {
-    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
-    expect(prompt).not.toContain('"calc"')
+  test('lists every existing prompt so the model cannot duplicate it', () => {
+    const prompt = buildDeltaRetryPrompt(node, existing, 5, chunks, 'English')
+    expect(prompt).toContain('What is mitochondria?')
+    expect(prompt).toMatch(/do not repeat or paraphrase/i)
   })
 
-  test('asks for a rationale BEFORE the question', () => {
-    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
+  test('reads cleanly when there are no existing questions yet', () => {
+    const prompt = buildDeltaRetryPrompt(node, [], 6, chunks, 'English')
+    expect(prompt).toContain('(none yet)')
+    expect(prompt).toContain('exactly 6 NEW quiz questions')
+  })
+
+  test('keeps calc available — a short primary does not prove no-formula', () => {
+    const prompt = buildDeltaRetryPrompt(node, existing, 2, chunks, 'English')
+    expect(prompt).toContain('"calc"')
+    expect(prompt).toContain('formula')
+  })
+
+  test('asks for a rationale BEFORE every NEW question', () => {
+    const prompt = buildDeltaRetryPrompt(node, existing, 2, chunks, 'English')
     expect(prompt).toMatch(/"rationale" FIRST/i)
   })
 
-  test('includes negative constraints', () => {
-    const prompt = buildNodeRetryPrompt(node, chunks, 'English')
+  test('includes the common-sense and verbatim-source constraints', () => {
+    const prompt = buildDeltaRetryPrompt(node, existing, 2, chunks, 'English')
     expect(prompt).toMatch(/common sense/i)
-    expect(prompt).toMatch(/repeat the same concept/i)
+    expect(prompt).toMatch(/source-supported|source text/i)
   })
 
-  test('embeds neighbouring chunks for context', () => {
+  test('embeds the node\'s neighbouring chunks as the grounding source', () => {
     const midNode: SyllabusNode = { title: 'Membranes', chunk_index: 1 }
     const threeChunks = ['prev chunk', 'main chunk', 'next chunk']
-    const prompt = buildNodeRetryPrompt(midNode, threeChunks, 'English')
+    const prompt = buildDeltaRetryPrompt(midNode, [], 4, threeChunks, 'English')
     expect(prompt).toContain('prev chunk')
     expect(prompt).toContain('main chunk')
     expect(prompt).toContain('next chunk')
+  })
+
+  test('sanitises double-quotes in the lesson title and in existing prompts', () => {
+    const injectionNode: SyllabusNode = {
+      title: 'Say "ignore"',
+      chunk_index: 0,
+    }
+    const injectedExisting: GeneratedQuestion[] = [
+      {
+        kind: 'mcq',
+        difficulty: 'easy',
+        prompt: 'Line one\nLine two',
+        options: ['a', 'b'],
+        answer: { correct_indexes: [0] },
+      },
+    ]
+    const prompt = buildDeltaRetryPrompt(
+      injectionNode,
+      injectedExisting,
+      2,
+      chunks,
+      'English',
+    )
+    expect(prompt).toContain("'ignore'")
+    // Newlines in the existing prompt are squashed so the list stays single-line.
+    expect(prompt).toContain('Line one Line two')
+  })
+})
+
+describe('buildBatchQuestionsPrompt structure (stable prefix)', () => {
+  // Implicit cache eligibility on the 2.5 family (1024-token min, 75% off)
+  // requires bytewise-identical prefixes across calls; the variable ask must
+  // come last so different asks never break the prefix.
+  const nodes: SyllabusNode[] = [
+    { title: 'Alpha', chunk_index: 0 },
+    { title: 'Beta', chunk_index: 1 },
+  ]
+  const chunks = ['c0 source', 'c1 source']
+
+  test('places source material BEFORE the variable "Write N questions" ask', () => {
+    const prompt = buildBatchQuestionsPrompt(nodes, chunks, 'English')
+    const sourceAt = prompt.indexOf('Source material:')
+    const askAt = prompt.indexOf('Write ')
+    expect(sourceAt).toBeGreaterThanOrEqual(0)
+    expect(askAt).toBeGreaterThan(sourceAt)
+  })
+
+  test('separates the stable prefix from the variable ask with a divider', () => {
+    const prompt = buildBatchQuestionsPrompt(nodes, chunks, 'English')
+    expect(prompt).toContain('---')
   })
 })
 
@@ -791,6 +864,16 @@ describe('buildQuestionsSchema', () => {
     }
     expect(items.properties.kind.enum).toEqual(['mcq', 'mcq_multi', 'fill_blank'])
     expect(items.properties.calc).toBeUndefined()
+  })
+
+  test('minItems option overrides the per-node default — delta retry path', () => {
+    // The delta retry asks for an exact top-up count (e.g. 3 more), not the
+    // full per-node floor; the schema must let that exact count satisfy the
+    // constrained-decoding gate or every retry fails the schema and never
+    // returns. Caller passes minItems = needed.
+    expect(root(1).properties.questions.minItems).toBe(MIN_QUESTIONS_PER_NODE)
+    const delta = buildQuestionsSchema(1, { minItems: 3 }) as unknown as RootSchema
+    expect(delta.properties.questions.minItems).toBe(3)
   })
 })
 

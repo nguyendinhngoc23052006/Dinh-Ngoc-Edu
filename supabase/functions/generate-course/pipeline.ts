@@ -4,16 +4,14 @@
 
 export const MAX_CHAPTERS = 8
 export const MAX_NODES_PER_CHAPTER = 5
-export const QUESTIONS_PER_NODE = 6
+export const QUESTIONS_PER_NODE = 10
 // Primary acceptance floor: a node with fewer than this many usable questions
-// after the primary pass is retried. Below this, the lesson reads as sparse.
-export const MIN_QUESTIONS_PER_NODE = 4
-// One Gemini call covers up to this many nodes — fewer total calls, lower
-// inter-call delay overhead, less rate-limit pressure. Capped at 4 so the
-// 16384-token output budget comfortably fits 4 × 6 questions including
-// rationales.
-export const NODES_PER_BATCH = 4
-const MAX_QUESTIONS_PER_NODE = 12
+// after the primary pass triggers the delta retry to top up the shortfall.
+export const MIN_QUESTIONS_PER_NODE = 6
+// One Gemini call covers up to this many nodes — set to MAX_NODES_PER_CHAPTER
+// so every chapter is exactly one primary call, no leftover sub-batch.
+export const NODES_PER_BATCH = 5
+const MAX_QUESTIONS_PER_NODE = 15
 const MAX_OPTIONS = 6
 
 export interface SyllabusNode {
@@ -415,6 +413,9 @@ function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
 
 // Union of every batch node's primary chunk + its two neighbours, deduped and
 // presented in chunk order so the model can read it as continuous source.
+// Cap raised vs the per-batch budget — a 5-node chapter routinely spans 5-7
+// unique chunks, and the model grounds questions better when it sees the
+// whole chapter at once instead of overlapping per-node windows.
 function batchSourceContext(
   nodes: SyllabusNode[],
   chunks: string[],
@@ -430,18 +431,24 @@ function batchSourceContext(
     .sort((a, b) => a - b)
     .map((i) => `[Chunk ${i}]\n${chunks[i]}`)
     .join('\n\n')
-    .slice(0, 12_000)
+    .slice(0, 16_000)
 }
 
 const FEW_SHOT_EXAMPLE =
   '{"rationale":"The source defines mitosis as the process by which a single cell divides into two identical daughter cells with the same chromosome count. Tests recall of the defining property at easy difficulty.","node_index":0,"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0]}'
 
-// One Gemini call covers up to NODES_PER_BATCH lessons. Each question carries
-// a node_index so validateChapterQuestions can fan results back into per-node
-// buckets. Few-shot + negative constraints + rationale-first ordering all
-// raise per-question quality; rationale is auto-stripped by validateQuestion
-// (it constructs new objects by picking known fields), so the field never
-// reaches the database.
+// One Gemini call covers a whole chapter (NODES_PER_BATCH = MAX_NODES_PER_CHAPTER).
+// Prompt is laid out STABLE-PREFIX FIRST so the source + format spec + few-shot
+// are bytewise-identical across the primary call and any delta retries in the
+// same chapter — Gemini's implicit cache (1024-token min, 75% off cached input
+// on the 2.5 family) automatically kicks in on the second hit within ~5 min.
+// The variable ask sits at the END so a different ask never breaks the prefix.
+//
+// Each question carries a node_index so validateChapterQuestions can fan
+// results back into per-node buckets. Few-shot + negative constraints +
+// rationale-first ordering raise per-question quality on the same model;
+// rationale is auto-stripped by validateQuestion (it constructs new objects by
+// picking known fields), so the field never reaches the database.
 export function buildBatchQuestionsPrompt(
   nodes: SyllabusNode[],
   chunks: string[],
@@ -454,15 +461,16 @@ export function buildBatchQuestionsPrompt(
   })
   const totalQuestions = QUESTIONS_PER_NODE * nodes.length
   return [
-    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for EACH of the ${nodes.length} lessons listed below — ${totalQuestions} questions total.`,
-    `Set "node_index" on every question to the listed index (0 to ${nodes.length - 1}).`,
+    // === STABLE PREFIX (cache-eligible) ===
+    `Source material:`,
+    source,
     ``,
-    `Lessons:`,
+    `Lessons in this chapter:`,
     ...safeTitles,
     ``,
     `For every question:`,
     `- Write a brief "rationale" FIRST explaining your reasoning (why this concept, why this difficulty).`,
-    `- Base the question and answer ONLY on the source text below — never invent facts.`,
+    `- Base the question and answer ONLY on the source text above — never invent facts.`,
     `- Tag "difficulty" as "easy" (recall a stated fact), "medium" (apply or connect ideas), or "hard" (multi-step reasoning). Let the material decide the mix.`,
     `- Write the prompt and every option in ${outputLanguage}.`,
     ``,
@@ -480,49 +488,64 @@ export function buildBatchQuestionsPrompt(
     `Example of one well-formed question:`,
     FEW_SHOT_EXAMPLE,
     ``,
+    // === VARIABLE SUFFIX ===
+    `---`,
+    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for EACH of the ${nodes.length} lessons listed above — ${totalQuestions} questions total.`,
+    `Set "node_index" on every question to the listed index (0 to ${nodes.length - 1}).`,
     `Respond with ONLY this JSON:`,
     `{"questions":[{...},{...}]}`,
-    ``,
-    source,
   ].join('\n')
 }
 
-// Retry path: same full target as primary, but single-node and without "calc"
-// (a failed primary usually means the source had no formula, so re-asking for
-// one wastes tokens). Few-shot + rationale-first matches the primary so the
-// model reasons before answering.
-export function buildNodeRetryPrompt(
+// Delta retry: a node that came back short from the primary keeps what it
+// already has; this prompt asks ONLY for the missing count. Existing prompts
+// are listed so the model cannot duplicate them. Calc IS allowed here (a
+// short primary doesn't prove the source has no formula — it often means the
+// model spent its token budget on other lessons in the batch).
+export function buildDeltaRetryPrompt(
   node: SyllabusNode,
+  existingQuestions: GeneratedQuestion[],
+  needed: number,
   chunks: string[],
   outputLanguage: string,
 ): string {
   const source = nodeSourceContext(node, chunks)
   const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+  const existingList = existingQuestions.length
+    ? existingQuestions
+        .map((q, i) => `  ${i + 1}. ${q.prompt.replace(/[\r\n]+/g, ' ').slice(0, 200)}`)
+        .join('\n')
+    : '  (none yet)'
   return [
-    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for a lesson titled "${safeTitle}".`,
-    `Set "node_index" on every question to 0.`,
+    `Source material:`,
+    source,
     ``,
-    `For every question:`,
+    `Lesson: "${safeTitle}"`,
+    ``,
+    `Questions that ALREADY exist for this lesson — do not repeat or paraphrase any of them:`,
+    existingList,
+    ``,
+    `For every NEW question:`,
     `- Write a brief "rationale" FIRST explaining your reasoning.`,
-    `- Base the question and answer ONLY on the source text below — never invent facts.`,
+    `- Base the question and answer ONLY on the source text above — never invent facts.`,
     `- Tag "difficulty" as "easy", "medium", or "hard".`,
     `- Write the prompt and every option in ${outputLanguage}.`,
     ``,
-    `Use only "mcq", "mcq_multi", and "fill_blank" kinds.`,
-    `For mcq/mcq_multi give 3-4 options and correct_indexes. For fill_blank give accepted answers copied verbatim from the source.`,
+    `Use any of these kinds: "mcq", "mcq_multi", "fill_blank", or "calc" (calc ONLY when the source states a formula).`,
     ``,
     `Constraints:`,
+    `- DO NOT duplicate, paraphrase, or invert any existing question above.`,
     `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
-    `- DO NOT repeat the same concept across questions.`,
-    `- DO NOT cluster every question on one paragraph — distribute coverage evenly.`,
+    `- Cover NEW material from the source, not the same paragraphs the existing questions used.`,
     ``,
     `Example of one well-formed question:`,
     FEW_SHOT_EXAMPLE,
     ``,
+    `---`,
+    `Write exactly ${needed} NEW quiz questions in ${outputLanguage} for this lesson.`,
+    `Set "node_index" to 0 on every question.`,
     `Respond with ONLY this JSON:`,
     `{"questions":[{...},{...}]}`,
-    ``,
-    source,
   ].join('\n')
 }
 
@@ -562,16 +585,19 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
 }
 
 // Built per call so the array-level minItems scales with the batch's node
-// count: a batch of N nodes must return at least N * MIN_QUESTIONS_PER_NODE
-// questions. "rationale" is the first property so Gemini emits it first
-// (the OpenAPI subset has no `propertyOrdering`; key definition order is the
-// supported lever) — the validator field-picks the question shape, so the
-// rationale CoT never reaches the database. Callers pass `includeCalc: false`
-// to align the kind enum with prompts that exclude calc (the retry path,
-// where a failed primary almost always means the source has no formula).
+// count: by default a batch of N nodes must return at least
+// N * MIN_QUESTIONS_PER_NODE questions. Callers can pass an explicit
+// `minItems` to size the floor for a delta retry (which asks for a precise
+// top-up count, not the full per-node minimum). "rationale" is the first
+// property so Gemini emits it first (the OpenAPI subset has no
+// `propertyOrdering`; key definition order is the supported lever) — the
+// validator field-picks the question shape, so the rationale CoT never
+// reaches the database. `includeCalc: false` aligns the kind enum with
+// prompts that exclude calc (kept as an option for callers; the delta retry
+// keeps calc in since a short primary doesn't prove the source has no formula).
 export function buildQuestionsSchema(
   nodeCount: number,
-  options: { includeCalc?: boolean } = {},
+  options: { includeCalc?: boolean; minItems?: number } = {},
 ): Record<string, unknown> {
   const includeCalc = options.includeCalc ?? true
   const kindEnum = includeCalc
@@ -644,12 +670,13 @@ export function buildQuestionsSchema(
       required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
     }
   }
+  const minItems = options.minItems ?? nodeCount * MIN_QUESTIONS_PER_NODE
   return {
     type: 'object',
     properties: {
       questions: {
         type: 'array',
-        minItems: nodeCount * MIN_QUESTIONS_PER_NODE,
+        minItems,
         items: {
           type: 'object',
           properties: itemProperties,
