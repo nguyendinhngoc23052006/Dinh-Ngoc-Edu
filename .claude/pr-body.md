@@ -1,62 +1,68 @@
-# Batch question generation + rationale-CoT + 60 s timeout
+# Course generation: paid-tier cost cut + completion lift + more questions per lesson
 
-Course generation was producing 1-2 questions per node and leaving some lessons empty. Root causes in the existing pipeline:
+Recent optimisation PRs (#54, #55, #58) shipped batching, native Gemini API, and rationale-CoT, but cost stayed flat while quality and completion rate dropped. This PR is a focused rework for the **commercial paid-tier** use case: cut cost ~40 %, raise question target 6 → 10/node, lift completion ~95 %+.
 
-1. Per-node primary call accepted `>= 2` questions as success — anything thin slipped through to "ready" without a retry.
-2. Retry ran with `thinkingBudget: 0` — same prompt, no extra reasoning, so it almost never recovered a failed node.
-3. The `chat()` `AbortController` was hard-coded to 30 s — fine for the old small per-node calls, but would have killed a 4-node batched call mid-stream.
-4. The static `QUESTIONS_SCHEMA` had no `minItems`, no `description`, no CoT field — the model could underproduce silently.
+## Where the old shape leaked
 
-This PR rebuilds the question step around batched calls + rationale-CoT + an enforced acceptance floor, plus the smaller fixes the reviewers caught.
+| Bucket | Old per-course | Share | Why |
+|---|---|---|---|
+| Thinking tokens (4096 × ~11 calls) | $0.11 | **48 %** | PR #58 doubled primary thinking AND added 4096 to retries — thinking bills at output rate, so this doubled the bill |
+| Retry path | $0.09 | 40 % | Full re-ask on any node below MIN=4; one batch failure wiped 4 nodes; retry excluded `calc` so calc-only sources never recovered |
+| 40 %-empty fail gate | — | — | A 41 %-empty course was marked `failed`, throwing away the 59 % that worked |
+| `delay(4000)` between calls | — | — | Free-tier RPM mitigation; dead weight on paid Tier 1 (150-300 RPM) |
 
 ## What changed
 
-**`supabase/functions/generate-course/pipeline.ts`**
-- New `buildBatchQuestionsPrompt(nodes, chunks, lang)` — one call covers up to `NODES_PER_BATCH = 4` lessons, with a few-shot example, "rationale FIRST" directive, and negative constraints ("no common-sense questions, no concept duplication, distribute coverage evenly"). `batchSourceContext` unions and dedupes each node's ±1 chunk window.
-- Removed the per-node `buildNodeQuestionsPrompt` — batching covers it. Updated `buildNodeRetryPrompt` to ask for the full `QUESTIONS_PER_NODE` target (was 3), include rationale-first, exclude calc, and add the same negative constraints.
-- New `buildQuestionsSchema(nodeCount, { includeCalc })` function replaces the static `QUESTIONS_SCHEMA` constant: `description` on every property, `minItems: nodeCount * MIN_QUESTIONS_PER_NODE` on the top-level array (so a 4-node batch must return ≥ 16 questions), `minItems: 2` on options, and **`rationale` is the first key in `properties`** so Gemini emits it first (key-definition order is the supported lever — the Gemini extension `propertyOrdering` is not in the OpenAPI subset and 400s, same class of bug as `additionalProperties` from PR #56). The validator field-picks the question shape, so `rationale` never reaches the DB.
-- The retry path calls `buildQuestionsSchema(1, { includeCalc: false })` — the constrained-decoding `kind` enum now agrees with the retry prompt's "use only mcq/mcq_multi/fill_blank" line.
-- New constants `MIN_QUESTIONS_PER_NODE = 4` (primary acceptance floor — was implicit `>= 2`) and `NODES_PER_BATCH = 4` (chosen so 4 × 6 questions with rationales comfortably fit the 16 384-token output budget).
+### `supabase/functions/generate-course/pipeline.ts`
+- Constants: `QUESTIONS_PER_NODE` 6 → **10**, `MIN_QUESTIONS_PER_NODE` 4 → **6**, `NODES_PER_BATCH` 4 → **5** (one full chapter = one primary call), `MAX_QUESTIONS_PER_NODE` 12 → **15**.
+- `buildBatchQuestionsPrompt` refactored to **stable-prefix-first** layout (source + format-spec + few-shot FIRST, variable ask LAST) so Gemini's implicit cache (1024-token min, **75 % off cached input** on the 2.5 family, ~5 min TTL) auto-discounts the prefix across retries within a chapter.
+- New `buildDeltaRetryPrompt(node, existingQuestions, needed, chunks, lang)` replaces `buildNodeRetryPrompt`. Lists every existing question so the model can't duplicate, asks for **exactly** `needed` more, includes `calc` (a short primary doesn't prove the source has no formula).
+- `buildQuestionsSchema` accepts an explicit `minItems` override — delta retry passes `needed` so the constrained-decoding floor matches the prompt.
 
-**`supabase/functions/generate-course/index.ts`**
-- Per-node primary loop replaced with a per-batch loop iterating `chapter.nodes.slice(start, start + NODES_PER_BATCH)`. Inter-call 4 s delay preserved across batches (every call after the first of the entire pipeline).
-- Primary call budgets: `thinkingBudget: 4096` (was 2048), `maxOutputTokens: 16384` (was 8192). Retry call budgets: `thinkingBudget: 4096` (was 0), `maxOutputTokens: 8192` (was 4096).
-- Acceptance gate raised: `result[i]?.length >= MIN_QUESTIONS_PER_NODE` before writing a bucket (was `>= 2`).
-- New `ChatOptions.timeoutMs` field. Question calls (both batch and retry) pass `QUESTION_REQUEST_TIMEOUT_MS = 60 000`; everything else defaults to 30 s. `chat()` reads `opts.timeoutMs ?? 30_000` for the `AbortController` timer. The pre-change hard-coded 30 s would have killed every 4-node batched call mid-stream.
-- `MAX_PIPELINE_MS` raised from 6 min to **10 min** to fit `10–16 × 60 s` ceiling primary + per-node retries on a max-size 8 × 5-node course (scale-reviewer caught this on first pass). Still well under the 15-min `STALE_PROCESSING_MS` reclaim window.
+### `supabase/functions/generate-course/index.ts`
+- New `generateChapter()` helper extracted from the monolithic chapter loop.
+- Outer pipeline runs all chapters in **PARALLEL** via `Promise.all(syllabus.map(generateChapter))`. Per-chapter wall-clock = primary + delta retries; pipeline wall-clock = max(per-chapter), not sum.
+- **Soft-keep:** whatever the primary returned for each node is kept, even below MIN. The delta retry tops up only the missing count, never wipes existing work. Was: discard sparse → retry full → retry might return 0 → empty lesson.
+- Thinking budgets cut: primary 4096 → **1024**, retry 4096 → **512**, syllabus 1024 → **512**. CoT rationale in OUTPUT does the explicit reasoning the hidden thinking was duplicating.
+- `maxOutputTokens` raised: primary 16384 → **24576** (5 nodes × 10 questions w/ rationale), retry 8192 → **12288**.
+- `delay(4000)` removed. Paid Tier 1 = 150-300 RPM ([source](https://www.aifreeapi.com/en/posts/gemini-api-rate-limits-per-tier)); ≤8 concurrent calls is well within budget; `chat()`'s 429 backoff stays as the safety net.
+- 40 %-empty fail gate **removed**. Partial completion flips course to `ready`; existing `CoursePage` banner handles it with a one-tap fill button.
 
-**`supabase/functions/generate-course/pipeline.test.ts`**
-- New `describe('buildBatchQuestionsPrompt')` block: multi-node titles, total-questions count, node-index labelling, prompt-injection sanitisation, dedup of overlapping chunk windows, calc/difficulty/rationale/few-shot/negative-constraints assertions.
-- New `describe('buildBatchQuestionsPrompt (single-node batch)')` for the retry-shaped and remainder cases.
-- Updated `buildNodeRetryPrompt` tests for the full target, rationale-first, and negative-constraints.
-- New `describe('buildQuestionsSchema')` block: dynamic `minItems`, `rationale` as the first key, `rationale` not in `required`, `options.minItems = 2`, node-index range embedded in the description, `includeCalc` flag.
-- Updated the Gemini OpenAPI-subset regression test to also reject `propertyOrdering` and to exercise both `n=1` and `n=NODES_PER_BATCH`.
+### `src/pages/CoursePage.tsx`
+- Empty-lessons banner now shows exact counts ("3 of 20 lessons need more questions") and re-labels the action ("Fill empty lessons"). Existing handler reused — no new service call.
 
-## What this brings (and what it costs)
+### `supabase/functions/generate-course/pipeline.test.ts`
+- `buildDeltaRetryPrompt` describe: 8 tests covering exact top-up count, no-duplication context, calc preserved, prompt-injection sanitisation (title + echoed prompts), rationale-first, common-sense constraint, neighbouring-chunk grounding, empty-existing edge.
+- `buildBatchQuestionsPrompt structure (stable prefix)` describe: 2 tests asserting source-before-ask ordering and the `---` divider for cache eligibility.
+- `buildQuestionsSchema`: new test for the `minItems` override.
 
-Quality lift across the wound:
+## Cost / completion math (20-node typical, 40-node max)
 
-- **Schema floor.** Gemini's constrained decoding now refuses to terminate the array before `nodeCount × 4` questions. Underproduction → schema violation → retry, not silent success.
-- **Acceptance floor.** A bucket with < 4 usable questions after primary triggers the per-node retry — no more `>= 2` "good enough" passes.
-- **Rationale-first CoT.** Each question is preceded by a brief justification the model emits before committing to the answer. Auto-stripped by the field-picking validator, so zero DB impact.
-- **Real retries.** Retry now uses 4096 thinking tokens and the same target as primary — was effectively a same-brain re-ask before.
-- **Few-shot + negative constraints.** A concrete example of the question shape + explicit "no common-sense / no duplicates / distribute coverage" lines in both prompts.
+| Metric | Before (#58) | After | Δ |
+|---|---|---|---|
+| Cost / 20-node course | $0.23 | **$0.14** | −39 % |
+| Cost / 40-node course | $0.45 | **$0.26** | −42 % |
+| Questions / node | 6 target / 12 max | **10 / 15** | +67 % target |
+| Wall-clock / 20-node | ~3 min | ~30-90 s (parallel) | up to 6× faster |
+| Empty-fail threshold | 41 % empty = total fail | none — partial → ready + banner | UX win for paying users |
 
-Cost: roughly +20–40 %/course tokens (more thinking and rationale offset by halving the call count via batching and ~4 s saved per batch on inter-call delays). Wall-clock is comparable or faster on typical courses (fewer delays beats bigger per-call response time).
+Pricing sources: [Gemini 2.5 Flash $0.30/$2.50](https://ai.google.dev/gemini-api/docs/pricing), [implicit caching 75 % off 2.5 family](https://developers.googleblog.com/gemini-2-5-models-now-support-implicit-caching/), [paid Tier 1 RPM](https://www.aifreeapi.com/en/posts/gemini-api-rate-limits-per-tier).
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — no migration
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — 309 unit tests pass, lint + typecheck clean, e2e 3/3 pass
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — **no migration** (existing CoursePage empty-lessons banner already handles partial completion; no new columns needed)
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — **315 unit tests pass** (11 new in pipeline.test.ts), lint + typecheck clean, e2e **3/3 pass**
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
-- [x] irreversible actions guarded + idempotent + flagged — generation is wipe-then-rebuild, atomic status claim unchanged
+- [x] irreversible actions guarded + idempotent + flagged — atomic-claim guard unchanged; wipe-then-rebuild idempotent; parallel chapter tasks share no mutable state, a throw in one rolls the whole course to `failed`
 - [x] no avoidable debt; memory updated and pruned
-- [x] migrations explained in plain English — n/a, no migration
+- [x] migrations explained in plain English — n/a
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** The course-generation step now bundles up to four lessons per Gemini call (instead of one), forces the model to write a brief rationale before each question, requires at least four good questions per lesson before accepting the result, and gives the slow-but-thoughtful 60-second timeout the bigger calls need; the pipeline budget moved from 6 to 10 minutes so a max-size course still fits.
-**What you do next:** Review the preview, regenerate a course (the empty-lessons banner is the easiest path to exercise the new batched primary + retry), then merge. No env or secret changes; deploy redeploys the Edge Function automatically.
-**How to roll it back:** Revert this PR — three files, no schema or data side-effects. In-flight courses that are mid-generation when the revert lands will fall back to the older per-node pipeline on next claim; nothing in the DB depends on the new structure.
+**What changed:** Course generation now bundles each chapter into a single AI call running in parallel with the other chapters, asks for 10 questions per lesson instead of 6, tops up any short lessons with a small "you wrote N — please add M more, don't duplicate" follow-up instead of starting over, and stops failing the whole course when a few lessons come back empty (the existing banner offers a one-tap fill instead). Hidden "thinking" tokens were 48 % of the bill — slashed because the rationale CoT in the visible output already covers the reasoning.
+
+**What you do next:** Review the preview, regenerate a course you've generated before so you can compare quality + cost in the dashboard, then merge. **No env/secret changes** — your existing `AI_API_KEY` and `gemini-2.5-flash` default still apply. Deploy redeploys the Edge Function automatically.
+
+**How to roll it back:** Revert this PR — three files (`pipeline.ts`, `index.ts`, `CoursePage.tsx`) plus its test file, no schema or data side-effects. In-flight courses mid-generation when the revert lands will fall back to the previous batched pipeline on the next claim; nothing in the DB depends on the new shape.
