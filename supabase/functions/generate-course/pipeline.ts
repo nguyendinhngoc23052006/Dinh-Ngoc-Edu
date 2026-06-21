@@ -391,8 +391,10 @@ function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
     .slice(0, 8_000)
 }
 
-const FEW_SHOT_EXAMPLE =
-  '{"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0]}'
+const FEW_SHOT_EXAMPLE = [
+  '{"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0],"accepted":[]}',
+  '{"kind":"fill_blank","difficulty":"medium","prompt":"Osmosis is the movement of ___ across a semipermeable membrane.","options":[],"correct_indexes":[],"accepted":["water"]}',
+].join('\n')
 
 // One Gemini call per lesson — both for the initial pass and for the retry
 // when the first call came back short. The retry mode lists every question
@@ -517,8 +519,11 @@ export function detectFormulas(text: string): boolean {
   if (/[A-Za-z][A-Za-z0-9_]*\s*=\s*[^=\n]{1,80}[\d+\-*/^()]/m.test(text)) return true
   // Two-sided arithmetic on numerics (e.g., "5% × 2 years", "100 / 25", "2*x")
   if (/\d\s*[×✕*/^+-]\s*[\d(]/m.test(text)) return true
-  // Formula-naming keywords
-  if (/\b(formula|equation|compute|calculate|where\s+[A-Za-z]\s*=|is\s+given\s+by|derivative|integral)\b/i.test(text)) return true
+  // Narrow formula markers — "where X =" / "is given by" / calculus terms.
+  // Broad keywords like "formula", "calculate", "equation" are deliberately
+  // excluded: they fire on plain narrative ("calculate the present value of...")
+  // and were the primary source of false-positive calc calls.
+  if (/\b(where\s+[A-Za-z]\s*=|is\s+given\s+by|derivative|integral)\b/i.test(text)) return true
   // LaTeX markers
   if (/\\(frac|sqrt|int|sum|prod|partial|alpha|beta|theta|sigma)\b/i.test(text)) return true
   // Greek-letter usage in body text (not just glossaries)
@@ -551,20 +556,20 @@ export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
           options: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Answer options for mcq/mcq_multi; omit for fill_blank.',
+            description: 'Answer options for mcq/mcq_multi; empty array [] for fill_blank.',
           },
           correct_indexes: {
             type: 'array',
             items: { type: 'integer' },
-            description: 'Zero-based indexes of correct options.',
+            description: 'Zero-based indexes of correct options for mcq/mcq_multi; empty array [] for fill_blank.',
           },
           accepted: {
             type: 'array',
             items: { type: 'string' },
-            description: 'For fill_blank: accepted answer strings, copied verbatim from the source.',
+            description: 'Accepted answer strings for fill_blank, copied verbatim from source; empty array [] for mcq/mcq_multi.',
           },
         },
-        required: ['kind', 'difficulty', 'prompt'],
+        required: ['kind', 'difficulty', 'prompt', 'options', 'correct_indexes', 'accepted'],
       },
     },
   },

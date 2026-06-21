@@ -71,6 +71,11 @@ const STALE_PROCESSING_MS = 15 * 60 * 1000
 // calc call — when this runs out, so the run always lands in `ready` or
 // `failed` before the 15-min staleness window above kicks in.
 const MAX_PIPELINE_MS = 10 * 60 * 1000
+// Chapters run three-at-a-time rather than all-at-once to avoid the burst
+// that causes 429 rate-limit hits. 3 is the minimum that keeps worst-case
+// wall time under MAX_PIPELINE_MS: ceil(8/3) batches × 5 lessons × 35 s
+// per-lesson timeout + 30 s syllabus ≈ 555 s < 600 s.
+const CHAPTER_CONCURRENCY = 3
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -193,6 +198,23 @@ Deno.serve(async (req) => {
   return json({ status: 'processing' }, 202)
 })
 
+async function mapConcurrent<T, U>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+  const results: U[] = new Array(items.length)
+  let next = 0
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 function ensureTime(deadline: number): void {
   if (Date.now() > deadline) {
     throw new Error(
@@ -225,7 +247,7 @@ async function generate(
     ensureTime(deadline)
     let syllabus = validateSyllabus(
       parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
-        thinkingBudget: 512, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
+        thinkingBudget: 128, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
       })),
       chunks.length,
     )
@@ -241,7 +263,7 @@ async function generate(
             await chatInLanguage(
               buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
               language,
-              { thinkingBudget: 512, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
+              { thinkingBudget: 0, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
             ),
           ),
           chunks.length,
@@ -251,12 +273,13 @@ async function generate(
       }
     }
 
-    // Chapters run in parallel; each chapter's nodes run sequentially inside.
-    // A throw in one chapter's task is caught here (its lessons report as
-    // failed but the other chapters' results are preserved), so a single
-    // chapter's DB or LLM error never wipes the run.
-    const chapterResults = await Promise.all(
-      syllabus.map((chapter, chapterIndex) =>
+    // Chapters run with bounded concurrency; lessons within a chapter run
+    // sequentially. Full Promise.all caused a burst that hit rate limits,
+    // producing 5 s/10 s waits and 0-question lessons from AbortError timeouts.
+    const chapterResults = await mapConcurrent(
+      syllabus,
+      CHAPTER_CONCURRENCY,
+      (chapter, chapterIndex) =>
         generateChapter(
           supabase,
           course.id,
@@ -269,7 +292,6 @@ async function generate(
           questionsWritten: 0,
           lessonErrors: [`Chapter "${chapter.title}" failed: ${messageOf(err)}`],
         })),
-      ),
     )
     const totalQuestions = chapterResults.reduce(
       (sum, r) => sum + r.questionsWritten,
@@ -448,7 +470,7 @@ async function generateLessonQuestions(
       buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, language),
       language,
       {
-        thinkingBudget: 768,
+        thinkingBudget: 256,
         maxOutputTokens: 4096,
         jsonSchema: NODE_QUESTIONS_SCHEMA,
         timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
@@ -468,7 +490,7 @@ async function generateLessonQuestions(
         buildNodeQuestionsPrompt(node, questions, needed, chunks, language),
         language,
         {
-          thinkingBudget: 512,
+          thinkingBudget: 0,
           maxOutputTokens: 3072,
           jsonSchema: NODE_QUESTIONS_SCHEMA,
           timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
@@ -496,7 +518,7 @@ async function generateLessonQuestions(
         buildCalcQuestionsPrompt(node, CALC_QUESTIONS_PER_NODE, chunks, language),
         language,
         {
-          thinkingBudget: 1024,
+          thinkingBudget: 0,
           maxOutputTokens: 4096,
           jsonSchema: CALC_QUESTIONS_SCHEMA,
           timeoutMs: CALC_FOLLOWUP_TIMEOUT_MS,
@@ -577,7 +599,7 @@ async function chatInLanguage(
   const system = buildSystemPrompt(outputLanguage)
   const content = await chat(prompt, system, opts)
   if (matchesOutputLanguage(content, outputLanguage)) return content
-  return chat(prompt + languageReminder(outputLanguage), system, opts)
+  return chat(prompt + languageReminder(outputLanguage), system, { ...opts, thinkingBudget: 0 })
 }
 
 async function chat(
