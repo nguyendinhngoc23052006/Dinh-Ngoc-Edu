@@ -2,7 +2,7 @@
 // JSON parsing, format enforcement, and answer verification. No Deno or
 // network imports, so the sandbox unit tests (vitest) exercise them directly.
 
-export const MAX_CHAPTERS = 8
+export const MAX_CHAPTERS = 10
 export const MAX_NODES_PER_CHAPTER = 5
 // Target questions per lesson. Small enough that a single Gemini call
 // reliably produces them without tripping structured-output truncation —
@@ -62,14 +62,74 @@ export function lessonCreditPrize(questions: GeneratedQuestion[]): number {
   return questions.reduce((sum, q) => sum + DIFFICULTY_WEIGHT[q.difficulty], 0)
 }
 
+// Removes structural boilerplate that survives PDF/DOCX/PPTX text extraction —
+// page numbers, running headers/footers, TOC entries, copyright notices,
+// download-platform attribution, bare emails, URL-only lines. Two-pass:
+// pass 1 identifies lines that repeat 3+ times (running header/footer pattern);
+// pass 2 strips those plus pattern-matched lines. Idempotent — safe to call on
+// already-clean text.
+export function stripBoilerplate(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+
+  // Pass 1 — running headers/footers repeat once per page; real content doesn't.
+  const freq = new Map<string, number>()
+  for (const line of lines) {
+    const key = line.trim()
+    if (key) freq.set(key, (freq.get(key) ?? 0) + 1)
+  }
+  const repeated = new Set(
+    [...freq.entries()].filter(([, n]) => n >= 3).map(([line]) => line),
+  )
+
+  // Pass 2 — structural patterns that signal non-educational content.
+  const filtered = lines.filter((line) => {
+    const t = line.trim()
+    if (!t) return true // preserve blank lines; collapse runs below
+    if (repeated.has(t)) return false
+    // Standalone page numbers: "42", "- 42 -", "Page 5 of 10"
+    if (/^[-–—\s]*(?:page\s+)?\d+[-–—\s]*(?:of\s+\d+)?\s*$/i.test(t)) return false
+    // TOC entries: "Chapter 3 ......... 45"
+    if (/\.{3,}\s*\d+\s*$/.test(t)) return false
+    // Copyright / legal boilerplate
+    if (/©|all rights reserved|no part of this publication|may not be reproduced/i.test(t)) return false
+    // Download / upload attribution (any platform)
+    if (/\b(downloaded|uploaded|shared)\s+by\b/i.test(t)) return false
+    // Document-sharing platform names
+    if (/\b(studocu|coursehero|scribd|academia\.edu|researchgate)\b/i.test(t)) return false
+    // ISBN / publication metadata
+    if (/\bISBN[-\s]?\d|first published|published\s+by\b/i.test(t)) return false
+    // Watermark-only lines
+    if (/^(draft|confidential|sample|copy|preview)\s*$/i.test(t)) return false
+    // Bare email address (the entire line is an email)
+    if (/^[^\s@]+@[^\s@]+\.[^\s]{2,}$/.test(t)) return false
+    // URL-dominant short lines (URL > 60% of line, line < 120 chars)
+    const urlMatch = t.match(/https?:\/\/\S+|www\.[^\s]+/i)
+    if (urlMatch && t.length < 120 && urlMatch[0].length / t.length > 0.6) return false
+    return true
+  })
+
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// Rejects chunks that are too thin to generate 4–6 grounded questions from.
+// Word count < 30 catches metadata remnants that survived stripping; diversity
+// < 0.35 (unique/total words) catches boilerplate that repeats the same terms
+// (URL lists, repeated headers) — academic prose has naturally higher diversity.
+export function isEducationalChunk(chunk: string): boolean {
+  const words = chunk.trim().split(/\s+/).filter(Boolean)
+  if (words.length < 30) return false
+  const unique = new Set(words.map((w) => w.toLowerCase()))
+  return unique.size / words.length >= 0.35
+}
+
 // Each node carries a chunk_index from the syllabus step so the question step
 // can send back only that chunk — that's how a long upload fits a small model.
 export function chunkText(
   text: string,
-  maxChars = 6000,
-  maxChunks = 30,
+  maxChars = 4000,
+  maxChunks = 50,
 ): string[] {
-  const clean = text.replace(/\r\n/g, '\n').trim()
+  const clean = stripBoilerplate(text)
   if (!clean) return []
   const chunks: string[] = []
   let current = ''
@@ -94,7 +154,8 @@ export function chunkText(
     }
   }
   if (current) chunks.push(current)
-  return chunks.slice(0, maxChunks)
+  // Filter before slicing so boilerplate chunks don't consume coverage slots.
+  return chunks.filter(isEducationalChunk).slice(0, maxChunks)
 }
 
 // Models occasionally wrap JSON in prose or code fences despite the
@@ -314,10 +375,10 @@ export function buildSyllabusPrompt(
   chunks: string[],
   outputLanguage: string,
 ): string {
-  const minNodes = Math.max(3, Math.floor(chunks.length * 0.6))
+  const minNodes = Math.max(3, chunks.length)
   const maxNodes = MAX_CHAPTERS * MAX_NODES_PER_CHAPTER
   const excerpts = chunks
-    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 1500)}`)
+    .map((chunk, index) => `[Chunk ${index}]\n${chunk.slice(0, 2000)}`)
     .join('\n\n')
   return [
     `You are designing a study course in ${outputLanguage} from a student's uploaded materials.`,
@@ -343,7 +404,7 @@ export function validateSyllabusQuality(
   chunkCount: number,
 ): SyllabusQualityResult {
   const totalNodes = syllabus.reduce((sum, ch) => sum + ch.nodes.length, 0)
-  const minNodes = Math.max(3, Math.floor(chunkCount * 0.6))
+  const minNodes = Math.max(3, chunkCount)
   const problems: string[] = []
 
   if (totalNodes < minNodes) {

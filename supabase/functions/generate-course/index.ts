@@ -71,11 +71,11 @@ const STALE_PROCESSING_MS = 15 * 60 * 1000
 // calc call — when this runs out, so the run always lands in `ready` or
 // `failed` before the 15-min staleness window above kicks in.
 const MAX_PIPELINE_MS = 10 * 60 * 1000
-// Chapters run three-at-a-time rather than all-at-once to avoid the burst
-// that causes 429 rate-limit hits. 3 is the minimum that keeps worst-case
-// wall time under MAX_PIPELINE_MS: ceil(8/3) batches × 5 lessons × 35 s
+// Chapters run four-at-a-time rather than all-at-once to avoid the burst
+// that causes 429 rate-limit hits. 4 is the minimum that keeps worst-case
+// wall time under MAX_PIPELINE_MS: ceil(10/4) batches × 5 lessons × 35 s
 // per-lesson timeout + 30 s syllabus ≈ 555 s < 600 s.
-const CHAPTER_CONCURRENCY = 3
+const CHAPTER_CONCURRENCY = 4
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
