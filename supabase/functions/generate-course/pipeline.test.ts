@@ -652,9 +652,14 @@ describe('detectFormulas', () => {
     expect(detectFormulas('Simple interest is I = P · r · t / 100 over the term.')).toBe(true)
   })
 
-  test('flags formula keywords', () => {
-    expect(detectFormulas('The formula for consumer surplus is the area under the demand curve.')).toBe(true)
-    expect(detectFormulas('Calculate the present value over five years.')).toBe(true)
+  test('flags narrow formula markers (where X =, is given by, derivative, integral)', () => {
+    expect(detectFormulas('Consumer surplus is given by the area under the demand curve.')).toBe(true)
+    expect(detectFormulas('Let f(x) = x^2; the derivative is 2x.')).toBe(true)
+  })
+
+  test('does not flag broad keywords that appear in plain narrative', () => {
+    expect(detectFormulas('The formula for consumer surplus is the area under the demand curve.')).toBe(false)
+    expect(detectFormulas('Calculate the present value over five years.')).toBe(false)
   })
 
   test('flags Greek letters and LaTeX markers', () => {
