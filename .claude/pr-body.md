@@ -30,8 +30,14 @@ Follow-up to PR #62 (cost/reliability). Question counts are now correct but cour
 - Added note: scanned PDFs and handwritten notes are not supported; open in Google Docs and export as PDF first.
 - GitHub issue #64 tracks OCR support for image-based PDFs.
 
+### Math rendering (KaTeX)
+- **`src/components/lessons/MathText.tsx`** (new) — `memo`-wrapped component that splits on `$$...$$` (display) then `$...$` (inline), renders each math segment via `katex.renderToString({ throwOnError: false })` + `dangerouslySetInnerHTML`, plain-text segments as-is. Malformed LaTeX degrades to readable placeholder text.
+- **`ChoiceQuestion`, `FillBlankQuestion`, `CalcQuestion`, `LessonPlayer`** — `{question.prompt}` / `{option}` / `{instance.prompt}` all replaced with `<MathText>`. `LessonPlayer` feedback section (post-answer view) also updated.
+- **`src/main.tsx`** — `import 'katex/dist/katex.min.css'`
+
 ## Known tradeoffs
 - Syllabus call input tokens ~2.2× more (50×2000 excerpts vs 30×1500). Syllabus is one call per generation; acceptable for significantly better topic coverage.
+- KaTeX (~100 kB) is not tree-shakeable and always bundles. Acceptable for a math-heavy educational app; dynamic import deferred unless Lighthouse becomes a constraint.
 - Pre-existing N+1: `nodes.credit_prize` updated in a loop in `generateChapter`. Not introduced here; tracked as tech-debt.
 
 ## Self-check
@@ -47,8 +53,8 @@ Follow-up to PR #62 (cost/reliability). Question counts are now correct but cour
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Source text is now stripped of platform boilerplate and low-quality chunks before chunking, so AI generates questions about the actual subject matter. Coverage raised to 100% of chunks with up to 50 lessons (was 60% of up to 30 lessons). Chapters run 4 concurrent (was 3) to fit the larger lesson capacity within the 10-minute wall time.
+**What changed:** Source text is stripped of platform boilerplate and low-quality chunks, so AI generates questions about the actual subject matter. Coverage raised to 100% of chunks with up to 50 lessons. LaTeX math in question text and options now renders properly (KaTeX) — previously showed raw `$...$` syntax.
 
-**What you do next:** Re-upload a Studocu PDF and generate a fresh course — verify lessons are named after actual topics and questions test real subject knowledge. Merge when satisfied. No env/secret changes needed.
+**What you do next:** Re-upload a Studocu PDF and generate a fresh course — verify lessons cover real topics and math formulas display correctly. Merge when satisfied. No env/secret changes needed.
 
-**How to roll it back:** Revert this PR. Four files changed (`pipeline.ts`, `index.ts`, `pipeline.test.ts`, two UI components). No DB schema, no migration, no data side-effects.
+**How to roll it back:** Revert this PR. Nine files changed (`pipeline.ts`, `index.ts`, `pipeline.test.ts`, two UI upload components, `MathText.tsx` new, three question components, `main.tsx`). No DB schema, no migration, no data side-effects.

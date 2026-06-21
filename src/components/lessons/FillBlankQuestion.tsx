@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Question } from '../../types/database'
 import type { QuestionResponse } from '../../services/lessonService'
+import MathText from './MathText'
 
 interface FillBlankQuestionProps {
   question: Question
@@ -15,7 +16,7 @@ function FillBlankQuestion({ question, onSubmit }: FillBlankQuestionProps) {
 
   return (
     <div className="question">
-      <p className="prompt">{question.prompt}</p>
+      <p className="prompt"><MathText text={question.prompt} /></p>
       <input
         type="text"
         value={text}

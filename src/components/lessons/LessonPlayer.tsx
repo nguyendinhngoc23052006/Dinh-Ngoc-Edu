@@ -13,6 +13,7 @@ import type {
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
 import CalcQuestion from './CalcQuestion'
+import MathText from './MathText'
 
 interface LessonPlayerProps {
   questions: Question[]
@@ -113,7 +114,7 @@ function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) 
         )
       ) : (
         <div className="feedback">
-          <p className="question-prompt">{question.prompt}</p>
+          <p className="question-prompt"><MathText text={question.prompt} /></p>
           <div
             role="alert"
             className={

@@ -1,12 +1,10 @@
-# Scale review — source quality + coverage fixes
+# Scale review — KaTeX math rendering
 
-**Verdict: PASS — one known tradeoff noted; N+1 finding is pre-existing**
+**Verdict: PASS — one known tradeoff documented; memoization finding fixed pre-push**
 
-Reviewed: `supabase/functions/generate-course/pipeline.ts`, `index.ts`
+Reviewed: `src/components/lessons/MathText.tsx`, `ChoiceQuestion.tsx`, `CalcQuestion.tsx`
 
-- Wall-time math verified: `ceil(10/4)×5×35 s + 30 s = 555 s < MAX_PIPELINE_MS (600 s)`. Per-lesson deadline guard still skips retries and calc follow-ups when budget is tight.
-- `stripBoilerplate` on 200k chars: ~40k lines max; frequency Map and per-line regex (10 patterns) are both O(n) — comfortable within Deno Edge Function budget.
-- **Syllabus prompt token cost increases ~2.2×**: new shape shows 50 chunks × 2000-char excerpts = 100k chars vs old 30×1500 = 45k chars. Deliberate tradeoff for better AI coverage of chunk content during syllabus planning; syllabus is one call per generation.
-- **`filter(isEducationalChunk)` before `slice` is intentional**: if every chunk fails the filter, the source is genuinely too thin for course generation. A clear "No readable text" error is preferable to generating questions about metadata.
-- No new unbounded queries, N+1 patterns, or missing indexes introduced by this diff.
-- Pre-existing debt (not introduced here): `nodes.credit_prize` updated in a loop (N individual UPDATEs) in `generateChapter`. Batch upsert refactor owed as standalone tech-debt.
+- **Fixed:** `MathText` is now wrapped in `memo()` — KaTeX `renderToString` is skipped on re-renders where the `text` prop is unchanged (e.g., `selected` toggles in `ChoiceQuestion`).
+- **Known tradeoff — bundle size:** KaTeX (~100 kB minified) is not tree-shakeable and always bundles. Acceptable: math rendering is the core use case for STEM courses; the tradeoff is deliberate. Dynamic import would add complexity for marginal UX gain; deferred if Lighthouse budget becomes a concern.
+- Regex split is O(n) over question text (<500 chars) — not a scale concern.
+- No new queries, N+1 patterns, or unbounded operations.
