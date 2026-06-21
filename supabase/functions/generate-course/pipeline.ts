@@ -26,19 +26,25 @@ export interface SyllabusChapter {
   nodes: SyllabusNode[]
 }
 
+import { validateCalcSpec } from '../_shared/calc.ts'
+import type { CalcSpec } from '../_shared/calc.ts'
+
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
-// The three kinds the AI generates from source. `calc` rows still exist in the
-// database (seed + clones + older courses) and the UI keeps rendering them,
-// but fresh AI generation no longer produces calc — its formula/variables
-// schema was the heaviest part of the structured-output ask and rarely fit
-// real source material.
+// The four kinds the AI generates. `mcq`, `mcq_multi`, `fill_blank` come from
+// the main per-lesson call; `calc` comes from a separate dedicated follow-up
+// call fired only on lessons whose source text contains formulas (see
+// `detectFormulas`). The calc path has its own schema + few-shot library
+// (`CALC_QUESTIONS_SCHEMA`, `buildCalcQuestionsPrompt`) so the main per-lesson
+// schema stays minimal and reliable, and a failed calc call leaves the
+// lesson's mcq/fill_blank questions untouched.
 export interface GeneratedQuestion {
-  kind: 'mcq' | 'mcq_multi' | 'fill_blank'
+  kind: 'mcq' | 'mcq_multi' | 'fill_blank' | 'calc'
   difficulty: Difficulty
   prompt: string
   options: string[]
   answer: { correct_indexes?: number[]; accepted?: string[] }
+  calc?: CalcSpec
 }
 
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard']
@@ -189,6 +195,11 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
     if (accepted.length === 0) return null
     return { kind: 'fill_blank', difficulty, prompt, options: [], answer: { accepted } }
   }
+  if (raw.kind === 'calc') {
+    const calc = validateCalcSpec(raw.calc)
+    if (!calc) return null
+    return { kind: 'calc', difficulty, prompt, options: [], answer: {}, calc }
+  }
   if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
   const options = (Array.isArray(raw.options) ? raw.options : [])
     .filter((o): o is string => typeof o === 'string' && o.trim() !== '')
@@ -223,6 +234,9 @@ export function verifyQuestion(
   question: GeneratedQuestion,
   sourceText: string,
 ): boolean {
+  // A calc question's answer is computed from its stored formula, not quoted
+  // from the source, so "verified" means it carries a usable spec.
+  if (question.kind === 'calc') return question.calc != null
   const source = normalize(sourceText)
   if (question.kind === 'fill_blank') {
     const accepted = question.answer.accepted ?? []
@@ -483,6 +497,35 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   required: ['chapters'],
 }
 
+// Cheap source-text heuristic — does this lesson's source actually contain
+// formulas worth turning into calc questions? Returns true only when the text
+// shows at least ONE concrete numerical-relationship marker. The dedicated
+// calc call is gated by this; false here means no calc call fires (saves the
+// LLM cost). A false positive still costs ~$0.005 because the prompt's
+// "return empty array if no formula" escape hatch lets the model bail.
+//
+// Detection signals (any one triggers true):
+//   1. an equals sign between a name and an expression with operators/digits
+//   2. an arithmetic operator surrounded by digits (rate × time, P × Q, etc.)
+//   3. keywords that name a formula: "formula", "equation", "compute",
+//      "calculate", "where x =", "is given by"
+//   4. LaTeX-style math markers
+//   5. Greek letters typical in formulas
+export function detectFormulas(text: string): boolean {
+  if (!text) return false
+  // Equals sign in a formula context (e.g., "P = 2Q + 10", "MR = MC")
+  if (/[A-Za-z][A-Za-z0-9_]*\s*=\s*[^=\n]{1,80}[\d+\-*/^()]/m.test(text)) return true
+  // Two-sided arithmetic on numerics (e.g., "5% × 2 years", "100 / 25", "2*x")
+  if (/\d\s*[×✕*/^+-]\s*[\d(]/m.test(text)) return true
+  // Formula-naming keywords
+  if (/\b(formula|equation|compute|calculate|where\s+[A-Za-z]\s*=|is\s+given\s+by|derivative|integral)\b/i.test(text)) return true
+  // LaTeX markers
+  if (/\\(frac|sqrt|int|sum|prod|partial|alpha|beta|theta|sigma)\b/i.test(text)) return true
+  // Greek-letter usage in body text (not just glossaries)
+  if (/[αβγδεθλμπρσφω]/.test(text)) return true
+  return false
+}
+
 export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -526,4 +569,183 @@ export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
     },
   },
   required: ['questions'],
+}
+
+// Calc-only schema for the dedicated calc follow-up call. Separate from the
+// main per-lesson schema so the model never has to choose between mcq and calc
+// inside one response — every item in this schema IS calc. No `minItems` (the
+// prompt explicitly invites an empty array when the source has no usable
+// formula), no `additionalProperties` (Gemini rejects), no `propertyOrdering`.
+export const CALC_QUESTIONS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    questions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard'],
+            description: 'Cognitive difficulty — easy/medium/hard.',
+          },
+          prompt: {
+            type: 'string',
+            description: 'Short one-sentence description of what the question asks (the prompt_template carries the actual student-facing wording).',
+          },
+          calc: {
+            type: 'object',
+            description: 'The parametric solver spec.',
+            properties: {
+              variables: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Identifier — letters/digits/underscore, must start with a letter.' },
+                    min: { type: 'number' },
+                    max: { type: 'number' },
+                    decimals: { type: 'integer', description: '0 = whole number.' },
+                  },
+                  required: ['name', 'min', 'max', 'decimals'],
+                },
+              },
+              steps: {
+                type: 'array',
+                description: 'Optional ordered intermediate bindings. Each step name binds for later steps and the final formula.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    formula: { type: 'string' },
+                  },
+                  required: ['name', 'formula'],
+                },
+              },
+              formula: { type: 'string', description: 'Final answer expression over variables and step names.' },
+              prompt_template: { type: 'string', description: 'Student-facing wording with {var} placeholders, e.g. "Principal {P} at {r}%...".' },
+              decimals: { type: 'integer', description: 'Rounding applied to the computed answer.' },
+              tolerance: { type: 'number', description: 'Absolute slack allowed when grading.' },
+            },
+            required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
+          },
+        },
+        required: ['difficulty', 'prompt', 'calc'],
+      },
+    },
+  },
+  required: ['questions'],
+}
+
+// Parses a calc follow-up response into validated calc questions. Empty array
+// is valid (the prompt explicitly tells the model to return one when no real
+// formula is in the source). Each question runs through `validateCalcSpec`,
+// which midpoint-samples the variable ranges and evaluates every step + the
+// final formula — a hallucinated formula referencing an undeclared variable
+// or a step that shadows a variable rejects at parse time, before any user
+// ever sees the question.
+export function validateNodeCalcQuestions(value: unknown): GeneratedQuestion[] {
+  const root =
+    value && typeof value === 'object' && 'questions' in value
+      ? (value as { questions: unknown }).questions
+      : value
+  if (!Array.isArray(root)) return []
+  const result: GeneratedQuestion[] = []
+  for (const entry of root) {
+    if (result.length >= MAX_QUESTIONS_PER_NODE) break
+    if (!entry || typeof entry !== 'object') continue
+    const raw = entry as Record<string, unknown>
+    const prompt =
+      typeof raw.prompt === 'string' ? raw.prompt.trim().slice(0, 1000) : ''
+    if (!prompt) continue
+    const calc = validateCalcSpec(raw.calc)
+    if (!calc) continue
+    result.push({
+      kind: 'calc',
+      difficulty: toDifficulty(raw.difficulty),
+      prompt,
+      options: [],
+      answer: {},
+      calc,
+    })
+  }
+  return result
+}
+
+const CALC_FEW_SHOTS = [
+  '// Simple single-formula: simple interest.',
+  '{"difficulty":"easy","prompt":"Compute simple interest.","calc":{"variables":[{"name":"P","min":500,"max":2000,"decimals":0},{"name":"r","min":2,"max":10,"decimals":0},{"name":"t","min":1,"max":5,"decimals":0}],"formula":"P * r * t / 100","prompt_template":"A principal of {P} earns {r}% simple interest over {t} years. What is the interest?","decimals":2,"tolerance":0.01}}',
+  '',
+  '// Multi-step (steps[]): consumer surplus from a linear market.',
+  '{"difficulty":"medium","prompt":"Consumer surplus at equilibrium.","calc":{"variables":[{"name":"a","min":80,"max":120,"decimals":0},{"name":"b","min":1,"max":3,"decimals":0}],"steps":[{"name":"Q_eq","formula":"a / (b + 1)"},{"name":"P_eq","formula":"a - b * Q_eq"}],"formula":"0.5 * (a - P_eq) * Q_eq","prompt_template":"Demand: P = {a} − {b}Q. Supply: P = Q. What is the consumer surplus?","decimals":2,"tolerance":0.5}}',
+  '',
+  '// Piecewise via ternary: progressive tax bracket.',
+  '{"difficulty":"medium","prompt":"Total tax under a two-bracket schedule.","calc":{"variables":[{"name":"income","min":30,"max":120,"decimals":0}],"formula":"income > 50 ? 50*0.2 + (income-50)*0.3 : income*0.2","prompt_template":"Income {income}k taxed at 20% up to 50k, 30% above. Tax owed?","decimals":2,"tolerance":0.01}}',
+  '',
+  '// Closed-form with log/sqrt: utility maximisation.',
+  '{"difficulty":"hard","prompt":"Optimal utility with a sqrt-substitution.","calc":{"variables":[{"name":"M","min":100,"max":400,"decimals":0}],"steps":[{"name":"x_opt","formula":"sqrt(M / 2)"}],"formula":"log(x_opt + 1)","prompt_template":"Budget {M}. U(x) = log(x+1). Optimal utility?","decimals":4,"tolerance":0.001}}',
+  '',
+  '// Series summation via sigma: present value of an annuity.',
+  '{"difficulty":"hard","prompt":"Present value of a five-year annuity.","calc":{"variables":[{"name":"C","min":100,"max":1000,"decimals":0},{"name":"r","min":2,"max":10,"decimals":0}],"formula":"sigma(1, 5, C / pow(1 + r/100, i))","prompt_template":"An annuity pays {C} at the end of each year for 5 years. Discount rate {r}%. PV?","decimals":2,"tolerance":1}}',
+  '',
+  '// Combinatorics: binomial probability.',
+  '{"difficulty":"medium","prompt":"Probability of exactly k heads in n flips.","calc":{"variables":[{"name":"n","min":4,"max":10,"decimals":0},{"name":"k","min":2,"max":4,"decimals":0}],"formula":"binom_pmf(n, k, 0.5)","prompt_template":"Flip a fair coin {n} times. What is the probability of exactly {k} heads?","decimals":4,"tolerance":0.001}}',
+].join('\n')
+
+// Calc follow-up prompt — fired ONLY when `detectFormulas` flagged the lesson
+// source. Same stable-prefix layout as the main per-lesson prompt (source +
+// DSL spec + few-shots, then the variable ask), so Gemini's implicit cache
+// reuses the prefix across a chapter's calc calls.
+export function buildCalcQuestionsPrompt(
+  node: SyllabusNode,
+  count: number,
+  chunks: string[],
+  outputLanguage: string,
+): string {
+  const source = nodeSourceContext(node, chunks)
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+  return [
+    `Source material:`,
+    source,
+    ``,
+    `Lesson: "${safeTitle}"`,
+    ``,
+    `You are writing parametric calculation questions for this lesson. Each question stores a SOLVER (variables + optional intermediate steps + a final formula) and a prompt template — the student UI rolls fresh random values each play and the answer is recomputed from the formula, so the question grades itself.`,
+    ``,
+    `Use ONLY this DSL inside every formula and step:`,
+    `- Arithmetic: + - * / % ^   (^ is right-associative; % is floored mod)`,
+    `- Comparison: < <= > >= == !=    Logical: && || !    Ternary: cond ? then : else`,
+    `- Functions: abs sign min max sqrt cbrt pow mod`,
+    `             exp ln log log10 log2 logb`,
+    `             sin cos tan asin acos atan atan2  (radians)`,
+    `             sinh cosh tanh asinh acosh atanh`,
+    `             floor ceil round trunc`,
+    `             factorial choose perm gcd lcm`,
+    `             sum prod mean median variance stdev  (variadic over numeric args)`,
+    `             binom_pmf(n,k,p) binom_cdf(n,k,p) normal_pdf(x,mu,sigma) normal_cdf(x,mu,sigma) poisson_pmf(k,lam) poisson_cdf(k,lam)`,
+    `             sigma(lo, hi, body)   pi_iter(lo, hi, body)   iterate(init, count, body)   cases(c1, v1, c2, v2, ..., default)`,
+    `             (sigma/pi_iter bind 'i'; iterate binds 'x'; ranges capped at 10000 iterations)`,
+    `- Constants: pi, e`,
+    `- Variable names: letters/digits/underscore, must start with a letter; cannot shadow a function or constant.`,
+    ``,
+    `Rules:`,
+    `- Base every question on a formula or numerical relationship that is EXPLICITLY stated in the source above. Never invent a formula the source doesn't define.`,
+    `- prompt_template uses {var} placeholders for every variable. Write it in ${outputLanguage}.`,
+    `- "prompt" is a short label (used internally, also in ${outputLanguage}).`,
+    `- Set realistic min/max ranges so the answer stays in a sensible domain (no log of zero, no division by zero, no negative under sqrt).`,
+    `- Tolerance should be small but non-zero; decimals matches the precision the student should type.`,
+    `- Use "steps" when the answer naturally factors into intermediate quantities (compute Q first, then P, then surplus).`,
+    `- Use ternary or "cases" for piecewise definitions (tax brackets, supply/demand kinks).`,
+    `- Use "sigma" for series (PV of annuity, Riemann sums), "iterate" for Newton-style root finding.`,
+    ``,
+    `IMPORTANT: if the source has NO explicit numerical formula you can use, return {"questions":[]} — the lesson will fall back to its mcq/fill_blank questions. Do not invent.`,
+    ``,
+    `Few-shot examples (one per pattern):`,
+    CALC_FEW_SHOTS,
+    ``,
+    `---`,
+    `Write up to ${count} calculation question(s) in ${outputLanguage} for the lesson above. If the source supports fewer, write fewer. If none, return an empty array.`,
+    `Respond with ONLY this JSON:`,
+    `{"questions":[{...}]}`,
+  ].join('\n')
 }

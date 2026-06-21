@@ -5,7 +5,7 @@
 // texts, typed text, or calc variable values), so client-side option shuffling
 // does not matter. Pure (no Deno/DOM), shared with the browser bundle's tests.
 
-import { gradeCalc } from './calc.ts'
+import { gradeCalc, validateCalcSpec } from './calc.ts'
 import type { CalcSpec } from './calc.ts'
 
 export interface GradableQuestion {
@@ -30,11 +30,15 @@ export function isExactlyCorrect(
   answer: SubmittedAnswer,
 ): boolean {
   if (question.kind === 'calc') {
-    return (
-      answer.kind === 'calc' &&
-      question.calc != null &&
-      gradeCalc(question.calc, answer.values, answer.answer)
-    )
+    if (answer.kind !== 'calc' || question.calc == null) return false
+    // Re-validate the spec read from the DB before we evaluate it. A tampered
+    // row with an at-the-cap sigma range would otherwise burn ~10K iterations
+    // per regrade before the runtime cap fires; midpoint-sample validation
+    // rejects it cheaply. RLS already scopes writes to the owner, but this
+    // closes the avoidable-cost surface anyway.
+    const spec = validateCalcSpec(question.calc)
+    if (spec == null) return false
+    return gradeCalc(spec, answer.values, answer.answer)
   }
   if (question.kind === 'fill_blank') {
     if (answer.kind !== 'text') return false

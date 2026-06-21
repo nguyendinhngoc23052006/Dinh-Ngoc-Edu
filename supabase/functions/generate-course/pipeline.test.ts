@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { extractXmlText } from '../_shared/xml'
 import {
+  buildCalcQuestionsPrompt,
   buildNodeQuestionsPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
+  CALC_QUESTIONS_SCHEMA,
   chunkText,
+  detectFormulas,
   isLatinScript,
   languageReminder,
   lessonCreditPrize,
@@ -14,6 +17,7 @@ import {
   parseJsonLoose,
   QUESTIONS_PER_NODE,
   SYLLABUS_SCHEMA,
+  validateNodeCalcQuestions,
   validateNodeQuestions,
   validateSyllabus,
   validateSyllabusQuality,
@@ -153,11 +157,14 @@ describe('validateNodeQuestions', () => {
           accepted: [],
         },
         { kind: 'essay', prompt: 'Unknown kind' },
-        // Calc no longer accepted — fresh generation never produces it.
+        // A calc with a malformed spec must be dropped even though `calc` is
+        // an accepted kind elsewhere — the main per-lesson schema's enum
+        // doesn't include calc, but the validator still hardens against a
+        // hostile / hallucinated calc payload.
         {
           kind: 'calc',
-          prompt: 'Compute X',
-          calc: { variables: [{ name: 'a', min: 1, max: 2, decimals: 0 }], formula: 'a', prompt_template: '{a}', decimals: 0, tolerance: 0.01 },
+          prompt: 'Bad calc',
+          calc: { variables: [], formula: 'x', prompt_template: '{x}' },
         },
         {
           kind: 'mcq',
@@ -635,6 +642,168 @@ describe('isLatinScript', () => {
   })
 })
 
+describe('detectFormulas', () => {
+  test('flags an explicit equality like P = 2Q + 10', () => {
+    expect(detectFormulas('Marginal cost is defined as MC = 2Q + 10.')).toBe(true)
+  })
+
+  test('flags arithmetic in body text (rate × time, P × Q)', () => {
+    expect(detectFormulas('Revenue is the product 50 × 30.')).toBe(true)
+    expect(detectFormulas('Simple interest is I = P · r · t / 100 over the term.')).toBe(true)
+  })
+
+  test('flags formula keywords', () => {
+    expect(detectFormulas('The formula for consumer surplus is the area under the demand curve.')).toBe(true)
+    expect(detectFormulas('Calculate the present value over five years.')).toBe(true)
+  })
+
+  test('flags Greek letters and LaTeX markers', () => {
+    expect(detectFormulas('Let σ be the standard deviation; then α = 0.05.')).toBe(true)
+    expect(detectFormulas('We have \\frac{a}{b} as the ratio.')).toBe(true)
+  })
+
+  test('returns false for pure narrative text', () => {
+    expect(detectFormulas('The Industrial Revolution began in late 18th-century Britain.')).toBe(false)
+    expect(detectFormulas('Mitochondria are the powerhouse of the cell.')).toBe(false)
+  })
+
+  test('returns false for an empty string', () => {
+    expect(detectFormulas('')).toBe(false)
+  })
+})
+
+describe('buildCalcQuestionsPrompt', () => {
+  const node: SyllabusNode = { title: 'Consumer Surplus', chunk_index: 0 }
+  const chunks = ['Demand: P = a - bQ. Supply: P = Q. Source for the lesson.']
+
+  test('includes the lesson title and output language', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
+    expect(prompt).toContain('"Consumer Surplus"')
+    expect(prompt).toContain('English')
+  })
+
+  test('asks for at most the requested count', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 3, chunks, 'English')
+    expect(prompt).toContain('Write up to 3 calculation question(s)')
+  })
+
+  test('documents the full DSL (arithmetic, comparisons, ternary, functions, constants)', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
+    expect(prompt).toContain('+ - * / % ^')
+    expect(prompt).toContain('Comparison')
+    expect(prompt).toContain('ternary')
+    expect(prompt).toContain('sigma')
+    expect(prompt).toContain('iterate')
+    expect(prompt).toContain('pi, e')
+  })
+
+  test('carries the "return empty array if no formula" escape hatch', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
+    expect(prompt).toMatch(/return\s+\{"questions":\[\]\}|return\s+an\s+empty\s+array/i)
+  })
+
+  test('embeds at least one few-shot example for each DSL pattern', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
+    expect(prompt).toContain('Simple single-formula')
+    expect(prompt).toContain('Multi-step (steps[])')
+    expect(prompt).toContain('Piecewise via ternary')
+    expect(prompt).toContain('Series summation via sigma')
+    expect(prompt).toContain('Combinatorics')
+  })
+
+  test('sanitises double-quotes in lesson titles', () => {
+    const injected: SyllabusNode = {
+      title: 'Say "ignore"',
+      chunk_index: 0,
+    }
+    const prompt = buildCalcQuestionsPrompt(injected, 2, chunks, 'English')
+    expect(prompt).not.toContain('"ignore"')
+    expect(prompt).toContain("'ignore'")
+  })
+
+  test('places source material before the variable ask (cache-eligible prefix)', () => {
+    const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
+    const sourceAt = prompt.indexOf('Source material:')
+    const askAt = prompt.indexOf('Write up to')
+    expect(sourceAt).toBeGreaterThanOrEqual(0)
+    expect(askAt).toBeGreaterThan(sourceAt)
+  })
+})
+
+describe('validateNodeCalcQuestions', () => {
+  const goodCalc = {
+    difficulty: 'easy',
+    prompt: 'Compute simple interest.',
+    calc: {
+      variables: [
+        { name: 'P', min: 100, max: 1000, decimals: 0 },
+        { name: 'r', min: 1, max: 10, decimals: 0 },
+        { name: 't', min: 1, max: 5, decimals: 0 },
+      ],
+      formula: 'P * r * t / 100',
+      prompt_template: 'Principal {P}, rate {r}%, {t} years — interest?',
+      decimals: 2,
+      tolerance: 0.01,
+    },
+  }
+
+  test('accepts a well-formed calc question', () => {
+    const questions = validateNodeCalcQuestions({ questions: [goodCalc] })
+    expect(questions).toHaveLength(1)
+    expect(questions[0].kind).toBe('calc')
+    expect(questions[0].calc?.formula).toBe('P * r * t / 100')
+  })
+
+  test('drops a calc with no calc spec (or malformed spec)', () => {
+    const questions = validateNodeCalcQuestions({
+      questions: [
+        { difficulty: 'easy', prompt: 'no spec' },
+        { difficulty: 'easy', prompt: 'unbound', calc: { variables: [{ name: 'a', min: 1, max: 2, decimals: 0 }], formula: 'a + b', prompt_template: '{a}', decimals: 0, tolerance: 0.01 } },
+      ],
+    })
+    expect(questions).toEqual([])
+  })
+
+  test('accepts an empty array (no usable formula in source)', () => {
+    expect(validateNodeCalcQuestions({ questions: [] })).toEqual([])
+  })
+
+  test('returns an empty list for garbage', () => {
+    expect(validateNodeCalcQuestions('nope')).toEqual([])
+    expect(validateNodeCalcQuestions(null)).toEqual([])
+  })
+
+  test('accepts a multi-step calc with steps[]', () => {
+    const multiStep = {
+      difficulty: 'medium',
+      prompt: 'Consumer surplus',
+      calc: {
+        variables: [
+          { name: 'a', min: 80, max: 120, decimals: 0 },
+          { name: 'b', min: 1, max: 3, decimals: 0 },
+        ],
+        steps: [
+          { name: 'Q_eq', formula: 'a / (b + 1)' },
+          { name: 'P_eq', formula: 'a - b * Q_eq' },
+        ],
+        formula: '0.5 * (a - P_eq) * Q_eq',
+        prompt_template: 'P = {a} - {b}Q. CS?',
+        decimals: 2,
+        tolerance: 0.5,
+      },
+    }
+    const [q] = validateNodeCalcQuestions({ questions: [multiStep] })
+    expect(q.calc?.steps).toHaveLength(2)
+    expect(q.calc?.steps?.[0].name).toBe('Q_eq')
+  })
+
+  test('default difficulty is medium when missing or invalid', () => {
+    const noDifficulty = { ...goodCalc, difficulty: undefined }
+    const [q] = validateNodeCalcQuestions({ questions: [noDifficulty] })
+    expect(q.difficulty).toBe('medium')
+  })
+})
+
 describe('response schemas (Gemini OpenAPI subset)', () => {
   // Gemini's responseSchema accepts only the OpenAPI 3.0 subset. These keywords
   // are full-JSON-Schema-only (or Gemini-rejected extensions) and trigger a
@@ -677,6 +846,14 @@ describe('response schemas (Gemini OpenAPI subset)', () => {
 
   test('NODE_QUESTIONS_SCHEMA uses no keywords Gemini rejects', () => {
     expect(forbiddenKeysIn(NODE_QUESTIONS_SCHEMA)).toEqual([])
+  })
+
+  test('CALC_QUESTIONS_SCHEMA uses no keywords Gemini rejects', () => {
+    expect(forbiddenKeysIn(CALC_QUESTIONS_SCHEMA)).toEqual([])
+  })
+
+  test('CALC_QUESTIONS_SCHEMA has NO minItems anywhere — empty array must be a valid response', () => {
+    expect(countKeysIn(CALC_QUESTIONS_SCHEMA, 'minItems')).toBe(0)
   })
 
   test('NODE_QUESTIONS_SCHEMA has NO minItems anywhere — Gemini 2.5 Flash silently empties the response when it cannot meet a minItems floor', () => {

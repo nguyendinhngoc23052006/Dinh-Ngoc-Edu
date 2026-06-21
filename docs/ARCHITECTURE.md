@@ -52,9 +52,25 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
    A lesson that comes back below the acceptance floor gets ONE focused
    retry asking for exactly the missing count, with existing prompts
    listed so the model can't duplicate.
+4b. **Calc follow-up** — when `detectFormulas` flags a lesson's source
+   (formula keywords, equality with numeric expression, arithmetic on
+   numerics, Greek letters, or LaTeX markers) AND the pipeline budget has
+   ≥30 s headroom, fires a DEDICATED calc-only LLM call with its own
+   schema (`CALC_QUESTIONS_SCHEMA`) and few-shot library covering the
+   parametric-solver DSL: variables, optional ordered `steps[]`, ternary,
+   ~50 whitelisted math functions (trig, log/exp, combinatorics,
+   statistics, probability), and bounded iteration primitives
+   (`sigma/pi_iter/iterate/cases`, MAX_ITERATIONS=10 000). The call asks
+   for empty array on a no-formula source — it's bonus content, never a
+   regression on the lesson's mcq/fill_blank questions. Every spec
+   passes through `validateCalcSpec` which midpoint-samples the variable
+   ranges and evaluates each step + the final formula before any spec
+   reaches the DB.
 5. **Enforce + verify** — malformed questions are dropped
-   (`validateNodeQuestions`), and a question is marked `verified` only
-   when its correct answer literally appears in the source chunk.
+   (`validateNodeQuestions`/`validateNodeCalcQuestions`), and a question
+   is marked `verified` only when its correct answer literally appears in
+   the source chunk (calc questions are verified by carrying a usable
+   spec, since their answer is computed not quoted).
 6. **Finish** — status flips to `ready`, or `failed` with the reason in
    `courses.generation_error` (owner sees it + a Retry button).
 

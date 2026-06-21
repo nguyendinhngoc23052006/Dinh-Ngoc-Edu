@@ -26,10 +26,13 @@
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
+  buildCalcQuestionsPrompt,
   buildNodeQuestionsPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
+  CALC_QUESTIONS_SCHEMA,
   chunkText,
+  detectFormulas,
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
@@ -38,12 +41,22 @@ import {
   parseJsonLoose,
   QUESTIONS_PER_NODE,
   SYLLABUS_SCHEMA,
+  validateNodeCalcQuestions,
   validateNodeQuestions,
   validateSyllabus,
   validateSyllabusQuality,
   verifyQuestion,
 } from './pipeline.ts'
 import type { GeneratedQuestion, SyllabusChapter, SyllabusNode } from './pipeline.ts'
+
+const CALC_QUESTIONS_PER_NODE = 2
+// Smaller ask + richer schema = ~25 s end-to-end on Flash 2.5. Tighter than
+// the main per-lesson timeout because the call asks for at most 2 questions
+// in a single fixed-shape DSL.
+const CALC_FOLLOWUP_TIMEOUT_MS = 25_000
+// Budget gate: skip the calc follow-up if less than this much time is left in
+// the pipeline deadline. Sized to cover one calc call + a 5 s 429 backoff.
+const CALC_FOLLOWUP_HEADROOM_MS = 30_000
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
@@ -52,11 +65,11 @@ const MAX_SOURCE_CHARS = 200_000
 // pipeline budgets its own time well below it so it normally fails cleanly.
 const STALE_PROCESSING_MS = 15 * 60 * 1000
 // Chapters run in parallel; lessons within a chapter run sequentially. Worst
-// case: 5 lessons × (35 s initial + 35 s retry) ≈ 6 min per chapter, plus
-// syllabus ≈ 30 s, leaving ~3 min headroom for 429 backoffs (5 s + 10 s per
-// chat call). Per-lesson budget check skips the retry — or skips the
-// remaining lessons entirely — when this runs out, so the run always lands
-// in `ready` or `failed` before the staleness window above kicks in.
+// case for a math-heavy chapter: 5 lessons × (35 s main + 35 s retry + 25 s
+// calc follow-up) ≈ 8 min per chapter, plus syllabus ≈ 30 s. The per-lesson
+// budget check skips the retry — and `CALC_FOLLOWUP_HEADROOM_MS` skips the
+// calc call — when this runs out, so the run always lands in `ready` or
+// `failed` before the 15-min staleness window above kicks in.
 const MAX_PIPELINE_MS = 10 * 60 * 1000
 
 const corsHeaders = {
@@ -380,9 +393,8 @@ async function generateChapter(
       prompt: question.prompt,
       options: question.options,
       answer: question.answer,
-      // Fresh AI generation never produces calc; existing calc rows on cloned
-      // or seeded courses are untouched and the UI keeps rendering them.
-      calc: null,
+      // Populated by the calc follow-up call; null for mcq/mcq_multi/fill_blank.
+      calc: question.calc ?? null,
       verified: verifyQuestion(question, chunk),
     }))
   })
@@ -466,6 +478,34 @@ async function generateLessonQuestions(
       if (more.length > 0) questions = questions.concat(more)
     } catch (err) {
       if (firstError === null) firstError = messageOf(err)
+    }
+  }
+
+  // Calc follow-up: gated by (1) source-text formula detection so all-text
+  // courses pay nothing extra, and (2) deadline headroom so a near-budget
+  // lesson never triggers an extra call that pushes the pipeline past the
+  // 10-min cap. Failure here is silent on purpose — the lesson already has
+  // its mcq/fill_blank questions, calc is additive, never a regression.
+  const lessonSource = chunks[node.chunk_index] ?? ''
+  if (
+    detectFormulas(lessonSource) &&
+    Date.now() + CALC_FOLLOWUP_HEADROOM_MS < deadline
+  ) {
+    try {
+      const raw = await chatInLanguage(
+        buildCalcQuestionsPrompt(node, CALC_QUESTIONS_PER_NODE, chunks, language),
+        language,
+        {
+          thinkingBudget: 1024,
+          maxOutputTokens: 4096,
+          jsonSchema: CALC_QUESTIONS_SCHEMA,
+          timeoutMs: CALC_FOLLOWUP_TIMEOUT_MS,
+        },
+      )
+      const calcs = validateNodeCalcQuestions(parseJsonLoose(raw))
+      if (calcs.length > 0) questions = questions.concat(calcs)
+    } catch {
+      // Calc is bonus content — a failure leaves the mcq/fill_blank intact.
     }
   }
 
