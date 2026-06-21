@@ -1,5 +1,7 @@
 # Repo memory
 
+- Project renamed to **Dinh Ngoc Edu** (`dinh-ngoc-edu`); former kebab id was `last-minute-self-learning`. All config references (config.toml `project_id`, `package.json` name, index.html title, nav brand, hero kicker, README heading) now use the new name.
+
 - `CosmeticsLayer` (the theme applier + roaming pet) is mounted in `AppLayout`, a React-Router layout route with `<Outlet/>`, so it stays mounted across page navigations. Its `useAsync(listCosmetics, [])` and `useAsync(listSpecies, [])` therefore run ONCE per app session, not per navigation (only `getActivePet` refetches, keyed on user/pets_hatched). So there is NO per-navigation refetch cost to "fix" — don't add a cosmetics context provider for that reason.
 
 - Explore's public-catalogue title search (`listPublicCourses`) uses `ILIKE '%term%'` with the LIKE metacharacters escaped — no trigram index, so it's a sequential scan over public courses. Fine while the catalogue is small and always paginated; if it grows large, add a `pg_trgm` GIN index on `courses.title` (and a btree if the title sort gets heavy). Deliberately deferred in Phase 2.

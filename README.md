@@ -1,4 +1,4 @@
-# Dinh Ngoc Edu — last-minute self-learning
+# Dinh Ngoc Edu
 
 Upload a subject's materials once, pick an output language, and the app uses AI
 to generate a Duolingo-style course (chapters → lesson nodes → verified

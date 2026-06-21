@@ -1,12 +1,11 @@
-# Security review — generation cost/quality fixes
+# Security review — project rename to Dinh Ngoc Edu
 
 **Verdict: PASS — no findings**
 
-Reviewed: `supabase/functions/generate-course/pipeline.ts`, `index.ts`, `pipeline.test.ts`
+Reviewed: supabase/config.toml, package.json, package-lock.json, index.html, src/components/layout/AppLayout.tsx, src/pages/LandingPage.tsx, README.md, MEMORY.md, docs/ARCHITECTURE.md
 
-- Schema expansion (`required` fields): adds structure to AI output contract; no new trust boundary; `validateQuestion` already length-caps all fields before DB write
-- AI output re-used in retry prompts: prompt text length-capped and newline-sanitised before re-injection (existing `validateQuestion` + slice caps unchanged)
-- `mapConcurrent`: bounded to 3 concurrent workers; no shared mutable state between workers; errors captured at call site via `.catch`
-- Thinking budget reductions: client-side config only; no auth/RLS/secret changes
-- `detectFormulas` narrowing: reduces unnecessary API calls; no security surface change
-- No new secrets, no new storage access, no new auth paths, no RLS changes
+- Project ID renamed in config.toml: `last-minute-self-learning` → `dinh-ngoc-edu` (local label only, not the remote Project ID).
+- All changes are pure display strings, package metadata, and doc headings — no code logic, no queries, no mutations.
+- supabaseClient.ts unchanged; reads publishable key via two-prefix fallback chain only.
+- No migrations created or touched; no RLS changes; no auth/storage/secret logic.
+- No new dependencies; no secrets introduced; no irreversible actions.

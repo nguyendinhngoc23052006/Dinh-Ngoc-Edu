@@ -1,11 +1,10 @@
-# Code review — generation cost/quality fixes
+# Code review — project rename to Dinh Ngoc Edu
 
-**Verdict: PASS — one low-priority note**
+**Verdict: PASS**
 
-Reviewed: `supabase/functions/generate-course/pipeline.ts`, `index.ts`, `pipeline.test.ts`
+Reviewed: supabase/config.toml, package.json, package-lock.json, index.html, src/components/layout/AppLayout.tsx, src/pages/LandingPage.tsx, README.md, MEMORY.md, docs/ARCHITECTURE.md
 
-- `mapConcurrent`: index ordering preserved via `const i = next++` before await; error propagation correct (chapter `.catch` at call site); `Math.min(limit, items.length)` handles oversized limit. No dedicated unit test — acceptable; covered end-to-end via `generate()`; edge-case unit test owed as standalone refactor.
-- `NODE_QUESTIONS_SCHEMA` required expansion: correct; `FEW_SHOT_EXAMPLE` updated to show `accepted:[]` on mcq and `options:[],correct_indexes:[]` on fill_blank, consistent with new required list.
-- `detectFormulas` narrowing: false-positive removal intentional; tests updated to match; true-positive signals (signal 1/2/4/5) unchanged.
-- Thinking budget reductions: config values only, no logic change.
-- `chatInLanguage` spread `{ ...opts, thinkingBudget: 0 }`: correct — all other opts preserved, only thinking disabled for correction pass.
+- Old name `last-minute-self-learning` / "Last Minute Self Learning" / "Last Minute" replaced in all seven specified locations plus package-lock.json (two occurrences). No missed occurrences elsewhere in source (MEMORY.md rename note intentionally references old name for history).
+- No logic changes; all edits are display strings, package metadata, or documentation headings.
+- No duplication introduced. Lockfile updated to match package.json name field.
+- Grep confirms no remaining stale references in source files (lockfile excluded by convention).

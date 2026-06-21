@@ -18,7 +18,7 @@ function LandingPage() {
     <section className="landing">
       <div className="hero">
         <div className="hero-copy">
-          <span className="hero-kicker">Last Minute</span>
+          <span className="hero-kicker">Dinh Ngoc Edu</span>
           <h1>Turn your notes into a game you can win.</h1>
           <p>
             Upload your materials, pick a language, and get a Duolingo-style

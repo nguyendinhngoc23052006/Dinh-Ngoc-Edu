@@ -1,4 +1,4 @@
-# Architecture
+# Dinh Ngoc Edu — Architecture
 
 A study app: upload a subject's materials once, pick an output language, and
 the AI generates a Duolingo-style course (chapters → lesson nodes → verified

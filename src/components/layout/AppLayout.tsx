@@ -50,7 +50,7 @@ function AppLayout() {
           <span className="brand-mark" aria-hidden="true">
             ⚡
           </span>
-          Last Minute
+          Dinh Ngoc Edu
         </Link>
         <nav className="app-nav">
           <NavLink to="/explore">Explore</NavLink>
