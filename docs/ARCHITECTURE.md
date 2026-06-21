@@ -39,15 +39,21 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
    (`pipeline.ts`, pure and unit-tested).
 3. **Syllabus** — one AI call returns a strict-JSON chapter/node outline;
    each node names the chunk it came from.
-4. **Questions** — one AI call **per chapter** (not per node — a full course
-   stays within free-tier request limits) writes mcq/mcq_multi/fill_blank
-   questions for every lesson in that chapter, each tagged with its
-   `node_index`, in the course's output language. Every call carries a
+4. **Questions** — one AI call **per lesson** writes mcq/mcq_multi/fill_blank
+   questions for that lesson in the course's output language. Chapters run
+   in parallel; lessons within a chapter run sequentially so the chapter's
+   stable-prefix prompt benefits from Gemini's implicit cache. The
+   per-lesson schema carries no `minItems` (Gemini 2.5 Flash silently
+   truncates structured output when it cannot meet a minItems floor — that
+   was the previous batch shape's failure mode). Every call carries a
    system message pinning the output language, runs at temperature 0.2 in
    JSON mode with a `max_tokens` cap, and is re-asked once if the answer
    detectably drifted to the wrong language (Vietnamese diacritics check).
+   A lesson that comes back below the acceptance floor gets ONE focused
+   retry asking for exactly the missing count, with existing prompts
+   listed so the model can't duplicate.
 5. **Enforce + verify** — malformed questions are dropped
-   (`validateChapterQuestions`), and a question is marked `verified` only
+   (`validateNodeQuestions`), and a question is marked `verified` only
    when its correct answer literally appears in the source chunk.
 6. **Finish** — status flips to `ready`, or `failed` with the reason in
    `courses.generation_error` (owner sees it + a Retry button).

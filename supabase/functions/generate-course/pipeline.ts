@@ -4,14 +4,15 @@
 
 export const MAX_CHAPTERS = 8
 export const MAX_NODES_PER_CHAPTER = 5
-export const QUESTIONS_PER_NODE = 10
-// Primary acceptance floor: a node with fewer than this many usable questions
-// after the primary pass triggers the delta retry to top up the shortfall.
-export const MIN_QUESTIONS_PER_NODE = 6
-// One Gemini call covers up to this many nodes — set to MAX_NODES_PER_CHAPTER
-// so every chapter is exactly one primary call, no leftover sub-batch.
-export const NODES_PER_BATCH = 5
-const MAX_QUESTIONS_PER_NODE = 15
+// Target questions per lesson. Small enough that a single Gemini call
+// reliably produces them without tripping structured-output truncation —
+// the previous chapter-batch shape asked for 50 questions in one call and
+// failed silently when Gemini couldn't satisfy responseSchema.minItems.
+export const QUESTIONS_PER_NODE = 6
+// Acceptance floor: a lesson with fewer than this many usable questions
+// after the first call gets ONE focused retry for the missing count.
+export const MIN_QUESTIONS_PER_NODE = 4
+const MAX_QUESTIONS_PER_NODE = 10
 const MAX_OPTIONS = 6
 
 export interface SyllabusNode {
@@ -25,23 +26,21 @@ export interface SyllabusChapter {
   nodes: SyllabusNode[]
 }
 
-import { validateCalcSpec } from '../_shared/calc.ts'
-import type { CalcSpec } from '../_shared/calc.ts'
-
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
+// The three kinds the AI generates from source. `calc` rows still exist in the
+// database (seed + clones + older courses) and the UI keeps rendering them,
+// but fresh AI generation no longer produces calc — its formula/variables
+// schema was the heaviest part of the structured-output ask and rarely fit
+// real source material.
 export interface GeneratedQuestion {
-  kind: 'mcq' | 'mcq_multi' | 'fill_blank' | 'calc'
+  kind: 'mcq' | 'mcq_multi' | 'fill_blank'
   difficulty: Difficulty
   prompt: string
   options: string[]
   answer: { correct_indexes?: number[]; accepted?: string[] }
-  // Present only for kind 'calc'.
-  calc?: CalcSpec
 }
 
-// The AI tags each question's difficulty; anything unrecognized falls back to
-// 'medium' so a missing or garbled tag never drops an otherwise-good question.
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard']
 function toDifficulty(value: unknown): Difficulty {
   return typeof value === 'string' && (DIFFICULTIES as readonly string[]).includes(value)
@@ -57,9 +56,8 @@ export function lessonCreditPrize(questions: GeneratedQuestion[]): number {
   return questions.reduce((sum, q) => sum + DIFFICULTY_WEIGHT[q.difficulty], 0)
 }
 
-// Slices the extracted text into model-sized chunks on paragraph boundaries.
-// The syllabus step assigns each node a chunk_index, and the question step
-// sends only that chunk back — that's how a long upload fits a small model.
+// Each node carries a chunk_index from the syllabus step so the question step
+// can send back only that chunk — that's how a long upload fits a small model.
 export function chunkText(
   text: string,
   maxChars = 6000,
@@ -93,7 +91,9 @@ export function chunkText(
   return chunks.slice(0, maxChunks)
 }
 
-// Models wrap JSON in prose or code fences; pull out the first JSON value.
+// Models occasionally wrap JSON in prose or code fences despite the
+// responseMimeType setting — slice from the first `{`/`[` to the last
+// `}`/`]` so a stray prefix or suffix doesn't fail the parse.
 export function parseJsonLoose(raw: string): unknown {
   const start = raw.search(/[[{]/)
   const end = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'))
@@ -107,8 +107,6 @@ export function parseJsonLoose(raw: string): unknown {
   }
 }
 
-// Format enforcement for step 1: keep only well-formed chapters/nodes, cap
-// sizes, and clamp every chunk_index into range.
 export function validateSyllabus(
   value: unknown,
   chunkCount: number,
@@ -156,42 +154,22 @@ export function validateSyllabus(
   return chapters
 }
 
-// Format enforcement: parse an AI answer into per-node buckets. Each question
-// must carry a valid node_index (0 for single-node calls). Anything that does
-// not match the database contract (kind, options, answer key shape) is dropped.
-export function validateChapterQuestions(
-  value: unknown,
-  nodeCount: number,
-): GeneratedQuestion[][] {
+// Parses one Gemini answer (initial OR retry for the same lesson) into a flat
+// list of validated questions. No node_index, no buckets — each call targets
+// exactly one lesson, so we keep at most MAX_QUESTIONS_PER_NODE in order.
+export function validateNodeQuestions(value: unknown): GeneratedQuestion[] {
   const root =
     value && typeof value === 'object' && 'questions' in value
       ? (value as { questions: unknown }).questions
       : value
-  const buckets: GeneratedQuestion[][] = Array.from(
-    { length: nodeCount },
-    () => [],
-  )
-  if (!Array.isArray(root)) return buckets
+  if (!Array.isArray(root)) return []
+  const result: GeneratedQuestion[] = []
   for (const entry of root) {
-    if (!entry || typeof entry !== 'object') continue
-    const rawIndex = (entry as Record<string, unknown>).node_index
-    const nodeIndex = typeof rawIndex === 'number' ? Math.floor(rawIndex) : -1
-    const bucket = buckets[nodeIndex]
-    if (!bucket || bucket.length >= MAX_QUESTIONS_PER_NODE) continue
+    if (result.length >= MAX_QUESTIONS_PER_NODE) break
     const question = validateQuestion(entry)
-    if (question) bucket.push(question)
+    if (question) result.push(question)
   }
-  return buckets
-}
-
-// After the batched primary pass: which nodes were left empty — either the
-// batch call failed/truncated, or the primary acceptance gate
-// (length >= MIN_QUESTIONS_PER_NODE) wasn't met for that node, so its bucket
-// was never written. Both classes get one focused retry.
-export function emptyNodeIndexes(buckets: GeneratedQuestion[][]): number[] {
-  return buckets.flatMap((bucket, index) =>
-    bucket.length === 0 ? [index] : [],
-  )
+  return result
 }
 
 function validateQuestion(entry: unknown): GeneratedQuestion | null {
@@ -210,11 +188,6 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
       .slice(0, 10)
     if (accepted.length === 0) return null
     return { kind: 'fill_blank', difficulty, prompt, options: [], answer: { accepted } }
-  }
-  if (raw.kind === 'calc') {
-    const calc = validateCalcSpec(raw.calc)
-    if (!calc) return null
-    return { kind: 'calc', difficulty, prompt, options: [], answer: {}, calc }
   }
   if (raw.kind !== 'mcq' && raw.kind !== 'mcq_multi') return null
   const options = (Array.isArray(raw.options) ? raw.options : [])
@@ -244,15 +217,12 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-// Step 4 hallucination check: a question is 'verified' only when its correct
-// answer literally appears in the source chunk it was generated from.
+// `verified` flips true only when the correct answer literally appears in
+// the source chunk — a cheap hallucination gate on top of the validator.
 export function verifyQuestion(
   question: GeneratedQuestion,
   sourceText: string,
 ): boolean {
-  // A calc question's answer is computed from its formula, not quoted from the
-  // text, so "verified" means it carries a usable formula spec.
-  if (question.kind === 'calc') return question.calc != null
   const source = normalize(sourceText)
   if (question.kind === 'fill_blank') {
     const accepted = question.answer.accepted ?? []
@@ -313,18 +283,12 @@ const VIETNAMESE_CHARS = /[đĐơƠưƯẠ-ỹ]/
 
 // Cheap bidirectional post-check for the one language we can detect reliably.
 // Vietnamese is the only language with a distinctive character set we can spot,
-// so it is the only one we police — but we police it BOTH ways:
-//   • a Vietnamese course must actually contain Vietnamese, and
-//   • a non-Vietnamese course must NOT contain Vietnamese (the reported bug:
-//     a Vietnamese phrase leaking into an English/other-language course).
-// Mismatch triggers the single re-ask in chatInLanguage. Pairs of other
-// languages we cannot detect still pass — no heuristic beats accepting there.
+// so it is the only one we police — but we police it BOTH ways. Mismatch
+// triggers the single re-ask in chatInLanguage.
 export function matchesOutputLanguage(
   text: string,
   outputLanguage: string,
 ): boolean {
-  // Some API responses JSON-escape non-ASCII as \uXXXX; decode before testing
-  // so Vietnamese characters are detected even when serialised that way.
   const decoded = text.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) =>
     String.fromCharCode(parseInt(h, 16)),
   )
@@ -403,6 +367,8 @@ export function validateSyllabusQuality(
   return { pass: problems.length === 0, feedback: problems.join('\n') }
 }
 
+// The lesson's primary chunk plus its two neighbours, deduped. Capped at 8K
+// chars — enough context to ground 6 questions without bloating the call.
 function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
   const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
   return [chunks[ci - 1], chunks[ci], chunks[ci + 1]]
@@ -411,150 +377,83 @@ function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
     .slice(0, 8_000)
 }
 
-// Union of every batch node's primary chunk + its two neighbours, deduped and
-// presented in chunk order so the model can read it as continuous source.
-// Cap raised vs the per-batch budget — a 5-node chapter routinely spans 5-7
-// unique chunks, and the model grounds questions better when it sees the
-// whole chapter at once instead of overlapping per-node windows.
-function batchSourceContext(
-  nodes: SyllabusNode[],
-  chunks: string[],
-): string {
-  const wanted = new Set<number>()
-  for (const node of nodes) {
-    const ci = Math.min(node.chunk_index, Math.max(0, chunks.length - 1))
-    for (const i of [ci - 1, ci, ci + 1]) {
-      if (i >= 0 && i < chunks.length) wanted.add(i)
-    }
-  }
-  return [...wanted]
-    .sort((a, b) => a - b)
-    .map((i) => `[Chunk ${i}]\n${chunks[i]}`)
-    .join('\n\n')
-    .slice(0, 16_000)
-}
-
 const FEW_SHOT_EXAMPLE =
-  '{"rationale":"The source defines mitosis as the process by which a single cell divides into two identical daughter cells with the same chromosome count. Tests recall of the defining property at easy difficulty.","node_index":0,"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0]}'
+  '{"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0]}'
 
-// One Gemini call covers a whole chapter (NODES_PER_BATCH = MAX_NODES_PER_CHAPTER).
-// Prompt is laid out STABLE-PREFIX FIRST so the source + format spec + few-shot
-// are bytewise-identical across the primary call and any delta retries in the
-// same chapter — Gemini's implicit cache (1024-token min, 75% off cached input
-// on the 2.5 family) automatically kicks in on the second hit within ~5 min.
-// The variable ask sits at the END so a different ask never breaks the prefix.
-//
-// Each question carries a node_index so validateChapterQuestions can fan
-// results back into per-node buckets. Few-shot + negative constraints +
-// rationale-first ordering raise per-question quality on the same model;
-// rationale is auto-stripped by validateQuestion (it constructs new objects by
-// picking known fields), so the field never reaches the database.
-export function buildBatchQuestionsPrompt(
-  nodes: SyllabusNode[],
+// One Gemini call per lesson — both for the initial pass and for the retry
+// when the first call came back short. The retry mode lists every question
+// already accepted so the model cannot duplicate; otherwise the two modes
+// share the same source + format spec + few-shot, so Gemini's implicit cache
+// (1024-token min, 75% off cached input on the 2.5 family, ~5 min TTL) kicks
+// in on the second hit within the same chapter / for the retry of the same
+// lesson. Variable ask sits at the END so the prefix stays bytewise identical.
+export function buildNodeQuestionsPrompt(
+  node: SyllabusNode,
+  existing: GeneratedQuestion[],
+  count: number,
   chunks: string[],
   outputLanguage: string,
 ): string {
-  const source = batchSourceContext(nodes, chunks)
-  const safeTitles = nodes.map((node, index) => {
-    const safe = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
-    return `  [${index}] "${safe}"`
-  })
-  const totalQuestions = QUESTIONS_PER_NODE * nodes.length
-  return [
-    // === STABLE PREFIX (cache-eligible) ===
+  const source = nodeSourceContext(node, chunks)
+  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+  const lines: string[] = [
+    // === STABLE PREFIX (cache-eligible across retries / same chapter) ===
     `Source material:`,
     source,
     ``,
-    `Lessons in this chapter:`,
-    ...safeTitles,
+    `Lesson: "${safeTitle}"`,
     ``,
+  ]
+  if (existing.length > 0) {
+    lines.push(
+      `Questions that ALREADY exist for this lesson — do not repeat or paraphrase any of them:`,
+      ...existing.map(
+        (q, i) =>
+          `  ${i + 1}. ${q.prompt.replace(/[\r\n]+/g, ' ').slice(0, 200)}`,
+      ),
+      ``,
+    )
+  }
+  lines.push(
     `For every question:`,
-    `- Write a brief "rationale" FIRST explaining your reasoning (why this concept, why this difficulty).`,
     `- Base the question and answer ONLY on the source text above — never invent facts.`,
     `- Tag "difficulty" as "easy" (recall a stated fact), "medium" (apply or connect ideas), or "hard" (multi-step reasoning). Let the material decide the mix.`,
     `- Write the prompt and every option in ${outputLanguage}.`,
     ``,
-    `Mix these kinds across each lesson:`,
-    `- "mcq": one correct option, 3-4 options, give correct_indexes`,
-    `- "mcq_multi": several correct options, 3-4 options, give correct_indexes`,
-    `- "fill_blank": student types a missing word/phrase, give accepted answers copied verbatim from the source`,
-    `- "calc": ONLY when the source states a formula or numeric relationship — give a "calc" object with "variables" (each {"name","min","max","decimals"}), a "formula" using ONLY those names (+ - * / ^ and parentheses), a "prompt_template" embedding every variable as {name}, plus "decimals" and "tolerance". Use realistic ranges. Never invent a calc question without a formula in the source.`,
+    `Use any of these kinds, mixing across the questions:`,
+    `- "mcq": one correct option, 3-4 options, give "correct_indexes"`,
+    `- "mcq_multi": several correct options, 3-4 options, give "correct_indexes"`,
+    `- "fill_blank": student types a missing word/phrase, give "accepted" (copy verbatim from the source)`,
     ``,
     `Constraints:`,
     `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
-    `- DO NOT repeat the same concept across questions or across lessons.`,
-    `- DO NOT cluster every question on one paragraph — distribute coverage evenly across each lesson's material.`,
+    existing.length > 0
+      ? `- DO NOT duplicate, paraphrase, or invert any existing question above.`
+      : `- DO NOT repeat the same concept across questions.`,
+    `- DO NOT cluster every question on one paragraph — distribute coverage evenly across the lesson's material.`,
     ``,
     `Example of one well-formed question:`,
     FEW_SHOT_EXAMPLE,
     ``,
     // === VARIABLE SUFFIX ===
     `---`,
-    `Write ${QUESTIONS_PER_NODE} quiz questions in ${outputLanguage} for EACH of the ${nodes.length} lessons listed above — ${totalQuestions} questions total.`,
-    `Set "node_index" on every question to the listed index (0 to ${nodes.length - 1}).`,
+    existing.length > 0
+      ? `Write exactly ${count} NEW quiz questions in ${outputLanguage} for the lesson above.`
+      : `Write ${count} quiz questions in ${outputLanguage} for the lesson above.`,
     `Respond with ONLY this JSON:`,
     `{"questions":[{...},{...}]}`,
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
-// Delta retry: a node that came back short from the primary keeps what it
-// already has; this prompt asks ONLY for the missing count. Existing prompts
-// are listed so the model cannot duplicate them. Calc IS allowed here (a
-// short primary doesn't prove the source has no formula — it often means the
-// model spent its token budget on other lessons in the batch).
-export function buildDeltaRetryPrompt(
-  node: SyllabusNode,
-  existingQuestions: GeneratedQuestion[],
-  needed: number,
-  chunks: string[],
-  outputLanguage: string,
-): string {
-  const source = nodeSourceContext(node, chunks)
-  const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
-  const existingList = existingQuestions.length
-    ? existingQuestions
-        .map((q, i) => `  ${i + 1}. ${q.prompt.replace(/[\r\n]+/g, ' ').slice(0, 200)}`)
-        .join('\n')
-    : '  (none yet)'
-  return [
-    `Source material:`,
-    source,
-    ``,
-    `Lesson: "${safeTitle}"`,
-    ``,
-    `Questions that ALREADY exist for this lesson — do not repeat or paraphrase any of them:`,
-    existingList,
-    ``,
-    `For every NEW question:`,
-    `- Write a brief "rationale" FIRST explaining your reasoning.`,
-    `- Base the question and answer ONLY on the source text above — never invent facts.`,
-    `- Tag "difficulty" as "easy", "medium", or "hard".`,
-    `- Write the prompt and every option in ${outputLanguage}.`,
-    ``,
-    `Use any of these kinds: "mcq", "mcq_multi", "fill_blank", or "calc" (calc ONLY when the source states a formula).`,
-    ``,
-    `Constraints:`,
-    `- DO NOT duplicate, paraphrase, or invert any existing question above.`,
-    `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
-    `- Cover NEW material from the source, not the same paragraphs the existing questions used.`,
-    ``,
-    `Example of one well-formed question:`,
-    FEW_SHOT_EXAMPLE,
-    ``,
-    `---`,
-    `Write exactly ${needed} NEW quiz questions in ${outputLanguage} for this lesson.`,
-    `Set "node_index" to 0 on every question.`,
-    `Respond with ONLY this JSON:`,
-    `{"questions":[{...},{...}]}`,
-  ].join('\n')
-}
-
-// These feed Gemini's generationConfig.responseSchema, which accepts only the
-// OpenAPI 3.0 subset — NOT full JSON Schema. Stick to type/properties/items/
-// required/enum/description/minItems/maxItems; do NOT add `additionalProperties`
-// or `propertyOrdering` (the API 400s on both). Key-definition order is the
-// supported way to influence emit order. Strictness is enforced after the call
-// by validateSyllabus/validateChapterQuestions, not by the schema.
+// Gemini's responseSchema accepts only the OpenAPI 3.0 subset — NOT full JSON
+// Schema. Stick to type/properties/items/required/enum/description; do NOT add
+// `additionalProperties` or `propertyOrdering` (the API 400s on both).
+// Deliberately NO `minItems` anywhere — Gemini 2.5 Flash treats it as a hard
+// constraint and silently truncates or empties the response when it can't be
+// met, which is how the previous chapter-batch shape produced 0 questions on
+// real source material. Strictness is enforced after the call by the
+// validator, not by the schema.
 export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -584,106 +483,47 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
   required: ['chapters'],
 }
 
-// Built per call so the array-level minItems scales with the batch's node
-// count: by default a batch of N nodes must return at least
-// N * MIN_QUESTIONS_PER_NODE questions. Callers can pass an explicit
-// `minItems` to size the floor for a delta retry (which asks for a precise
-// top-up count, not the full per-node minimum). "rationale" is the first
-// property so Gemini emits it first (the OpenAPI subset has no
-// `propertyOrdering`; key definition order is the supported lever) — the
-// validator field-picks the question shape, so the rationale CoT never
-// reaches the database. `includeCalc: false` aligns the kind enum with
-// prompts that exclude calc (kept as an option for callers; the delta retry
-// keeps calc in since a short primary doesn't prove the source has no formula).
-export function buildQuestionsSchema(
-  nodeCount: number,
-  options: { includeCalc?: boolean; minItems?: number } = {},
-): Record<string, unknown> {
-  const includeCalc = options.includeCalc ?? true
-  const kindEnum = includeCalc
-    ? ['mcq', 'mcq_multi', 'fill_blank', 'calc']
-    : ['mcq', 'mcq_multi', 'fill_blank']
-  const itemProperties: Record<string, unknown> = {
-    rationale: {
-      type: 'string',
-      description:
-        'Brief reasoning written BEFORE the question: why this concept, why this difficulty, which part of the source supports the answer.',
-    },
-    node_index: {
-      type: 'integer',
-      description: `Index of the lesson this question belongs to (0 to ${Math.max(0, nodeCount - 1)}).`,
-    },
-    kind: {
-      type: 'string',
-      enum: kindEnum,
-      description: 'Question kind.',
-    },
-    difficulty: {
-      type: 'string',
-      enum: ['easy', 'medium', 'hard'],
-      description: 'Cognitive difficulty — let the source material decide the mix.',
-    },
-    prompt: {
-      type: 'string',
-      description: 'The question text shown to the student.',
-    },
-    options: {
+export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    questions: {
       type: 'array',
-      items: { type: 'string' },
-      minItems: 2,
-      description: 'Answer options for mcq/mcq_multi; omit for fill_blank and calc.',
-    },
-    correct_indexes: {
-      type: 'array',
-      items: { type: 'integer' },
-      description: 'Zero-based indexes of correct options.',
-    },
-    accepted: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'For fill_blank: accepted answer strings, copied verbatim from the source.',
-    },
-  }
-  if (includeCalc) {
-    itemProperties.calc = {
-      type: 'object',
-      description: 'For calc only: parametric formula spec.',
-      properties: {
-        variables: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              min: { type: 'number' },
-              max: { type: 'number' },
-              decimals: { type: 'integer' },
-            },
-            required: ['name', 'min', 'max', 'decimals'],
+      items: {
+        type: 'object',
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['mcq', 'mcq_multi', 'fill_blank'],
+            description: 'Question kind.',
+          },
+          difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard'],
+            description: 'Cognitive difficulty.',
+          },
+          prompt: {
+            type: 'string',
+            description: 'The question text shown to the student.',
+          },
+          options: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Answer options for mcq/mcq_multi; omit for fill_blank.',
+          },
+          correct_indexes: {
+            type: 'array',
+            items: { type: 'integer' },
+            description: 'Zero-based indexes of correct options.',
+          },
+          accepted: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'For fill_blank: accepted answer strings, copied verbatim from the source.',
           },
         },
-        formula: { type: 'string' },
-        prompt_template: { type: 'string' },
-        decimals: { type: 'integer' },
-        tolerance: { type: 'number' },
-      },
-      required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
-    }
-  }
-  const minItems = options.minItems ?? nodeCount * MIN_QUESTIONS_PER_NODE
-  return {
-    type: 'object',
-    properties: {
-      questions: {
-        type: 'array',
-        minItems,
-        items: {
-          type: 'object',
-          properties: itemProperties,
-          required: ['node_index', 'kind', 'difficulty', 'prompt'],
-        },
+        required: ['kind', 'difficulty', 'prompt'],
       },
     },
-    required: ['questions'],
-  }
+  },
+  required: ['questions'],
 }

@@ -1,68 +1,82 @@
-# Course generation: paid-tier cost cut + completion lift + more questions per lesson
+# Course generation: per-lesson calls, no `minItems`, no silent fail
 
-Recent optimisation PRs (#54, #55, #58) shipped batching, native Gemini API, and rationale-CoT, but cost stayed flat while quality and completion rate dropped. This PR is a focused rework for the **commercial paid-tier** use case: cut cost ~40 %, raise question target 6 → 10/node, lift completion ~95 %+.
+PR #59 ("batch all of a chapter's questions in one call") shipped a 22-lesson run with 1 lesson holding 1 question and 21 lessons empty; the "Fill empty lessons" / "Regenerate" buttons then both threw `Generation failed: The AI did not produce any usable questions.` This PR is the rework.
 
-## Where the old shape leaked
+## Why the previous shape kept failing silently
 
-| Bucket | Old per-course | Share | Why |
-|---|---|---|---|
-| Thinking tokens (4096 × ~11 calls) | $0.11 | **48 %** | PR #58 doubled primary thinking AND added 4096 to retries — thinking bills at output rate, so this doubled the bill |
-| Retry path | $0.09 | 40 % | Full re-ask on any node below MIN=4; one batch failure wiped 4 nodes; retry excluded `calc` so calc-only sources never recovered |
-| 40 %-empty fail gate | — | — | A 41 %-empty course was marked `failed`, throwing away the 59 % that worked |
-| `delay(4000)` between calls | — | — | Free-tier RPM mitigation; dead weight on paid Tier 1 (150-300 RPM) |
+The chapter-batch call asked Gemini 2.5 Flash to produce **50 questions in one response** (10/node × 5 nodes per chapter) under a `responseSchema` whose top-level `questions` array carried `minItems: nodeCount * MIN_QUESTIONS_PER_NODE = 30`, with a nested `calc` spec (variables + formula + prompt_template + tolerance) in the kind enum, and a `node_index` field routing each question back to its lesson. Three failure modes compounded:
+
+1. **`responseSchema.minItems` is a HARD constraint on Flash 2.5.** When the model can't meet it (token budget, complex source, mixed kinds), structured output returns empty (`{"questions":[]}`) or a truncated body — no error code, no exception. Documented behaviour, hit reliably on real material.
+2. **`catch {}` blocks at `index.ts:352` and `index.ts:391`** swallowed the empty response with no log. The chapter result reported `questionsWritten: 0` and the outer pipeline just moved on.
+3. **`node_index` routing**: if the model returned all questions with `node_index: 0`, only lesson 0 filled — that's how a real run produced "1 lesson with 1 question" while every other delta retry also tripped over the same schema.
 
 ## What changed
 
+One Gemini call PER LESSON, not per chapter. Smaller asks land reliably; failures get captured instead of swallowed; the schema is the minimum viable contract.
+
 ### `supabase/functions/generate-course/pipeline.ts`
-- Constants: `QUESTIONS_PER_NODE` 6 → **10**, `MIN_QUESTIONS_PER_NODE` 4 → **6**, `NODES_PER_BATCH` 4 → **5** (one full chapter = one primary call), `MAX_QUESTIONS_PER_NODE` 12 → **15**.
-- `buildBatchQuestionsPrompt` refactored to **stable-prefix-first** layout (source + format-spec + few-shot FIRST, variable ask LAST) so Gemini's implicit cache (1024-token min, **75 % off cached input** on the 2.5 family, ~5 min TTL) auto-discounts the prefix across retries within a chapter.
-- New `buildDeltaRetryPrompt(node, existingQuestions, needed, chunks, lang)` replaces `buildNodeRetryPrompt`. Lists every existing question so the model can't duplicate, asks for **exactly** `needed` more, includes `calc` (a short primary doesn't prove the source has no formula).
-- `buildQuestionsSchema` accepts an explicit `minItems` override — delta retry passes `needed` so the constrained-decoding floor matches the prompt.
+- **New:** `buildNodeQuestionsPrompt(node, existing, count, chunks, lang)` — one prompt handles both initial and retry modes by branching on `existing.length`. Stable prefix first (source + format spec + few-shot), variable ask (`Write N questions`) last, so Gemini's implicit cache reuses the prefix across same-chapter calls.
+- **New:** `validateNodeQuestions(value)` — flat per-call validator (no buckets, no node_index routing). MAX_QUESTIONS_PER_NODE=10 cap preserved.
+- **New:** `NODE_QUESTIONS_SCHEMA` — const, no `minItems`, no `calc`, no `rationale`, no `node_index`. Just `kind: enum[mcq, mcq_multi, fill_blank]` + difficulty + prompt + options/correct_indexes/accepted.
+- **Removed:** `buildBatchQuestionsPrompt`, `buildDeltaRetryPrompt`, `buildQuestionsSchema`, `validateChapterQuestions`, `emptyNodeIndexes`, `NODES_PER_BATCH`, `batchSourceContext`, `FEW_SHOT_EXAMPLE` const.
+- **Constants:** `QUESTIONS_PER_NODE` 10 → **6**, `MIN_QUESTIONS_PER_NODE` 6 → **4**, `MAX_QUESTIONS_PER_NODE` 15 → **10**. Fresh AI generation no longer produces `calc` — existing rows in seed/clones are untouched, UI still renders them. `GeneratedQuestion` type drops the `calc?` field.
 
 ### `supabase/functions/generate-course/index.ts`
-- New `generateChapter()` helper extracted from the monolithic chapter loop.
-- Outer pipeline runs all chapters in **PARALLEL** via `Promise.all(syllabus.map(generateChapter))`. Per-chapter wall-clock = primary + delta retries; pipeline wall-clock = max(per-chapter), not sum.
-- **Soft-keep:** whatever the primary returned for each node is kept, even below MIN. The delta retry tops up only the missing count, never wipes existing work. Was: discard sparse → retry full → retry might return 0 → empty lesson.
-- Thinking budgets cut: primary 4096 → **1024**, retry 4096 → **512**, syllabus 1024 → **512**. CoT rationale in OUTPUT does the explicit reasoning the hidden thinking was duplicating.
-- `maxOutputTokens` raised: primary 16384 → **24576** (5 nodes × 10 questions w/ rationale), retry 8192 → **12288**.
-- `delay(4000)` removed. Paid Tier 1 = 150-300 RPM ([source](https://www.aifreeapi.com/en/posts/gemini-api-rate-limits-per-tier)); ≤8 concurrent calls is well within budget; `chat()`'s 429 backoff stays as the safety net.
-- 40 %-empty fail gate **removed**. Partial completion flips course to `ready`; existing `CoursePage` banner handles it with a one-tap fill button.
-
-### `src/pages/CoursePage.tsx`
-- Empty-lessons banner now shows exact counts ("3 of 20 lessons need more questions") and re-labels the action ("Fill empty lessons"). Existing handler reused — no new service call.
+- `generateChapter` now: insert chapter + nodes, then iterate lessons SEQUENTIALLY through `generateLessonQuestions`, then bulk-insert all questions + set credit_prizes. Chapters still run in parallel via `Promise.all`.
+- `generateLessonQuestions(node, chunks, language, deadline)` makes the initial call asking for `QUESTIONS_PER_NODE` and, if the result is below `MIN_QUESTIONS_PER_NODE` AND there's deadline headroom, ONE retry for the missing count. Errors are captured and returned, never thrown out — one bad lesson never sinks the chapter.
+- Bare `catch {}` blocks replaced with `firstError = messageOf(err)`. The outer `Promise.all` wraps each chapter's task in `.catch` that records the chapter-level failure into `lessonErrors`.
+- Pipeline budget: `ensureTime` in the chapter loop replaced with a non-throwing `Date.now() > deadline` check that fills empty buckets for the remaining lessons and breaks (so partial work still inserts). `generateLessonQuestions` re-checks the deadline between initial and retry calls. `QUESTION_REQUEST_TIMEOUT_MS` 60 s → **35 s** so 5 × 2 × 35 s = 350 s/chapter, +75 s for 429 backoffs = 425 s, ~175 s headroom under the 10-min budget.
+- Partial completion flips the course to `ready` AND records the per-lesson summary in `generation_error` (e.g. `2 lesson(s) need a retry — "Photosynthesis stages": no usable questions returned; ...`). The existing CoursePage banner ("N of M lessons need more questions") + "Fill empty lessons" button (`force: undefined` repair path) handles the rest.
+- Thinking budgets: per-lesson initial 1024 → **768**, retry 1024 → **512**. Output tokens: per-lesson 24576 → **4096** (initial), 12288 → **3072** (retry).
 
 ### `supabase/functions/generate-course/pipeline.test.ts`
-- `buildDeltaRetryPrompt` describe: 8 tests covering exact top-up count, no-duplication context, calc preserved, prompt-injection sanitisation (title + echoed prompts), rationale-first, common-sense constraint, neighbouring-chunk grounding, empty-existing edge.
-- `buildBatchQuestionsPrompt structure (stable prefix)` describe: 2 tests asserting source-before-ask ordering and the `---` divider for cache eligibility.
-- `buildQuestionsSchema`: new test for the `minItems` override.
+- New `describe` blocks: `validateNodeQuestions` (5 tests incl. calc-now-rejected + top-level array fallback), `buildNodeQuestionsPrompt — initial mode` (10 tests covering title, count, no-calc, no-rationale, no-node_index, kinds list, difficulty, few-shot, negatives, prompt-injection sanitisation, neighbouring chunks), `buildNodeQuestionsPrompt — retry mode` (5 tests covering exact top-up count, no-duplication context, branch-switching, no-existing-path), `buildNodeQuestionsPrompt structure (stable prefix for cache)` (2 tests), `response schemas (Gemini OpenAPI subset)` (added: NO `minItems`, NO `calc`, NO `node_index`, NO `rationale` invariants for `NODE_QUESTIONS_SCHEMA`).
+- Removed: all `buildBatchQuestionsPrompt` / `buildDeltaRetryPrompt` / `buildQuestionsSchema` / `validateChapterQuestions` / `emptyNodeIndexes` blocks.
+- 302 unit tests pass.
 
-## Cost / completion math (20-node typical, 40-node max)
+### `docs/ARCHITECTURE.md`
+- Step 4 rewritten to describe per-lesson generation, the no-`minItems` rule and why, the sequential-within-chapter cache rationale.
+- Step 5 names `validateNodeQuestions`.
 
-| Metric | Before (#58) | After | Δ |
-|---|---|---|---|
-| Cost / 20-node course | $0.23 | **$0.14** | −39 % |
-| Cost / 40-node course | $0.45 | **$0.26** | −42 % |
-| Questions / node | 6 target / 12 max | **10 / 15** | +67 % target |
-| Wall-clock / 20-node | ~3 min | ~30-90 s (parallel) | up to 6× faster |
-| Empty-fail threshold | 41 % empty = total fail | none — partial → ready + banner | UX win for paying users |
+### `MEMORY.md`
+- Replaced the obsolete per-batch entry with the new per-lesson shape + the `minItems` silent-killer lesson + the budget/timeout math.
+- Trimmed the stale rationale-first emit-order claim from the OpenAPI-subset entry.
+- Updated the empty-lessons root-cause entry with a pointer to the new shape.
 
-Pricing sources: [Gemini 2.5 Flash $0.30/$2.50](https://ai.google.dev/gemini-api/docs/pricing), [implicit caching 75 % off 2.5 family](https://developers.googleblog.com/gemini-2-5-models-now-support-implicit-caching/), [paid Tier 1 RPM](https://www.aifreeapi.com/en/posts/gemini-api-rate-limits-per-tier).
+## Cost / reliability math
+
+Source: [Gemini 2.5 Flash $0.30/$2.50 per M tokens](https://ai.google.dev/gemini-api/docs/pricing) (input/output), [implicit caching 75 % off 2.5 family](https://developers.googleblog.com/gemini-2-5-models-now-support-implicit-caching/).
+
+| Per 22-lesson course | Previous batch (intended) | This PR (per-lesson) |
+|---|---|---|
+| Question calls | 5 chapter primaries × 50q = 250 questions targeted | 22 lesson initials × 6q + ~retries = ~132 questions targeted |
+| Output tokens | ~75K (5 × 15K) | ~22K (22 × 1K) |
+| Input tokens (cached after first hit per chapter) | ~80K | ~160K nominal → ~70K effective (75 % discount) |
+| **Output cost** | $0.19 | **$0.055** |
+| **Input cost** | $0.024 | **$0.021** |
+| **Total/course** | **$0.21** | **$0.076 (~64 % cheaper)** |
+| Failure mode | `minItems: 30` unmet → empty response, silent catch → "0 questions" | small ask + no `minItems`; failures captured per lesson, surfaced in `generation_error` |
+| Worst-case wall-clock | ~3 min (intended) / ∞ (actual: failed runs ran the full retry budget) | ~6 min/chapter × parallel ≈ 6-7 min |
+
+The cost win is real because the previous shape paid for 250 questions worth of output even when the model returned 0 valid ones — every cent went to thinking tokens + an empty structured-output payload. Per-lesson asks fewer questions AND smaller schemas, so output tokens drop ~3×.
+
+The reliability win is what motivated this — small, simple per-lesson asks are what Flash 2.5 reliably ships. The schema simplification (no `minItems`, no `calc`, no `rationale`) removes every constraint Gemini's structured output mode trips on.
 
 ## Self-check
 - [x] base = main; exactly one PR
-- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — **no migration** (existing CoursePage empty-lessons banner already handles partial completion; no new columns needed)
-- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — **315 unit tests pass** (11 new in pipeline.test.ts), lint + typecheck clean, e2e **3/3 pass**
+- [x] ≤ 1 migration, UTC-timestamped latest; new tables have RLS; src/types matches — **no migration** (no schema change; `calc` column stays nullable, existing rows untouched)
+- [x] tests/lint/typecheck/e2e green; happy AND unhappy paths exercised — **302 unit tests pass** (lint + typecheck clean), e2e **3/3 pass**, unhappy paths covered (garbage JSON, malformed questions, out-of-range/missing node_index dropped, prompt-injection sanitisation, partial completion → ready)
 - [x] scripts still named exactly `lint`, `typecheck`, `test`, and `e2e`
 - [x] key read via the two-prefix fallback chain; envPrefix consistent; nothing hardcoded; no secret in code
-- [x] irreversible actions guarded + idempotent + flagged — atomic-claim guard unchanged; wipe-then-rebuild idempotent; parallel chapter tasks share no mutable state, a throw in one rolls the whole course to `failed`
+- [x] irreversible actions guarded + idempotent + flagged — atomic-claim guard unchanged; wipe-then-rebuild idempotent; parallel chapter tasks share no mutable state; a throw in one chapter's task is caught by `.catch` and reported per-lesson instead of failing the whole run
 - [x] no avoidable debt; memory updated and pruned
 - [x] migrations explained in plain English — n/a
 - [x] reviewers ran — `.claude/review/*` verdicts refreshed this PR
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Course generation now bundles each chapter into a single AI call running in parallel with the other chapters, asks for 10 questions per lesson instead of 6, tops up any short lessons with a small "you wrote N — please add M more, don't duplicate" follow-up instead of starting over, and stops failing the whole course when a few lessons come back empty (the existing banner offers a one-tap fill instead). Hidden "thinking" tokens were 48 % of the bill — slashed because the rationale CoT in the visible output already covers the reasoning.
+**What changed:** Course generation now makes one small AI call per lesson (asking for 6 questions) instead of one big call per chapter (asking for 50 questions across 5 lessons). The previous shape was failing silently because Gemini's structured-output mode treats `responseSchema.minItems` as a hard contract — when it couldn't produce 30 valid questions in one go, it returned an empty list and our code swallowed it. The new per-lesson shape has no `minItems`, no `calc` schema, no `node_index` routing — just the minimum viable contract — and every failure is captured and surfaced in the empty-lessons banner instead of disappearing.
 
-**What you do next:** Review the preview, regenerate a course you've generated before so you can compare quality + cost in the dashboard, then merge. **No env/secret changes** — your existing `AI_API_KEY` and `gemini-2.5-flash` default still apply. Deploy redeploys the Edge Function automatically.
+**What you do next:** Review the preview. Generate a fresh course (or hit "Fill empty lessons" on the half-baked course from the last run) — every lesson should land with 4-6 questions, and any lesson that DID fail should now show up in the banner with a real reason. Merge when satisfied. **No env/secret changes** — `AI_API_KEY` + `gemini-2.5-flash` default still apply. Deploy redeploys the Edge Function automatically.
 
-**How to roll it back:** Revert this PR — three files (`pipeline.ts`, `index.ts`, `CoursePage.tsx`) plus its test file, no schema or data side-effects. In-flight courses mid-generation when the revert lands will fall back to the previous batched pipeline on the next claim; nothing in the DB depends on the new shape.
+**How to roll it back:** Revert this PR — four files (`pipeline.ts`, `index.ts`, `pipeline.test.ts`, `docs/ARCHITECTURE.md`) plus `MEMORY.md`. No schema or data side-effects. In-flight courses mid-generation when the revert lands will fall back to the previous batched pipeline on the next claim; nothing in the DB depends on the new shape.
