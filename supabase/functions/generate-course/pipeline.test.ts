@@ -8,6 +8,7 @@ import {
   CALC_QUESTIONS_SCHEMA,
   chunkText,
   detectFormulas,
+  isEducationalChunk,
   isLatinScript,
   languageReminder,
   lessonCreditPrize,
@@ -16,6 +17,7 @@ import {
   NODE_QUESTIONS_SCHEMA,
   parseJsonLoose,
   QUESTIONS_PER_NODE,
+  stripBoilerplate,
   SYLLABUS_SCHEMA,
   validateNodeCalcQuestions,
   validateNodeQuestions,
@@ -25,30 +27,165 @@ import {
 } from './pipeline'
 import type { GeneratedQuestion, SyllabusNode } from './pipeline'
 
+describe('stripBoilerplate', () => {
+  test('removes standalone page numbers', () => {
+    expect(stripBoilerplate('Intro\n\n42\n\nBody text here.')).not.toContain('\n42\n')
+    expect(stripBoilerplate('Page 5 of 10')).toBe('')
+    expect(stripBoilerplate('- 12 -')).toBe('')
+  })
+
+  test('removes TOC entries (dots + page number)', () => {
+    const toc = 'Chapter 1 .......... 5\nChapter 2 .......... 12'
+    expect(stripBoilerplate(toc)).toBe('')
+  })
+
+  test('removes copyright / legal lines', () => {
+    expect(stripBoilerplate('© 2024 Publisher. All rights reserved.')).toBe('')
+    expect(stripBoilerplate('No part of this publication may be reproduced.')).toBe('')
+  })
+
+  test('removes download-attribution lines (any platform)', () => {
+    expect(stripBoilerplate('Downloaded by NGUYEN HOANG ANH (k63@ftu.edu.vn)')).toBe('')
+    expect(stripBoilerplate('Shared by user on coursehero')).toBe('')
+    expect(stripBoilerplate('Uploaded by student2024')).toBe('')
+  })
+
+  test('removes platform names', () => {
+    expect(stripBoilerplate('Visit Studocu for more study materials.')).toBe('')
+    expect(stripBoilerplate('Find this on Academia.edu')).toBe('')
+  })
+
+  test('removes ISBN / publication metadata', () => {
+    expect(stripBoilerplate('ISBN 978-0-470-12345-6')).toBe('')
+    expect(stripBoilerplate('First published 2019 by Oxford University Press')).toBe('')
+  })
+
+  test('removes bare email addresses', () => {
+    expect(stripBoilerplate('k63.2413450053@ftu.edu.vn')).toBe('')
+  })
+
+  test('removes URL-dominant short lines', () => {
+    expect(stripBoilerplate('WWW.DAYKEMQUYNHON.UCOZ.COM')).toBe('')
+    expect(stripBoilerplate('https://example.com/very/long/path/to/document')).toBe('')
+  })
+
+  test('removes running headers (line repeated 3+ times)', () => {
+    const text = [
+      'Introduction to Microeconomics',
+      '',
+      'Real paragraph about supply and demand.',
+      '',
+      'Introduction to Microeconomics',
+      '',
+      'Another real paragraph.',
+      '',
+      'Introduction to Microeconomics',
+    ].join('\n')
+    const result = stripBoilerplate(text)
+    expect(result).not.toContain('Introduction to Microeconomics')
+    expect(result).toContain('Real paragraph about supply and demand.')
+    expect(result).toContain('Another real paragraph.')
+  })
+
+  test('preserves academic content that mentions a URL in a sentence', () => {
+    const text = 'Data from the World Bank (https://worldbank.org) shows GDP growth of 3.2% in 2023, driven by export expansion.'
+    expect(stripBoilerplate(text)).toBe(text)
+  })
+
+  test('preserves a normal academic paragraph untouched', () => {
+    const text = 'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded.'
+    expect(stripBoilerplate(text)).toBe(text)
+  })
+
+  test('collapses multiple blank lines left by removed content', () => {
+    const text = 'Para one.\n\n42\n\nPara two.'
+    const result = stripBoilerplate(text)
+    expect(result).not.toMatch(/\n{3,}/)
+    expect(result).toContain('Para one.')
+    expect(result).toContain('Para two.')
+  })
+
+  test('is idempotent — stripping already-clean text returns the same text', () => {
+    const text = 'Economics is the study of how individuals and societies allocate scarce resources.'
+    expect(stripBoilerplate(stripBoilerplate(text))).toBe(stripBoilerplate(text))
+  })
+})
+
+describe('isEducationalChunk', () => {
+  test('accepts a real academic paragraph', () => {
+    const chunk = 'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded by consumers in the market. The law of supply states that a higher price leads to a higher quantity supplied.'
+    expect(isEducationalChunk(chunk)).toBe(true)
+  })
+
+  test('rejects a chunk with fewer than 30 words', () => {
+    expect(isEducationalChunk('Microeconomics Textbook Part 2. FTU 2024.')).toBe(false)
+    expect(isEducationalChunk('k63@ftu.edu.vn NGUYEN HOANG ANH')).toBe(false)
+  })
+
+  test('rejects a chunk with very low word diversity (repeated boilerplate)', () => {
+    // Simulate a chunk that is mostly repeated URL/header text
+    const repetitive = Array.from({ length: 20 }, () => 'www daykemquynhon ucoz com').join(' ')
+    expect(isEducationalChunk(repetitive)).toBe(false)
+  })
+
+  test('accepts a dense chunk with diverse vocabulary', () => {
+    const chunk = [
+      'The concept of elasticity measures how responsive quantity demanded or supplied is to a change in price.',
+      'Price elasticity of demand is calculated as the percentage change in quantity demanded divided by the percentage change in price.',
+      'When elasticity is greater than one, demand is considered elastic; when less than one, it is inelastic.',
+      'Firms use elasticity to set prices: a monopolist facing inelastic demand can raise prices without losing many customers.',
+    ].join(' ')
+    expect(isEducationalChunk(chunk)).toBe(true)
+  })
+})
+
 describe('chunkText', () => {
+  // 35-word educational paragraph template — passes isEducationalChunk (> 30 words, diverse vocab)
+  const para = (n: number) =>
+    `Supply and demand are the fundamental economic forces that determine the price and quantity of goods and services produced and consumed in competitive market economies. Paragraph ${n} examines how these forces interact in real markets.`
+
+  // Five varied sentences joined without double newlines — used for hard-split test.
+  // Each 300-char segment carved from this will have ~45 words and diverse vocabulary.
+  const longPara = [
+    'Supply and demand are the fundamental economic forces that determine price level and quantity of goods and services produced and consumed in free market economies today.',
+    'Consumers respond to price changes by adjusting purchasing behavior, buying more when prices fall and less when prices rise, which economists call the law of demand.',
+    'Producers respond to price changes by adjusting output levels, increasing production when prices are high and reducing supply when prices fall below production costs.',
+    'Market equilibrium occurs when quantity supplied equals quantity demanded at a given price, clearing the market and ensuring efficient allocation of all available resources.',
+    'Government intervention through taxes, subsidies, and price controls can distort equilibrium and create deadweight loss that reduces total economic welfare significantly.',
+  ].join(' ')
+
   test('returns nothing for empty input', () => {
     expect(chunkText('   \n\n  ')).toEqual([])
   })
 
-  test('keeps short text as a single chunk', () => {
-    expect(chunkText('One paragraph.\n\nAnother.')).toEqual([
-      'One paragraph.\n\nAnother.',
-    ])
+  test('filters out low-quality content and returns nothing', () => {
+    expect(chunkText('42\n\nk63@ftu.edu.vn\n\nDRAFT')).toEqual([])
+  })
+
+  test('keeps educational content under the size limit in one chunk', () => {
+    const text = `${para(1)}\n\n${para(2)}`
+    const chunks = chunkText(text)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toBe(text)
   })
 
   test('splits on paragraph boundaries at the size limit', () => {
-    const chunks = chunkText('aaaa\n\nbbbb\n\ncccc', 10)
-    expect(chunks).toEqual(['aaaa\n\nbbbb', 'cccc'])
+    // Each para is ~230 chars; combined (~462 chars) exceeds maxChars of 350
+    const chunks = chunkText(`${para(1)}\n\n${para(2)}`, 350)
+    expect(chunks).toHaveLength(2)
   })
 
   test('hard-splits a single oversized paragraph', () => {
-    const chunks = chunkText('x'.repeat(25), 10)
-    expect(chunks).toEqual(['x'.repeat(10), 'x'.repeat(10), 'x'.repeat(5)])
+    // One long paragraph with no double-newlines; each split chunk still has
+    // enough words and vocabulary diversity to pass isEducationalChunk.
+    const chunks = chunkText(longPara, 300)
+    expect(chunks.length).toBeGreaterThan(1)
+    chunks.forEach((chunk) => expect(chunk.length).toBeLessThanOrEqual(300))
   })
 
   test('caps the number of chunks', () => {
-    const text = Array.from({ length: 50 }, (_, i) => `para ${i}`).join('\n\n')
-    expect(chunkText(text, 8, 5)).toHaveLength(5)
+    const text = Array.from({ length: 20 }, (_, i) => para(i)).join('\n\n')
+    expect(chunkText(text, 250, 5)).toHaveLength(5)
   })
 })
 
@@ -294,11 +431,11 @@ describe('validateSyllabusQuality', () => {
         { title: 'A', chunk_index: 0 },
       ]},
     ]
-    // 10 chunks → minNodes = max(3, floor(10*0.6)) = 6
+    // 10 chunks → minNodes = max(3, 10) = 10 (100% coverage floor)
     const result = validateSyllabusQuality(syllabus, 10)
     expect(result.pass).toBe(false)
     expect(result.feedback).toContain('only 1 lessons')
-    expect(result.feedback).toContain('at least 6')
+    expect(result.feedback).toContain('at least 10')
   })
 
   test('fails when chunks are not covered', () => {

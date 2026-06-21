@@ -1,10 +1,11 @@
-# Code review — project rename to Dinh Ngoc Edu
+# Code review — KaTeX math rendering
 
-**Verdict: PASS**
+**Verdict: PASS — one finding fixed pre-push**
 
-Reviewed: supabase/config.toml, package.json, package-lock.json, index.html, src/components/layout/AppLayout.tsx, src/pages/LandingPage.tsx, README.md, MEMORY.md, docs/ARCHITECTURE.md
+Reviewed: `src/components/lessons/MathText.tsx`, `LessonPlayer.tsx`, `ChoiceQuestion.tsx`, `FillBlankQuestion.tsx`, `CalcQuestion.tsx`, `src/main.tsx`
 
-- Old name `last-minute-self-learning` / "Last Minute Self Learning" / "Last Minute" replaced in all seven specified locations plus package-lock.json (two occurrences). No missed occurrences elsewhere in source (MEMORY.md rename note intentionally references old name for history).
-- No logic changes; all edits are display strings, package metadata, or documentation headings.
-- No duplication introduced. Lockfile updated to match package.json name field.
-- Grep confirms no remaining stale references in source files (lockfile excluded by convention).
+- **Fixed:** `LessonPlayer.tsx:116` — feedback section rendered `{question.prompt}` as plain text after answer submission. Now uses `<MathText>` so math renders consistently in the feedback view too.
+- Two-pass split logic (display `$$...$$` first, inline `$...$` on remainder) is correct. Offsets reset between passes because the inline regex runs over the remainder string, not the original. Edge cases (text-only, trailing text, adjacent display+inline) all handled.
+- `memo()` wrapper on `MathText` prevents re-running KaTeX when text prop is unchanged (e.g., option clicks in ChoiceQuestion that change `selected` state).
+- KaTeX CSS imported at app entry point (`main.tsx`). `throwOnError: false` degrades gracefully. No duplicated logic; single responsibility component.
+- All four call sites (`ChoiceQuestion`, `FillBlankQuestion`, `CalcQuestion`, `LessonPlayer`) covered.

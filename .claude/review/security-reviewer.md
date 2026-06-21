@@ -1,11 +1,10 @@
-# Security review — project rename to Dinh Ngoc Edu
+# Security review — KaTeX math rendering
 
 **Verdict: PASS — no findings**
 
-Reviewed: supabase/config.toml, package.json, package-lock.json, index.html, src/components/layout/AppLayout.tsx, src/pages/LandingPage.tsx, README.md, MEMORY.md, docs/ARCHITECTURE.md
+Reviewed: `src/components/lessons/MathText.tsx`, `LessonPlayer.tsx`, `ChoiceQuestion.tsx`, `FillBlankQuestion.tsx`, `CalcQuestion.tsx`, `src/main.tsx`
 
-- Project ID renamed in config.toml: `last-minute-self-learning` → `dinh-ngoc-edu` (local label only, not the remote Project ID).
-- All changes are pure display strings, package metadata, and doc headings — no code logic, no queries, no mutations.
-- supabaseClient.ts unchanged; reads publishable key via two-prefix fallback chain only.
-- No migrations created or touched; no RLS changes; no auth/storage/secret logic.
-- No new dependencies; no secrets introduced; no irreversible actions.
+- `dangerouslySetInnerHTML` with KaTeX output is safe: KaTeX is a battle-tested library (Khan Academy) that renders only a fixed set of math DOM elements — no script tags, no event handlers. `throwOnError: false` degrades malformed LaTeX to a readable placeholder, never throws.
+- All text flowing into `MathText` originates from AI-generated, pipeline-validated DB rows (`question.prompt` capped at generation time, `question.options[]` likewise). No raw user typing reaches KaTeX.
+- Regex patterns (`/\$\$([\s\S]+?)\$\$/g`, `/\$([^$\n]+?)\$/g`) use non-greedy quantifiers — no ReDoS risk.
+- KaTeX CSS import (`katex/dist/katex.min.css`) is a static stylesheet. No secrets, no new env vars, no auth paths, no RLS changes.

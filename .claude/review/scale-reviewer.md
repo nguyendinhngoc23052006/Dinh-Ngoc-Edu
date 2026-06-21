@@ -1,11 +1,10 @@
-# Scale review — project rename to Dinh Ngoc Edu
+# Scale review — KaTeX math rendering
 
-**Verdict: PASS — no findings**
+**Verdict: PASS — one known tradeoff documented; memoization finding fixed pre-push**
 
-Reviewed: supabase/config.toml, package.json, package-lock.json, index.html, src/components/layout/AppLayout.tsx, src/pages/LandingPage.tsx, README.md, MEMORY.md, docs/ARCHITECTURE.md
+Reviewed: `src/components/lessons/MathText.tsx`, `ChoiceQuestion.tsx`, `CalcQuestion.tsx`
 
-- No database migrations touched — schema unchanged.
-- No query logic altered — pagination, indexes, and N+1 patterns unaffected.
-- No non-idempotent writes added; no data modification code changed.
-- No unbounded queries introduced; data access patterns identical.
-- config.toml `project_id` is a local label only; has zero impact on remote performance.
+- **Fixed:** `MathText` is now wrapped in `memo()` — KaTeX `renderToString` is skipped on re-renders where the `text` prop is unchanged (e.g., `selected` toggles in `ChoiceQuestion`).
+- **Known tradeoff — bundle size:** KaTeX (~100 kB minified) is not tree-shakeable and always bundles. Acceptable: math rendering is the core use case for STEM courses; the tradeoff is deliberate. Dynamic import would add complexity for marginal UX gain; deferred if Lighthouse budget becomes a concern.
+- Regex split is O(n) over question text (<500 chars) — not a scale concern.
+- No new queries, N+1 patterns, or unbounded operations.

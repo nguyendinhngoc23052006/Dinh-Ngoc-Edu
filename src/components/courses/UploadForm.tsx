@@ -85,6 +85,11 @@ function UploadForm({ onSubmit, initial }: UploadFormProps) {
           onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
         />
       </label>
+      <p className="course-meta">
+        Supported: PDF (text-based), DOCX, PPTX, TXT, MD — up to 10 MB each.
+        Scanned PDFs (photos of book pages) and handwritten notes are not
+        supported — open in Google Docs and export as PDF first.
+      </p>
       {files.length > 0 ? (
         <p className="course-meta">
           Ready to upload: {files.map((file) => file.name).join(', ')}

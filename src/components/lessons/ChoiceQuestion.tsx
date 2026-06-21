@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Question } from '../../types/database'
 import type { QuestionResponse } from '../../services/lessonService'
+import MathText from './MathText'
 
 interface ChoiceQuestionProps {
   question: Question // kind 'mcq' (single answer) or 'mcq_multi'
@@ -25,7 +26,7 @@ function ChoiceQuestion({ question, onSubmit }: ChoiceQuestionProps) {
 
   return (
     <div className="question">
-      <p className="prompt">{question.prompt}</p>
+      <p className="prompt"><MathText text={question.prompt} /></p>
       {multi ? <p className="hint">Select all that apply.</p> : null}
       <ul className="options">
         {question.options.map((option, index) => (
@@ -37,7 +38,7 @@ function ChoiceQuestion({ question, onSubmit }: ChoiceQuestionProps) {
                 checked={selected.includes(index)}
                 onChange={() => toggle(index)}
               />
-              {option}
+              <MathText text={option} />
             </label>
           </li>
         ))}

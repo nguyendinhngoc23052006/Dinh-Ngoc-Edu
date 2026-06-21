@@ -89,6 +89,11 @@ function MaterialsManager({
           onChange={handleAdd}
         />
       </label>
+      <p className="course-meta">
+        Text-based files only. Scanned PDFs (photos of book pages) and
+        handwritten notes are not supported — open in Google Docs and export
+        as PDF first.
+      </p>
       {busy ? (
         <p className="state state-loading">Working — extracting text…</p>
       ) : null}
