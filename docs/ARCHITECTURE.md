@@ -39,16 +39,38 @@ CoursePage polls the status (one PK lookup per tick, 10-minute give-up):
    (`pipeline.ts`, pure and unit-tested).
 3. **Syllabus** — one AI call returns a strict-JSON chapter/node outline;
    each node names the chunk it came from.
-4. **Questions** — one AI call **per chapter** (not per node — a full course
-   stays within free-tier request limits) writes mcq/mcq_multi/fill_blank
-   questions for every lesson in that chapter, each tagged with its
-   `node_index`, in the course's output language. Every call carries a
+4. **Questions** — one AI call **per lesson** writes mcq/mcq_multi/fill_blank
+   questions for that lesson in the course's output language. Chapters run
+   in parallel; lessons within a chapter run sequentially so the chapter's
+   stable-prefix prompt benefits from Gemini's implicit cache. The
+   per-lesson schema carries no `minItems` (Gemini 2.5 Flash silently
+   truncates structured output when it cannot meet a minItems floor — that
+   was the previous batch shape's failure mode). Every call carries a
    system message pinning the output language, runs at temperature 0.2 in
    JSON mode with a `max_tokens` cap, and is re-asked once if the answer
    detectably drifted to the wrong language (Vietnamese diacritics check).
+   A lesson that comes back below the acceptance floor gets ONE focused
+   retry asking for exactly the missing count, with existing prompts
+   listed so the model can't duplicate.
+4b. **Calc follow-up** — when `detectFormulas` flags a lesson's source
+   (formula keywords, equality with numeric expression, arithmetic on
+   numerics, Greek letters, or LaTeX markers) AND the pipeline budget has
+   ≥30 s headroom, fires a DEDICATED calc-only LLM call with its own
+   schema (`CALC_QUESTIONS_SCHEMA`) and few-shot library covering the
+   parametric-solver DSL: variables, optional ordered `steps[]`, ternary,
+   ~50 whitelisted math functions (trig, log/exp, combinatorics,
+   statistics, probability), and bounded iteration primitives
+   (`sigma/pi_iter/iterate/cases`, MAX_ITERATIONS=10 000). The call asks
+   for empty array on a no-formula source — it's bonus content, never a
+   regression on the lesson's mcq/fill_blank questions. Every spec
+   passes through `validateCalcSpec` which midpoint-samples the variable
+   ranges and evaluates each step + the final formula before any spec
+   reaches the DB.
 5. **Enforce + verify** — malformed questions are dropped
-   (`validateChapterQuestions`), and a question is marked `verified` only
-   when its correct answer literally appears in the source chunk.
+   (`validateNodeQuestions`/`validateNodeCalcQuestions`), and a question
+   is marked `verified` only when its correct answer literally appears in
+   the source chunk (calc questions are verified by carrying a usable
+   spec, since their answer is computed not quoted).
 6. **Finish** — status flips to `ready`, or `failed` with the reason in
    `courses.generation_error` (owner sees it + a Retry button).
 

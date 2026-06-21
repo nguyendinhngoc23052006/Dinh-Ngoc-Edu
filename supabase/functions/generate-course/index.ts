@@ -13,30 +13,50 @@
 //
 // Uses Gemini's native generateContent API (not the OpenAI-compat wrapper)
 // so we can control thinking_budget per call and use native responseSchema.
-// Thinking and max-output tokens are right-sized per call type to cut cost
-// without hurting quality.
+//
+// SHAPE: one Gemini call PER LESSON, not per chapter batch. The previous
+// batch shape asked for 50 questions in one call with a responseSchema
+// minItems floor; Gemini 2.5 Flash silently truncates or empties the response
+// when it can't satisfy that floor, which produced "22 lessons, 1 question"
+// runs and the "did not produce any usable questions" total-failure throw.
+// Per-lesson calls are small enough to land reliably; chapters still run in
+// parallel and lessons within a chapter run sequentially so the chapter's
+// stable-prefix prompt benefits from Gemini's implicit cache.
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
-  buildBatchQuestionsPrompt,
-  buildDeltaRetryPrompt,
-  buildQuestionsSchema,
+  buildCalcQuestionsPrompt,
+  buildNodeQuestionsPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
+  CALC_QUESTIONS_SCHEMA,
   chunkText,
+  detectFormulas,
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
   MIN_QUESTIONS_PER_NODE,
+  NODE_QUESTIONS_SCHEMA,
   parseJsonLoose,
-  validateChapterQuestions,
+  QUESTIONS_PER_NODE,
+  SYLLABUS_SCHEMA,
+  validateNodeCalcQuestions,
+  validateNodeQuestions,
   validateSyllabus,
   validateSyllabusQuality,
   verifyQuestion,
-  SYLLABUS_SCHEMA,
 } from './pipeline.ts'
-import type { GeneratedQuestion, SyllabusChapter } from './pipeline.ts'
+import type { GeneratedQuestion, SyllabusChapter, SyllabusNode } from './pipeline.ts'
+
+const CALC_QUESTIONS_PER_NODE = 2
+// Smaller ask + richer schema = ~25 s end-to-end on Flash 2.5. Tighter than
+// the main per-lesson timeout because the call asks for at most 2 questions
+// in a single fixed-shape DSL.
+const CALC_FOLLOWUP_TIMEOUT_MS = 25_000
+// Budget gate: skip the calc follow-up if less than this much time is left in
+// the pipeline deadline. Sized to cover one calc call + a 5 s 429 backoff.
+const CALC_FOLLOWUP_HEADROOM_MS = 30_000
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
@@ -44,11 +64,12 @@ const MAX_SOURCE_CHARS = 200_000
 // A run older than this is considered crashed and may be re-claimed; the
 // pipeline budgets its own time well below it so it normally fails cleanly.
 const STALE_PROCESSING_MS = 15 * 60 * 1000
-// Chapters run in parallel (paid-tier RPM, 150-300 RPM Tier 1, easily
-// absorbs 8 concurrent primary calls). Wall-clock is gated by the slowest
-// single chapter's primary + its delta retries (~60-90 s typical), not by
-// the chapter count. 10 min keeps headroom for a worst-case slow chapter
-// while staying well under the 15-min stale reclaim window.
+// Chapters run in parallel; lessons within a chapter run sequentially. Worst
+// case for a math-heavy chapter: 5 lessons × (35 s main + 35 s retry + 25 s
+// calc follow-up) ≈ 8 min per chapter, plus syllabus ≈ 30 s. The per-lesson
+// budget check skips the retry — and `CALC_FOLLOWUP_HEADROOM_MS` skips the
+// calc call — when this runs out, so the run always lands in `ready` or
+// `failed` before the 15-min staleness window above kicks in.
 const MAX_PIPELINE_MS = 10 * 60 * 1000
 
 const corsHeaders = {
@@ -61,15 +82,14 @@ interface ChatOptions {
   thinkingBudget: number
   maxOutputTokens: number
   jsonSchema?: Record<string, unknown>
-  // Per-call request timeout. A batched question call with 4096-thinking +
-  // 16K-output routinely takes >30s, so callers bump this above the default.
   timeoutMs?: number
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
-// Headroom for batched question calls and retries: 4 nodes × 6 questions with
-// rationales + 4096 thinking tokens can take 40-50 s end-to-end.
-const QUESTION_REQUEST_TIMEOUT_MS = 60_000
+// Per-lesson question calls ask for 6 questions max with a small schema;
+// 35 s is enough headroom for thinking + JSON emission on Flash 2.5 while
+// keeping 2× timeout under the per-chapter share of the pipeline budget.
+const QUESTION_REQUEST_TIMEOUT_MS = 35_000
 
 interface CourseRow {
   id: string
@@ -126,8 +146,7 @@ Deno.serve(async (req) => {
   // Re-running on a finished course is a no-op, so a double click or a retry
   // after a network blip never regenerates (and never double-bills the key).
   // Exceptions: force=true (owner deliberately rebuilding after new uploads),
-  // or a 'ready' course that still has question-less lessons (repair path for
-  // runs from before the per-lesson re-ask existed).
+  // or a 'ready' course that still has question-less lessons (repair path).
   if (course.status === 'ready' && !force) {
     const { data: lessonNodes, error: nodesError } = await supabase
       .from('nodes')
@@ -152,8 +171,6 @@ Deno.serve(async (req) => {
   // or spammed invocations get zero rows back and start nothing — no
   // parallel pipelines, no double-billing the key.
   const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString()
-  // 'ready' is claimable only when this request just saw it ready WITH empty
-  // lessons — never lets a race regenerate a course that finished complete.
   const claimable = course.status === 'ready' ? 'pending,failed,ready' : 'pending,failed'
   const { data: claimed, error: claimError } = await supabase
     .from('courses')
@@ -234,11 +251,10 @@ async function generate(
       }
     }
 
-    // Chapters run in parallel — paid-tier RPM (Tier 1: 150-300 RPM on
-    // 2.5 Flash) absorbs ≤8 concurrent primary calls easily, and the slow
-    // path is each chapter's primary + delta retries sequence, not the
-    // chapter count. A failure in one chapter's task never poisons another's
-    // writes (each task owns its chapter insert).
+    // Chapters run in parallel; each chapter's nodes run sequentially inside.
+    // A throw in one chapter's task is caught here (its lessons report as
+    // failed but the other chapters' results are preserved), so a single
+    // chapter's DB or LLM error never wipes the run.
     const chapterResults = await Promise.all(
       syllabus.map((chapter, chapterIndex) =>
         generateChapter(
@@ -249,25 +265,35 @@ async function generate(
           chunks,
           language,
           deadline,
-        ),
+        ).catch((err) => ({
+          questionsWritten: 0,
+          lessonErrors: [`Chapter "${chapter.title}" failed: ${messageOf(err)}`],
+        })),
       ),
     )
     const totalQuestions = chapterResults.reduce(
       (sum, r) => sum + r.questionsWritten,
       0,
     )
+    const lessonErrors = chapterResults.flatMap((r) => r.lessonErrors)
 
     if (totalQuestions === 0) {
-      throw new Error('The AI did not produce any usable questions.')
+      throw new Error(
+        lessonErrors.length > 0
+          ? `Generation produced no questions. First failure: ${lessonErrors[0]}`
+          : 'The AI did not produce any usable questions.',
+      )
     }
 
-    // Partial completion no longer fails the course. The CoursePage banner
-    // (existing question_count === 0 check) surfaces empty lessons with a
-    // one-tap "fill" button; a paying user gets the lessons that worked
-    // instead of the whole run being thrown away.
+    // Partial completion stays 'ready' but records WHICH lessons came back
+    // empty, so the owner can see in the CoursePage banner why some lessons
+    // need a fill — and the next "Fill empty lessons" tap can land cleanly.
+    const generationNote = lessonErrors.length === 0
+      ? null
+      : `${lessonErrors.length} lesson(s) need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(0, 500)
     await supabase
       .from('courses')
-      .update({ status: 'ready' })
+      .update({ status: 'ready', generation_error: generationNote })
       .eq('id', course.id)
   } catch (cause) {
     await supabase
@@ -280,11 +306,16 @@ async function generate(
   }
 }
 
-// One chapter, end-to-end: insert chapter row + node rows, ask the model for
-// every lesson's questions in a single primary call, top up any short nodes
-// with a delta retry that lists what's already there, then insert questions
-// and update each node's credit prize. Returns the chapter's totals so the
-// outer pipeline can sum across parallel chapter tasks.
+interface ChapterResult {
+  questionsWritten: number
+  lessonErrors: string[]
+}
+
+// One chapter, end-to-end: insert chapter row + node rows, generate questions
+// for each lesson sequentially (so Gemini's implicit cache reuses the chapter
+// source across lessons), insert questions, set each lesson's credit prize.
+// Lessons that fail are recorded but do not throw — the chapter still inserts
+// every successful lesson's questions.
 async function generateChapter(
   supabase: SupabaseClient,
   courseId: string,
@@ -293,7 +324,7 @@ async function generateChapter(
   chunks: string[],
   language: string,
   deadline: number,
-): Promise<{ questionsWritten: number }> {
+): Promise<ChapterResult> {
   const { data: chapterRow, error: chapterError } = await supabase
     .from('chapters')
     .insert({
@@ -322,78 +353,36 @@ async function generateChapter(
     .sort((a, b) => a.position - b.position)
     .map((row) => row.id)
 
-  const buckets: GeneratedQuestion[][] = chapter.nodes.map(() => [])
+  const lessonErrors: string[] = []
+  const nodeQuestions: GeneratedQuestion[][] = []
 
-  // Primary: one batch for the whole chapter (NODES_PER_BATCH = MAX_NODES_PER_CHAPTER).
-  // SOFT-KEEP: whatever the model returned for each node is kept as-is, even
-  // if below MIN_QUESTIONS_PER_NODE. The delta retry below tops up short
-  // nodes without throwing existing questions away — a 5/10 result becomes
-  // 5 + retry, not 0 then retry-might-be-0.
-  ensureTime(deadline)
-  try {
-    const result = validateChapterQuestions(
-      parseJsonLoose(
-        await chatInLanguage(
-          buildBatchQuestionsPrompt(chapter.nodes, chunks, language),
-          language,
-          {
-            thinkingBudget: 1024,
-            maxOutputTokens: 24576,
-            jsonSchema: buildQuestionsSchema(chapter.nodes.length),
-            timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
-          },
-        ),
-      ),
-      chapter.nodes.length,
-    )
-    for (let i = 0; i < chapter.nodes.length; i += 1) {
-      buckets[i] = result[i] ?? []
-    }
-  } catch {
-    // Primary failed — every node stays empty; delta retries below try to
-    // fill each one with a needed-count of MIN_QUESTIONS_PER_NODE.
-  }
-
-  // Delta retry: only the nodes below MIN, only for the missing count.
-  // Existing questions are listed in the prompt so the model can't duplicate
-  // them; calc IS allowed (a short primary often means the model ran low
-  // on tokens, not that the source has no formula).
   for (let i = 0; i < chapter.nodes.length; i += 1) {
-    const have = buckets[i].length
-    if (have >= MIN_QUESTIONS_PER_NODE) continue
-    const needed = MIN_QUESTIONS_PER_NODE - have
-    ensureTime(deadline)
-    try {
-      const result = validateChapterQuestions(
-        parseJsonLoose(
-          await chatInLanguage(
-            buildDeltaRetryPrompt(
-              chapter.nodes[i],
-              buckets[i],
-              needed,
-              chunks,
-              language,
-            ),
-            language,
-            {
-              thinkingBudget: 512,
-              maxOutputTokens: 12288,
-              jsonSchema: buildQuestionsSchema(1, { minItems: needed }),
-              timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
-            },
-          ),
-        ),
-        1,
-      )
-      if (result[0]?.length) {
-        buckets[i] = buckets[i].concat(result[0])
+    const node = chapter.nodes[i]
+    // Budget check is non-throwing here so the chapter still inserts every
+    // lesson it DID finish — a throw out of the loop wipes that work and
+    // leaves the chapter row orphaned.
+    if (Date.now() > deadline) {
+      for (let j = i; j < chapter.nodes.length; j += 1) {
+        nodeQuestions.push([])
+        lessonErrors.push(
+          `"${chapter.nodes[j].title}": skipped (pipeline budget exhausted)`,
+        )
       }
-    } catch {
-      // Stays partial; the CoursePage banner surfaces it for a one-tap fill.
+      break
+    }
+    const { questions, error } = await generateLessonQuestions(
+      node,
+      chunks,
+      language,
+      deadline,
+    )
+    nodeQuestions.push(questions)
+    if (questions.length === 0 && error) {
+      lessonErrors.push(`"${node.title}": ${error}`)
     }
   }
 
-  const questionRows = buckets.flatMap((questions, nodeIndex) => {
+  const questionRows = nodeQuestions.flatMap((questions, nodeIndex) => {
     const chunk = chunks[chapter.nodes[nodeIndex].chunk_index] ?? chunks[0]
     return questions.map((question, index) => ({
       course_id: courseId,
@@ -404,6 +393,7 @@ async function generateChapter(
       prompt: question.prompt,
       options: question.options,
       answer: question.answer,
+      // Populated by the calc follow-up call; null for mcq/mcq_multi/fill_blank.
       calc: question.calc ?? null,
       verified: verifyQuestion(question, chunk),
     }))
@@ -417,8 +407,8 @@ async function generateChapter(
     questionsWritten = questionRows.length
   }
 
-  for (const [nodeIndex, nodeQuestions] of buckets.entries()) {
-    const prize = lessonCreditPrize(nodeQuestions)
+  for (const [nodeIndex, questions] of nodeQuestions.entries()) {
+    const prize = lessonCreditPrize(questions)
     if (prize > 0) {
       const { error: prizeError } = await supabase
         .from('nodes')
@@ -428,7 +418,101 @@ async function generateChapter(
     }
   }
 
-  return { questionsWritten }
+  return { questionsWritten, lessonErrors }
+}
+
+interface LessonGenerationResult {
+  questions: GeneratedQuestion[]
+  error: string | null
+}
+
+// One lesson, end-to-end: initial call asking for QUESTIONS_PER_NODE, then
+// ONE retry asking for the missing count if the initial came back below
+// MIN_QUESTIONS_PER_NODE. Both calls share the same simple per-lesson schema
+// (no minItems, no node_index, no calc — those were the silent killers in
+// the previous batch shape). Errors are captured and returned, never thrown
+// out, so one bad lesson never sinks the whole chapter. The deadline is
+// re-checked between the initial and retry calls so a near-deadline lesson
+// keeps whatever the initial returned instead of busting the budget.
+async function generateLessonQuestions(
+  node: SyllabusNode,
+  chunks: string[],
+  language: string,
+  deadline: number,
+): Promise<LessonGenerationResult> {
+  let questions: GeneratedQuestion[] = []
+  let firstError: string | null = null
+
+  try {
+    const raw = await chatInLanguage(
+      buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, language),
+      language,
+      {
+        thinkingBudget: 768,
+        maxOutputTokens: 4096,
+        jsonSchema: NODE_QUESTIONS_SCHEMA,
+        timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+      },
+    )
+    questions = validateNodeQuestions(parseJsonLoose(raw))
+  } catch (err) {
+    firstError = messageOf(err)
+  }
+
+  // Skip the retry if the initial already burned past the deadline — better
+  // to ship a short lesson than to extend the run past the staleness window.
+  if (questions.length < MIN_QUESTIONS_PER_NODE && Date.now() < deadline) {
+    const needed = MIN_QUESTIONS_PER_NODE - questions.length
+    try {
+      const raw = await chatInLanguage(
+        buildNodeQuestionsPrompt(node, questions, needed, chunks, language),
+        language,
+        {
+          thinkingBudget: 512,
+          maxOutputTokens: 3072,
+          jsonSchema: NODE_QUESTIONS_SCHEMA,
+          timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
+        },
+      )
+      const more = validateNodeQuestions(parseJsonLoose(raw))
+      if (more.length > 0) questions = questions.concat(more)
+    } catch (err) {
+      if (firstError === null) firstError = messageOf(err)
+    }
+  }
+
+  // Calc follow-up: gated by (1) source-text formula detection so all-text
+  // courses pay nothing extra, and (2) deadline headroom so a near-budget
+  // lesson never triggers an extra call that pushes the pipeline past the
+  // 10-min cap. Failure here is silent on purpose — the lesson already has
+  // its mcq/fill_blank questions, calc is additive, never a regression.
+  const lessonSource = chunks[node.chunk_index] ?? ''
+  if (
+    detectFormulas(lessonSource) &&
+    Date.now() + CALC_FOLLOWUP_HEADROOM_MS < deadline
+  ) {
+    try {
+      const raw = await chatInLanguage(
+        buildCalcQuestionsPrompt(node, CALC_QUESTIONS_PER_NODE, chunks, language),
+        language,
+        {
+          thinkingBudget: 1024,
+          maxOutputTokens: 4096,
+          jsonSchema: CALC_QUESTIONS_SCHEMA,
+          timeoutMs: CALC_FOLLOWUP_TIMEOUT_MS,
+        },
+      )
+      const calcs = validateNodeCalcQuestions(parseJsonLoose(raw))
+      if (calcs.length > 0) questions = questions.concat(calcs)
+    } catch {
+      // Calc is bonus content — a failure leaves the mcq/fill_blank intact.
+    }
+  }
+
+  return {
+    questions,
+    error: questions.length === 0 ? firstError ?? 'no usable questions returned' : null,
+  }
 }
 
 async function extractMaterialsText(
@@ -463,14 +547,7 @@ async function extractMaterialsText(
   const parts: string[] = []
   let totalChars = 0
   for (const material of rows) {
-    // Everything past the source cap gets discarded anyway — stop
-    // downloading instead of buffering unused megabytes.
     if (totalChars >= MAX_SOURCE_CHARS) break
-    // Prefer the text extracted at upload time; rows from before
-    // extraction-at-upload existed ('pending', no extracted_path) fall back
-    // to parsing the original file here. The .md path is re-derived from
-    // storage_path rather than read from the (owner-writable) extracted_path
-    // column, so the column can never point this download anywhere else.
     const extracted =
       material.extract_status === 'ready' && material.extracted_path !== null
     const path = extracted
