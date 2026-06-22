@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+import CourseCard from '../components/courses/CourseCard'
 import { useAsync } from '../hooks/useAsync'
-import { listMyCourses, PAGE_SIZE } from '../services/courseService'
-import { listSavedCourses, unsaveCourse } from '../services/savedCourseService'
+import { PAGE_SIZE, listMyCourses } from '../services/courseService'
 import { getCourseProgress } from '../services/progressService'
 import type { CourseProgress } from '../services/progressService'
-import CourseCard from '../components/courses/CourseCard'
+import { listSavedCourses, unsaveCourse } from '../services/savedCourseService'
 import type { Course } from '../types/database'
 
 interface CourseList {

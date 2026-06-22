@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Profile } from '../types/database'
 import { getMyProfile } from '../services/profileService'
-import { useAuth } from './useAuth'
+import type { Profile } from '../types/database'
 import { ProfileContext } from './profileContext'
+import { useAuth } from './useAuth'
 
 // Loads the signed-in user's profile once and shares it through context.
 export function ProfileProvider({ children }: { children: ReactNode }) {
@@ -12,9 +12,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0)
   const userId = session?.user.id ?? null
 
-  /* eslint-disable react-hooks/set-state-in-effect --
-     Clearing the profile on sign-out must happen synchronously; the loaded
-     value lands later from the async fetch. */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getMyProfile/setProfile are stable references; only userId+version should trigger a re-fetch
   useEffect(() => {
     let active = true
     if (!userId) {
@@ -32,7 +30,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       active = false
     }
   }, [userId, version])
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <ProfileContext.Provider

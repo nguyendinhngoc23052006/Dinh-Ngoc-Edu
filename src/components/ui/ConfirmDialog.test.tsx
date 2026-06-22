@@ -1,7 +1,7 @@
-// @vitest-environment happy-dom
-import { describe, expect, test, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+// @vitest-environment happy-dom
+import { describe, expect, test, vi } from 'vitest'
 import ConfirmDialog from './ConfirmDialog'
 
 const base = {
@@ -20,7 +20,12 @@ describe('ConfirmDialog', () => {
   test('fires onConfirm when the confirm button is clicked', async () => {
     const onConfirm = vi.fn()
     render(
-      <ConfirmDialog open {...base} confirmLabel="Release" onConfirm={onConfirm} />,
+      <ConfirmDialog
+        open
+        {...base}
+        confirmLabel="Release"
+        onConfirm={onConfirm}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Release' }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
@@ -38,7 +43,9 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
 
     // Clicking the backdrop (the overlay around the card) cancels.
-    await userEvent.click(document.querySelector('.modal-overlay') as HTMLElement)
+    await userEvent.click(
+      document.querySelector('.modal-overlay') as HTMLElement,
+    )
     expect(onCancel).toHaveBeenCalledTimes(2)
   })
 
@@ -46,8 +53,14 @@ describe('ConfirmDialog', () => {
     const onCancel = vi.fn()
     render(<ConfirmDialog open busy {...base} onCancel={onCancel} />)
 
-    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Working…' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Working…' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
 
     await userEvent.keyboard('{Escape}')
     expect(onCancel).not.toHaveBeenCalled()

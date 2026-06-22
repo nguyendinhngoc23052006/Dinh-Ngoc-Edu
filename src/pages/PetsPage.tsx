@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import ConfirmDialog from '../components/ui/ConfirmDialog'
 import PetSprite from '../components/pet/PetSprite'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
+import { useProfile } from '../hooks/profileContext'
 import { useAsync } from '../hooks/useAsync'
 import { useIdempotencyKeys } from '../hooks/useIdempotencyKeys'
-import { useProfile } from '../hooks/profileContext'
 import { eggReady, petForm, petProgress } from '../lib/petProgress'
 import { listFood, listMyFood } from '../services/foodService'
 import {

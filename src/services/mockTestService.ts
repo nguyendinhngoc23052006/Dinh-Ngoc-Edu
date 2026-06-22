@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
+import type { MockTest, Question } from '../types/database'
 import { requireUserId } from './authService'
 import { PAGE_SIZE } from './courseService'
-import type { MockTest, Question } from '../types/database'
 
 export const MAX_TEST_QUESTIONS = 100
 const MAX_CANDIDATE_QUESTIONS = 500
@@ -86,10 +86,7 @@ export async function renameMockTest(
 // Deletes a mock test. RLS scopes the delete to the caller's own tests; the
 // stored chapter selection is just a uuid[], so nothing cascades.
 export async function deleteMockTest(testId: string): Promise<void> {
-  const { error } = await supabase
-    .from('mock_tests')
-    .delete()
-    .eq('id', testId)
+  const { error } = await supabase.from('mock_tests').delete().eq('id', testId)
   if (error) throw new Error(error.message)
 }
 

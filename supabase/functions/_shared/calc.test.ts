@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import {
-  evaluate,
-  generateInstance,
-  gradeCalc,
-  validateCalcSpec,
-} from './calc'
+import { evaluate, generateInstance, gradeCalc, validateCalcSpec } from './calc'
 import type { CalcSpec } from './calc'
 
 describe('evaluate — basic arithmetic', () => {
@@ -38,7 +33,9 @@ describe('evaluate — basic arithmetic', () => {
   })
 
   test('throws on an unexpected character (no code execution)', () => {
-    expect(() => evaluate('1 + alert(2)', {})).toThrow(/Unknown function "alert"/)
+    expect(() => evaluate('1 + alert(2)', {})).toThrow(
+      /Unknown function "alert"/,
+    )
     expect(() => evaluate('1 & 2', {})).toThrow(/Unexpected character/)
   })
 
@@ -238,15 +235,21 @@ describe('evaluate — bounded iteration', () => {
   })
 
   test('sigma rejects a range over the iteration cap', () => {
-    expect(() => evaluate('sigma(1, 100000, i)', {})).toThrow(/iterations|range/i)
+    expect(() => evaluate('sigma(1, 100000, i)', {})).toThrow(
+      /iterations|range/i,
+    )
   })
 
   test('iterate rejects a count over the cap', () => {
-    expect(() => evaluate('iterate(0, 1000000, x + 1)', {})).toThrow(/0,|iterations|/i)
+    expect(() => evaluate('iterate(0, 1000000, x + 1)', {})).toThrow(
+      /0,|iterations|/i,
+    )
   })
 
   test('iterate rejects a body that diverges to a non-finite value', () => {
-    expect(() => evaluate('iterate(1, 5, x * pow(10, 1000))', {})).toThrow(/diverged|finite/i)
+    expect(() => evaluate('iterate(1, 5, x * pow(10, 1000))', {})).toThrow(
+      /diverged|finite/i,
+    )
   })
 
   test('sigma with hi < lo returns the empty sum', () => {
@@ -267,17 +270,19 @@ describe('evaluate — cases (multi-branch conditional)', () => {
 
 describe('evaluate — safety', () => {
   test('rejects formulas longer than the cap', () => {
-    expect(() => evaluate('1+'.repeat(300) + '0', {})).toThrow(/limit|exceeds/)
+    expect(() => evaluate(`${'1+'.repeat(300)}0`, {})).toThrow(/limit|exceeds/)
   })
 
   test('rejects deeply-nested expressions', () => {
-    const nested = '('.repeat(250) + '1' + ')'.repeat(250)
+    const nested = `${'('.repeat(250)}1${')'.repeat(250)}`
     expect(() => evaluate(nested, {})).toThrow(/depth|exceeds|limit/i)
   })
 
   test('rejects unknown functions (cannot escape the whitelist)', () => {
     expect(() => evaluate('eval(1)', {})).toThrow(/Unknown function "eval"/)
-    expect(() => evaluate('process(1)', {})).toThrow(/Unknown function "process"/)
+    expect(() => evaluate('process(1)', {})).toThrow(
+      /Unknown function "process"/,
+    )
   })
 })
 
@@ -336,7 +341,7 @@ describe('generateInstance', () => {
     }
     // Q = 100/3, P = 100 - 200/3 = 100/3, CS = 0.5 * 200/3 * 100/3 ≈ 1111.11
     const instance = generateInstance(spec, () => 0.5)
-    expect(instance.expected).toBeCloseTo((0.5 * (100 / 3) * 2) * (100 / 3), 1)
+    expect(instance.expected).toBeCloseTo(0.5 * (100 / 3) * 2 * (100 / 3), 1)
   })
 })
 
@@ -351,7 +356,9 @@ describe('gradeCalc', () => {
   })
 
   test('rejects a non-finite answer', () => {
-    expect(gradeCalc(interestSpec, { P: 1000, r: 5, t: 2 }, NaN)).toBe(false)
+    expect(gradeCalc(interestSpec, { P: 1000, r: 5, t: 2 }, Number.NaN)).toBe(
+      false,
+    )
   })
 
   test('returns false (never throws) when values are missing a variable', () => {
@@ -411,7 +418,12 @@ describe('validateCalcSpec', () => {
       formula: 'x + 1',
       prompt_template: 'Add one to {x}',
     })
-    expect(spec?.variables[0]).toEqual({ name: 'x', min: 1, max: 9, decimals: 0 })
+    expect(spec?.variables[0]).toEqual({
+      name: 'x',
+      min: 1,
+      max: 9,
+      decimals: 0,
+    })
     expect(spec?.decimals).toBe(2)
     expect(spec?.tolerance).toBe(0.01)
   })

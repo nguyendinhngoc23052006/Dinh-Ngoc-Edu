@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { supabaseMock, sessionResult } from '../test/supabaseMock'
+import { sessionResult, supabaseMock } from '../test/supabaseMock'
+import type { MockTest } from '../types/database'
 import {
   createMockTest,
   deleteMockTest,
@@ -8,7 +9,6 @@ import {
   sampleQuestions,
   validateNewMockTest,
 } from './mockTestService'
-import type { MockTest } from '../types/database'
 
 vi.mock('../lib/supabaseClient', async () => {
   const { supabaseMock } = await import('../test/supabaseMock')
@@ -141,7 +141,9 @@ describe('getMockTestQuestions', () => {
 describe('renameMockTest', () => {
   test('rejects an empty title without calling the API', async () => {
     await expect(renameMockTest('t1', '   ')).rejects.toThrow(/title/i)
-    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(false)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(
+      false,
+    )
   })
 
   test('updates with the trimmed title', async () => {
@@ -155,7 +157,9 @@ describe('renameMockTest', () => {
     await expect(renameMockTest('t1', 'x'.repeat(121))).rejects.toThrow(
       /120 characters/,
     )
-    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(false)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(
+      false,
+    )
   })
 })
 

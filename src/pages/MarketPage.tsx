@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useProfile } from '../hooks/profileContext'
 import { useAsync } from '../hooks/useAsync'
 import { useIdempotencyKeys } from '../hooks/useIdempotencyKeys'
-import { useProfile } from '../hooks/profileContext'
+import { dimensionLabel } from '../lib/dimensions'
 import {
   equipCosmetic,
   listCosmetics,
@@ -10,7 +11,6 @@ import {
   purchaseCosmetic,
 } from '../services/cosmeticsService'
 import { buyFood, listFood, listMyFood } from '../services/foodService'
-import { dimensionLabel } from '../lib/dimensions'
 import type { Cosmetic, Food } from '../types/database'
 
 function MarketPage() {
@@ -174,8 +174,8 @@ function MarketPage() {
         <span className="credit-badge">⭐ {credits} credits</span>
       </header>
       <p>
-        Earn credits by finishing lessons with no mistakes, then spend them here.{' '}
-        <Link to="/settings">Settings</Link> lets you turn the pet off.
+        Earn credits by finishing lessons with no mistakes, then spend them
+        here. <Link to="/settings">Settings</Link> lets you turn the pet off.
       </p>
       {error ? <p className="state state-error">{error}</p> : null}
       {themes}

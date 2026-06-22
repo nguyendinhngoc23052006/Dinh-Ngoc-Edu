@@ -28,16 +28,12 @@
   --radius: 1rem;
   --radius-sm: 0.6rem;
   --radius-lg: 1.5rem;
-  --shadow:
-    0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 30px -16px rgba(15, 23, 42, 0.35);
-  --shadow-lg:
-    0 2px 4px rgba(15, 23, 42, 0.06), 0 24px 60px -24px rgba(15, 23, 42, 0.45);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 30px -16px
+    rgba(15, 23, 42, 0.35);
+  --shadow-lg: 0 2px 4px rgba(15, 23, 42, 0.06), 0 24px 60px -24px
+    rgba(15, 23, 42, 0.45);
 
-  font-family:
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   line-height: 1.55;
   color: var(--ink);
 }
@@ -58,8 +54,7 @@ body {
 .app {
   position: relative;
   min-height: 100vh;
-  background:
-    radial-gradient(
+  background: radial-gradient(
       900px 500px at 12% -8%,
       var(--green-soft),
       transparent 60%
@@ -73,23 +68,25 @@ body {
       1100px 700px at 50% 120%,
       rgba(22, 163, 74, 0.12),
       transparent 60%
-    ),
-    var(--bg);
+    ), var(--bg);
   background-attachment: fixed;
 }
 
 .app::before {
-  content: '';
+  content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(
-    rgba(15, 23, 42, 0.05) 1px,
-    transparent 1px
-  );
+  background-image: radial-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px);
   background-size: 26px 26px;
-  mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(
+    180deg,
+    transparent,
+    #000 30%,
+    #000 70%,
+    transparent
+  );
 }
 
 h1,
@@ -118,13 +115,8 @@ button,
   background: linear-gradient(180deg, var(--green), var(--green-dark));
   color: #fff;
   cursor: pointer;
-  box-shadow:
-    0 4px 0 var(--green-dark),
-    0 8px 18px -8px rgba(21, 128, 61, 0.7);
-  transition:
-    transform 0.08s ease,
-    box-shadow 0.12s ease,
-    filter 0.12s ease;
+  box-shadow: 0 4px 0 var(--green-dark), 0 8px 18px -8px rgba(21, 128, 61, 0.7);
+  transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
 
 button:hover,
@@ -179,9 +171,7 @@ button.ghost:active {
 button.danger {
   background: linear-gradient(180deg, #ef4444, var(--red));
   color: #fff;
-  box-shadow:
-    0 4px 0 #7f1d1d,
-    0 8px 18px -8px rgba(185, 28, 28, 0.7);
+  box-shadow: 0 4px 0 #7f1d1d, 0 8px 18px -8px rgba(185, 28, 28, 0.7);
 }
 
 /* ---- Persistent shell: the HUD-style top bar ----
@@ -201,9 +191,7 @@ button.danger {
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   box-shadow: 0 6px 24px -20px rgba(15, 23, 42, 0.6);
-  transition:
-    transform 0.28s ease,
-    opacity 0.28s ease;
+  transition: transform 0.28s ease, opacity 0.28s ease;
 }
 
 @media (max-width: 640px) {
@@ -251,9 +239,7 @@ button.danger {
   font-weight: 700;
   padding: 0.4rem 0.8rem;
   border-radius: 999px;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .app-nav a:hover {
@@ -294,9 +280,8 @@ button.danger {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   white-space: nowrap;
-  box-shadow:
-    inset 0 0 0 1.5px rgba(245, 158, 11, 0.55),
-    0 3px 10px -6px rgba(180, 83, 9, 0.8);
+  box-shadow: inset 0 0 0 1.5px rgba(245, 158, 11, 0.55), 0 3px 10px -6px
+    rgba(180, 83, 9, 0.8);
   transition: transform 0.1s ease;
 }
 
@@ -347,9 +332,7 @@ button.danger {
   padding: 1.35rem;
   margin: 0.85rem 0;
   box-shadow: var(--shadow);
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .card-grid {
@@ -389,9 +372,7 @@ button.danger {
   border: 1.5px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .form input:focus,
@@ -423,7 +404,7 @@ button.danger {
 }
 
 .state-loading::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
@@ -497,10 +478,16 @@ button.danger {
   margin: -1.75rem -1.5rem 1.75rem;
   padding: 3rem 1.75rem;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  background:
-    radial-gradient(900px 360px at 8% -20%, rgba(255, 255, 255, 0.35), transparent),
-    radial-gradient(600px 400px at 110% 120%, rgba(245, 158, 11, 0.35), transparent),
-    linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+  background: radial-gradient(
+      900px 360px at 8% -20%,
+      rgba(255, 255, 255, 0.35),
+      transparent
+    ),
+    radial-gradient(
+      600px 400px at 110% 120%,
+      rgba(245, 158, 11, 0.35),
+      transparent
+    ), linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
   color: #fff;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -638,9 +625,8 @@ button.danger {
   color: #fff;
   border-radius: var(--radius);
   padding: 1rem 1.35rem;
-  box-shadow:
-    0 5px 0 var(--green-dark),
-    0 16px 30px -16px rgba(21, 128, 61, 0.9);
+  box-shadow: 0 5px 0 var(--green-dark), 0 16px 30px -16px
+    rgba(21, 128, 61, 0.9);
 }
 
 .chapter-banner h3 {
@@ -670,7 +656,7 @@ button.danger {
 
 /* The connector between nodes. */
 .node-step + .node-step::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 50%;
   top: -1.7rem;
@@ -708,12 +694,8 @@ button.danger {
   font-size: 1.45rem;
   background: linear-gradient(180deg, #e4eaf2, #d6dde7);
   color: #fff;
-  box-shadow:
-    0 5px 0 #b6c0cf,
-    0 12px 22px -12px rgba(15, 23, 42, 0.6);
-  transition:
-    transform 0.1s ease,
-    box-shadow 0.1s ease;
+  box-shadow: 0 5px 0 #b6c0cf, 0 12px 22px -12px rgba(15, 23, 42, 0.6);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
 .node:hover .node-circle {
@@ -727,17 +709,14 @@ button.danger {
 
 .node-done .node-circle {
   background: linear-gradient(180deg, #22c55e, var(--green));
-  box-shadow:
-    0 5px 0 var(--green-dark),
-    0 12px 22px -12px rgba(21, 128, 61, 0.9);
+  box-shadow: 0 5px 0 var(--green-dark), 0 12px 22px -12px
+    rgba(21, 128, 61, 0.9);
 }
 
 .node-next .node-circle {
   background: linear-gradient(180deg, #fbbf24, var(--gold));
-  box-shadow:
-    0 5px 0 var(--gold-dark),
-    0 0 0 6px rgba(245, 158, 11, 0.18),
-    0 12px 22px -10px rgba(180, 83, 9, 0.9);
+  box-shadow: 0 5px 0 var(--gold-dark), 0 0 0 6px rgba(245, 158, 11, 0.18), 0
+    12px 22px -10px rgba(180, 83, 9, 0.9);
 }
 
 .node-start {
@@ -800,72 +779,67 @@ button.danger {
 }
 
 /* Meadow (Classic) — soft greens. */
-[data-dimension='meadow'] .app {
-  background:
-    radial-gradient(800px 420px at 10% -10%, #d7f0cf, transparent 60%),
+[data-dimension="meadow"] .app {
+  background: radial-gradient(800px 420px at 10% -10%, #d7f0cf, transparent 60%),
     radial-gradient(700px 460px at 100% 0%, #eafbe3, transparent 55%),
     linear-gradient(180deg, #f1faec, #eaf7e6);
 }
-[data-dimension='meadow'] .course-map {
+[data-dimension="meadow"] .course-map {
   background: linear-gradient(180deg, #eaf7e6, #f6fbf2);
 }
-[data-dimension='meadow'] .course-map::before {
-  content: '🌿 🌳 🌸 🌳 🌿';
+[data-dimension="meadow"] .course-map::before {
+  content: "🌿 🌳 🌸 🌳 🌿";
 }
 
 /* Volcano (Sunset) — warm light world (theme --bg is a light peach). */
-[data-dimension='volcano'] .app {
-  background:
-    radial-gradient(820px 440px at 12% -10%, #ffe2c2, transparent 60%),
+[data-dimension="volcano"] .app {
+  background: radial-gradient(820px 440px at 12% -10%, #ffe2c2, transparent 60%),
     radial-gradient(720px 460px at 100% 10%, #ffd0a8, transparent 55%),
     linear-gradient(180deg, #fff3e8, #ffe8d6);
 }
-[data-dimension='volcano'] .course-map {
+[data-dimension="volcano"] .course-map {
   background: linear-gradient(180deg, #3a0d0d, #7c2d12);
 }
-[data-dimension='volcano'] .course-map::before {
-  content: '🌋 🔥 🪨 🔥 🌋';
+[data-dimension="volcano"] .course-map::before {
+  content: "🌋 🔥 🪨 🔥 🌋";
 }
-[data-dimension='volcano'] .node-label {
+[data-dimension="volcano"] .node-label {
   color: #fde68a;
 }
 
 /* Tide (Ocean) — bright shallows. */
-[data-dimension='tide'] .app {
-  background:
-    radial-gradient(820px 440px at 12% -10%, #c7ecfd, transparent 60%),
+[data-dimension="tide"] .app {
+  background: radial-gradient(820px 440px at 12% -10%, #c7ecfd, transparent 60%),
     radial-gradient(720px 460px at 100% 10%, #d8f3ff, transparent 55%),
     linear-gradient(180deg, #eef9ff, #ddf1fb);
 }
-[data-dimension='tide'] .course-map {
+[data-dimension="tide"] .course-map {
   background: linear-gradient(180deg, #cdeffd, #eaf7ff);
 }
-[data-dimension='tide'] .course-map::before {
-  content: '🌊 🐚 🐠 🐚 🌊';
+[data-dimension="tide"] .course-map::before {
+  content: "🌊 🐚 🐠 🐚 🌊";
 }
 
 /* Twilight (Grape) — light lavender world. */
-[data-dimension='twilight'] .app {
-  background:
-    radial-gradient(820px 440px at 12% -10%, #ecdcff, transparent 60%),
+[data-dimension="twilight"] .app {
+  background: radial-gradient(820px 440px at 12% -10%, #ecdcff, transparent 60%),
     radial-gradient(720px 460px at 100% 10%, #f3e8ff, transparent 55%),
     linear-gradient(180deg, #f7f0ff, #efe2ff);
 }
-[data-dimension='twilight'] .course-map {
+[data-dimension="twilight"] .course-map {
   background: linear-gradient(180deg, #2e1065, #4c1d95);
 }
-[data-dimension='twilight'] .course-map::before {
-  content: '🌙 ✨ 🔮 ✨ 🌙';
+[data-dimension="twilight"] .course-map::before {
+  content: "🌙 ✨ 🔮 ✨ 🌙";
 }
-[data-dimension='twilight'] .node-label {
+[data-dimension="twilight"] .node-label {
   color: #e9d5ff;
 }
 
 /* Cosmos (Midnight) — the one dark world; a starfield (theme --bg is dark and
    --ink is light, so a dark backdrop keeps page text readable). */
-[data-dimension='cosmos'] .app {
-  background:
-    radial-gradient(2px 2px at 20% 30%, #fff, transparent),
+[data-dimension="cosmos"] .app {
+  background: radial-gradient(2px 2px at 20% 30%, #fff, transparent),
     radial-gradient(2px 2px at 70% 20%, #cbd5e1, transparent),
     radial-gradient(1.5px 1.5px at 40% 70%, #fff, transparent),
     radial-gradient(2px 2px at 85% 60%, #93c5fd, transparent),
@@ -873,25 +847,23 @@ button.danger {
     radial-gradient(900px 600px at 20% 10%, #1e293b, transparent 60%),
     linear-gradient(180deg, #0b1220, #0f172a);
 }
-[data-dimension='cosmos'] .app::before {
+[data-dimension="cosmos"] .app::before {
   background-image: radial-gradient(
     rgba(148, 163, 184, 0.12) 1px,
     transparent 1px
   );
 }
-[data-dimension='cosmos'] .course-map {
+[data-dimension="cosmos"] .course-map {
   background: radial-gradient(circle at 20% 10%, #1e293b, #0f172a);
 }
-[data-dimension='cosmos'] .course-map::before {
-  content: '🪐 ⭐ 🌠 ⭐ 🪐';
+[data-dimension="cosmos"] .course-map::before {
+  content: "🪐 ⭐ 🌠 ⭐ 🪐";
 }
-[data-dimension='cosmos'] .node-label {
+[data-dimension="cosmos"] .node-label {
   color: #cbd5e1;
 }
-[data-dimension='cosmos'] .node-circle {
-  box-shadow:
-    0 0 14px #38bdf8,
-    0 5px 0 #1e3a8a;
+[data-dimension="cosmos"] .node-circle {
+  box-shadow: 0 0 14px #38bdf8, 0 5px 0 #1e3a8a;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1148,9 +1120,8 @@ button.danger {
   background-size: 400% 400%;
   background-position: 0 0;
   image-rendering: pixelated;
-  animation:
-    pet-step 0.7s steps(4) infinite,
-    pet-bob 0.5s ease-in-out infinite alternate;
+  animation: pet-step 0.7s steps(4) infinite, pet-bob 0.5s ease-in-out infinite
+    alternate;
 }
 
 .pet-emoji {
@@ -1265,9 +1236,7 @@ button.danger {
   border-radius: var(--radius);
   font-weight: 700;
   text-decoration: none;
-  box-shadow:
-    0 4px 0 var(--green-dark),
-    0 8px 18px -8px rgba(21, 128, 61, 0.7);
+  box-shadow: 0 4px 0 var(--green-dark), 0 8px 18px -8px rgba(21, 128, 61, 0.7);
 }
 
 /* AI-assigned, material-grounded difficulty tag, shown per question. */

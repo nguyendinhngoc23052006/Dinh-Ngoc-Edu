@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { useEffect, useState } from 'react'
 import { getSession, onAuthChange } from '../services/authService'
 
 export interface AuthState {

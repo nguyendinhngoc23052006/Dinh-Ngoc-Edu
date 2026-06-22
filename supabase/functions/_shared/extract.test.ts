@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest'
 import { zipSync } from 'fflate'
+import { describe, expect, test } from 'vitest'
 import { MAX_FILE_BYTES, extractFileText } from './extract.ts'
 
 const encode = (text: string) => new TextEncoder().encode(text)

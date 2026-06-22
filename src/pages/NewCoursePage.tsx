@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import UploadForm from '../components/courses/UploadForm'
 import type { UploadInput } from '../components/courses/UploadForm'
-import { createCourse } from '../services/courseService'
-import { uploadMaterial } from '../services/materialService'
-import { startGeneration } from '../services/generationService'
 import { clearPendingCourse, getPendingCourse } from '../lib/pendingCourse'
+import { createCourse } from '../services/courseService'
+import { startGeneration } from '../services/generationService'
+import { uploadMaterial } from '../services/materialService'
 
 function NewCoursePage() {
   const navigate = useNavigate()

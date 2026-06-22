@@ -1,8 +1,5 @@
 import { useRef, useState } from 'react'
-import {
-  deleteMaterial,
-  uploadMaterial,
-} from '../../services/materialService'
+import { deleteMaterial, uploadMaterial } from '../../services/materialService'
 import type { CourseMaterial } from '../../types/database'
 
 interface MaterialsManagerProps {
@@ -91,8 +88,8 @@ function MaterialsManager({
       </label>
       <p className="course-meta">
         Text-based files only. Scanned PDFs (photos of book pages) and
-        handwritten notes are not supported — open in Google Docs and export
-        as PDF first.
+        handwritten notes are not supported — open in Google Docs and export as
+        PDF first.
       </p>
       {busy ? (
         <p className="state state-loading">Working — extracting text…</p>

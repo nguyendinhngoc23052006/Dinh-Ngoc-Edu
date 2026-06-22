@@ -6,8 +6,8 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom'
-import { useAuth } from '../../hooks/useAuth'
 import { useProfile } from '../../hooks/profileContext'
+import { useAuth } from '../../hooks/useAuth'
 import { signOut } from '../../services/authService'
 import CosmeticsLayer from './CosmeticsLayer'
 
@@ -61,7 +61,11 @@ function AppLayout() {
               <NavLink to="/pets">Pets</NavLink>
               <NavLink to="/settings">Settings</NavLink>
               {profile ? (
-                <Link to="/market" className="credit-badge" title="Your credits">
+                <Link
+                  to="/market"
+                  className="credit-badge"
+                  title="Your credits"
+                >
                   ⭐ {profile.credits}
                 </Link>
               ) : null}

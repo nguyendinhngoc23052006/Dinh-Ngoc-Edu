@@ -94,6 +94,8 @@ describe('deleteMaterial', () => {
     await expect(
       deleteMaterial({ id: 'm1', storage_path: 'u/c/notes.pdf' }),
     ).rejects.toThrow(/storage boom/)
-    expect(supabaseMock.calls.some((c) => c.path.endsWith('delete'))).toBe(false)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('delete'))).toBe(
+      false,
+    )
   })
 })

@@ -1,11 +1,11 @@
 import { describe, expect, test, vi } from 'vitest'
+import type { Question } from '../types/database'
 import {
   correctAnswerText,
   describeCorrectAnswer,
   gradeQuestion,
   shuffleLessonQuestions,
 } from './lessonService'
-import type { Question } from '../types/database'
 
 vi.mock('../lib/supabaseClient', () => ({ supabase: {} }))
 
@@ -209,6 +209,7 @@ describe('shuffleLessonQuestions', () => {
     const correctTexts = (indexes: number[], options: string[]) =>
       indexes.map((i) => options[i]).sort()
     for (const original of questions) {
+      // biome-ignore lint/style/noNonNullAssertion: guaranteed to exist — we verified all ids are present above
       const copy = shuffled.find((q) => q.id === original.id)!
       if (original.kind === 'fill_blank') {
         expect(copy.answer).toEqual(original.answer)

@@ -20,7 +20,9 @@ function DeleteAccountCard() {
       navigate('/')
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : 'Could not delete your account.',
+        cause instanceof Error
+          ? cause.message
+          : 'Could not delete your account.',
       )
       setDeleting(false)
     }

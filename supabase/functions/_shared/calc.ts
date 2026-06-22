@@ -84,7 +84,10 @@ function tokenize(input: string): Token[] {
     }
     if (isDigit(c) || (c === '.' && isDigit(input[i + 1] ?? ''))) {
       let j = i + 1
-      while (j < input.length && (isDigit(input[j] as string) || input[j] === '.')) {
+      while (
+        j < input.length &&
+        (isDigit(input[j] as string) || input[j] === '.')
+      ) {
         j += 1
       }
       const num = Number(input.slice(i, j))
@@ -100,11 +103,31 @@ function tokenize(input: string): Token[] {
       i = j
       continue
     }
-    if (c === '(') { tokens.push({ type: 'lparen' }); i += 1; continue }
-    if (c === ')') { tokens.push({ type: 'rparen' }); i += 1; continue }
-    if (c === ',') { tokens.push({ type: 'comma' }); i += 1; continue }
-    if (c === '?') { tokens.push({ type: 'question' }); i += 1; continue }
-    if (c === ':') { tokens.push({ type: 'colon' }); i += 1; continue }
+    if (c === '(') {
+      tokens.push({ type: 'lparen' })
+      i += 1
+      continue
+    }
+    if (c === ')') {
+      tokens.push({ type: 'rparen' })
+      i += 1
+      continue
+    }
+    if (c === ',') {
+      tokens.push({ type: 'comma' })
+      i += 1
+      continue
+    }
+    if (c === '?') {
+      tokens.push({ type: 'question' })
+      i += 1
+      continue
+    }
+    if (c === ':') {
+      tokens.push({ type: 'colon' })
+      i += 1
+      continue
+    }
     const two = input.slice(i, i + 2)
     if (MULTI_CHAR_OPS.includes(two)) {
       tokens.push({ type: 'op', value: two })
@@ -146,12 +169,17 @@ class Parser {
     return expr
   }
 
-  private peek(): Token | undefined { return this.tokens[this.pos] }
-  private advance(): Token { return this.tokens[this.pos++] as Token }
+  private peek(): Token | undefined {
+    return this.tokens[this.pos]
+  }
+  private advance(): Token {
+    return this.tokens[this.pos++] as Token
+  }
   private match(type: Token['type'], value?: string): boolean {
     const t = this.peek()
     if (!t || t.type !== type) return false
-    if (value !== undefined && (t as { value?: string }).value !== value) return false
+    if (value !== undefined && (t as { value?: string }).value !== value)
+      return false
     return true
   }
   private consume(type: Token['type'], value?: string): Token {
@@ -166,9 +194,13 @@ class Parser {
       throw new Error('Formula nesting exceeds depth limit.')
     }
   }
-  private leave(): void { this.depth -= 1 }
+  private leave(): void {
+    this.depth -= 1
+  }
 
-  private parseExpression(): AstNode { return this.parseTernary() }
+  private parseExpression(): AstNode {
+    return this.parseTernary()
+  }
 
   private parseTernary(): AstNode {
     this.enter()
@@ -218,8 +250,10 @@ class Parser {
   private parseComparison(): AstNode {
     let lhs = this.parseAdditive()
     while (
-      this.match('op', '<') || this.match('op', '<=') ||
-      this.match('op', '>') || this.match('op', '>=')
+      this.match('op', '<') ||
+      this.match('op', '<=') ||
+      this.match('op', '>') ||
+      this.match('op', '>=')
     ) {
       const op = (this.advance() as { value: string }).value
       const rhs = this.parseAdditive()
@@ -240,7 +274,11 @@ class Parser {
 
   private parseMultiplicative(): AstNode {
     let lhs = this.parsePower()
-    while (this.match('op', '*') || this.match('op', '/') || this.match('op', '%')) {
+    while (
+      this.match('op', '*') ||
+      this.match('op', '/') ||
+      this.match('op', '%')
+    ) {
       const op = (this.advance() as { value: string }).value
       const rhs = this.parsePower()
       lhs = { type: 'binop', op, lhs, rhs }
@@ -260,16 +298,28 @@ class Parser {
   }
 
   private parseUnary(): AstNode {
-    if (this.match('op', '-')) { this.advance(); return { type: 'unop', op: '-', arg: this.parseUnary() } }
-    if (this.match('op', '+')) { this.advance(); return { type: 'unop', op: '+', arg: this.parseUnary() } }
-    if (this.match('op', '!')) { this.advance(); return { type: 'unop', op: '!', arg: this.parseUnary() } }
+    if (this.match('op', '-')) {
+      this.advance()
+      return { type: 'unop', op: '-', arg: this.parseUnary() }
+    }
+    if (this.match('op', '+')) {
+      this.advance()
+      return { type: 'unop', op: '+', arg: this.parseUnary() }
+    }
+    if (this.match('op', '!')) {
+      this.advance()
+      return { type: 'unop', op: '!', arg: this.parseUnary() }
+    }
     return this.parsePrimary()
   }
 
   private parsePrimary(): AstNode {
     const t = this.peek()
     if (!t) throw new Error('Unexpected end of formula.')
-    if (t.type === 'num') { this.advance(); return { type: 'num', value: t.value } }
+    if (t.type === 'num') {
+      this.advance()
+      return { type: 'num', value: t.value }
+    }
     if (t.type === 'lparen') {
       this.advance()
       const inner = this.parseExpression()
@@ -293,7 +343,7 @@ class Parser {
       }
       return { type: 'var', name: t.value }
     }
-    throw new Error(`Unexpected token in formula.`)
+    throw new Error('Unexpected token in formula.')
   }
 }
 
@@ -323,8 +373,12 @@ const FUNCTIONS: Record<string, FunctionDef> = {
   max: { arity: 'variadic', fn: (a) => Math.max(...a) },
   sqrt: { arity: 1, fn: ([x]) => Math.sqrt(x as number) },
   cbrt: { arity: 1, fn: ([x]) => Math.cbrt(x as number) },
-  pow: { arity: 2, fn: ([b, e]) => Math.pow(b as number, e as number) },
-  mod: { arity: 2, fn: ([a, b]) => (a as number) - (b as number) * Math.floor((a as number) / (b as number)) },
+  pow: { arity: 2, fn: ([b, e]) => (b as number) ** (e as number) },
+  mod: {
+    arity: 2,
+    fn: ([a, b]) =>
+      (a as number) - (b as number) * Math.floor((a as number) / (b as number)),
+  },
 
   // ── Exponential / logarithmic ──
   exp: { arity: 1, fn: ([x]) => Math.exp(x as number) },
@@ -332,7 +386,10 @@ const FUNCTIONS: Record<string, FunctionDef> = {
   log: { arity: 1, fn: ([x]) => Math.log(x as number) },
   log2: { arity: 1, fn: ([x]) => Math.log2(x as number) },
   log10: { arity: 1, fn: ([x]) => Math.log10(x as number) },
-  logb: { arity: 2, fn: ([b, x]) => Math.log(x as number) / Math.log(b as number) },
+  logb: {
+    arity: 2,
+    fn: ([b, x]) => Math.log(x as number) / Math.log(b as number),
+  },
 
   // ── Trig (radians) ──
   sin: { arity: 1, fn: ([x]) => Math.sin(x as number) },
@@ -360,44 +417,92 @@ const FUNCTIONS: Record<string, FunctionDef> = {
   // ── Combinatorics / number theory ──
   factorial: { arity: 1, fn: ([n]) => factorialOf(n as number) },
   choose: { arity: 2, fn: ([n, k]) => chooseOf(n as number, k as number) },
-  perm: { arity: 2, fn: ([n, k]) => factorialOf(n as number) / factorialOf((n as number) - (k as number)) },
-  gcd: { arity: 2, fn: ([a, b]) => gcdOf(Math.abs(Math.trunc(a as number)), Math.abs(Math.trunc(b as number))) },
-  lcm: { arity: 2, fn: ([a, b]) => {
-    const aa = Math.abs(Math.trunc(a as number)), bb = Math.abs(Math.trunc(b as number))
-    if (aa === 0 || bb === 0) return 0
-    return (aa * bb) / gcdOf(aa, bb)
-  } },
+  perm: {
+    arity: 2,
+    fn: ([n, k]) =>
+      factorialOf(n as number) / factorialOf((n as number) - (k as number)),
+  },
+  gcd: {
+    arity: 2,
+    fn: ([a, b]) =>
+      gcdOf(
+        Math.abs(Math.trunc(a as number)),
+        Math.abs(Math.trunc(b as number)),
+      ),
+  },
+  lcm: {
+    arity: 2,
+    fn: ([a, b]) => {
+      const aa = Math.abs(Math.trunc(a as number))
+      const bb = Math.abs(Math.trunc(b as number))
+      if (aa === 0 || bb === 0) return 0
+      return (aa * bb) / gcdOf(aa, bb)
+    },
+  },
 
   // ── Statistics (variadic) ──
   sum: { arity: 'variadic', fn: (a) => a.reduce((s, x) => s + x, 0) },
   prod: { arity: 'variadic', fn: (a) => a.reduce((p, x) => p * x, 1) },
-  mean: { arity: 'variadic', fn: (a) => a.length === 0 ? NaN : a.reduce((s, x) => s + x, 0) / a.length },
-  median: { arity: 'variadic', fn: (a) => {
-    if (a.length === 0) return NaN
-    const sorted = [...a].sort((x, y) => x - y)
-    const mid = Math.floor(sorted.length / 2)
-    return sorted.length % 2 === 0
-      ? (((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2)
-      : (sorted[mid] as number)
-  } },
-  variance: { arity: 'variadic', fn: (a) => {
-    if (a.length === 0) return NaN
-    const m = a.reduce((s, x) => s + x, 0) / a.length
-    return a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length
-  } },
-  stdev: { arity: 'variadic', fn: (a) => {
-    if (a.length === 0) return NaN
-    const m = a.reduce((s, x) => s + x, 0) / a.length
-    return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length)
-  } },
+  mean: {
+    arity: 'variadic',
+    fn: (a) =>
+      a.length === 0 ? Number.NaN : a.reduce((s, x) => s + x, 0) / a.length,
+  },
+  median: {
+    arity: 'variadic',
+    fn: (a) => {
+      if (a.length === 0) return Number.NaN
+      const sorted = [...a].sort((x, y) => x - y)
+      const mid = Math.floor(sorted.length / 2)
+      return sorted.length % 2 === 0
+        ? ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2
+        : (sorted[mid] as number)
+    },
+  },
+  variance: {
+    arity: 'variadic',
+    fn: (a) => {
+      if (a.length === 0) return Number.NaN
+      const m = a.reduce((s, x) => s + x, 0) / a.length
+      return a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length
+    },
+  },
+  stdev: {
+    arity: 'variadic',
+    fn: (a) => {
+      if (a.length === 0) return Number.NaN
+      const m = a.reduce((s, x) => s + x, 0) / a.length
+      return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length)
+    },
+  },
 
   // ── Probability (closed-form / Abramowitz-Stegun erf approximation) ──
-  binom_pmf: { arity: 3, fn: ([n, k, p]) => binomPmf(n as number, k as number, p as number) },
-  binom_cdf: { arity: 3, fn: ([n, k, p]) => binomCdf(n as number, k as number, p as number) },
-  normal_pdf: { arity: 3, fn: ([x, mu, sigma]) => normalPdf(x as number, mu as number, sigma as number) },
-  normal_cdf: { arity: 3, fn: ([x, mu, sigma]) => normalCdf(x as number, mu as number, sigma as number) },
-  poisson_pmf: { arity: 2, fn: ([k, lam]) => poissonPmf(k as number, lam as number) },
-  poisson_cdf: { arity: 2, fn: ([k, lam]) => poissonCdf(k as number, lam as number) },
+  binom_pmf: {
+    arity: 3,
+    fn: ([n, k, p]) => binomPmf(n as number, k as number, p as number),
+  },
+  binom_cdf: {
+    arity: 3,
+    fn: ([n, k, p]) => binomCdf(n as number, k as number, p as number),
+  },
+  normal_pdf: {
+    arity: 3,
+    fn: ([x, mu, sigma]) =>
+      normalPdf(x as number, mu as number, sigma as number),
+  },
+  normal_cdf: {
+    arity: 3,
+    fn: ([x, mu, sigma]) =>
+      normalCdf(x as number, mu as number, sigma as number),
+  },
+  poisson_pmf: {
+    arity: 2,
+    fn: ([k, lam]) => poissonPmf(k as number, lam as number),
+  },
+  poisson_cdf: {
+    arity: 2,
+    fn: ([k, lam]) => poissonCdf(k as number, lam as number),
+  },
 
   // ── Specials (evaluated with custom scoping) ──
   sigma: { kind: 'special' },
@@ -412,17 +517,21 @@ const RESERVED_NAMES = new Set([
 ])
 
 function factorialOf(n: number): number {
-  if (!Number.isFinite(n) || n < 0 || n !== Math.trunc(n)) return NaN
-  if (n > 170) return Infinity
+  if (!Number.isFinite(n) || n < 0 || n !== Math.trunc(n)) return Number.NaN
+  if (n > 170) return Number.POSITIVE_INFINITY
   let r = 1
   for (let i = 2; i <= n; i += 1) r *= i
   return r
 }
 
 function chooseOf(n: number, k: number): number {
-  if (!Number.isFinite(n) || !Number.isFinite(k)) return NaN
-  n = Math.trunc(n); k = Math.trunc(k)
+  if (!Number.isFinite(n) || !Number.isFinite(k)) return Number.NaN
+  // biome-ignore lint/style/noParameterAssign: numerical algorithm — truncating inputs in-place is the standard combinatorics pattern
+  n = Math.trunc(n)
+  // biome-ignore lint/style/noParameterAssign: numerical algorithm
+  k = Math.trunc(k)
   if (k < 0 || k > n) return 0
+  // biome-ignore lint/style/noParameterAssign: numerical algorithm — mirror symmetry optimisation C(n,k)=C(n,n-k)
   if (k > n - k) k = n - k
   let r = 1
   for (let i = 0; i < k; i += 1) r = (r * (n - i)) / (i + 1)
@@ -430,16 +539,20 @@ function chooseOf(n: number, k: number): number {
 }
 
 function gcdOf(a: number, b: number): number {
-  while (b !== 0) { [a, b] = [b, a % b] }
+  while (b !== 0) {
+    // biome-ignore lint/style/noParameterAssign: Euclidean GCD — standard destructuring swap in-place
+    ;[a, b] = [b, a % b]
+  }
   return a
 }
 
 // ── Probability closed-form helpers ──
 
 function binomPmf(n: number, k: number, p: number): number {
-  if (!Number.isFinite(n) || !Number.isFinite(k) || !Number.isFinite(p)) return NaN
+  if (!Number.isFinite(n) || !Number.isFinite(k) || !Number.isFinite(p))
+    return Number.NaN
   if (k < 0 || k > n || p < 0 || p > 1) return 0
-  return chooseOf(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k)
+  return chooseOf(n, k) * p ** k * (1 - p) ** (n - k)
 }
 
 function binomCdf(n: number, k: number, p: number): number {
@@ -451,7 +564,7 @@ function binomCdf(n: number, k: number, p: number): number {
 }
 
 function normalPdf(x: number, mu: number, sigma: number): number {
-  if (sigma <= 0) return NaN
+  if (sigma <= 0) return Number.NaN
   const z = (x - mu) / sigma
   return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI))
 }
@@ -462,18 +575,24 @@ function erf(x: number): number {
   const sign = x < 0 ? -1 : 1
   const ax = Math.abs(x)
   const t = 1 / (1 + 0.3275911 * ax)
-  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax)
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) *
+      t +
+      0.254829592) *
+      t *
+      Math.exp(-ax * ax)
   return sign * y
 }
 
 function normalCdf(x: number, mu: number, sigma: number): number {
-  if (sigma <= 0) return NaN
+  if (sigma <= 0) return Number.NaN
   return 0.5 * (1 + erf((x - mu) / (sigma * Math.sqrt(2))))
 }
 
 function poissonPmf(k: number, lam: number): number {
-  if (lam < 0 || k < 0 || k !== Math.trunc(k)) return NaN
-  return Math.exp(-lam) * Math.pow(lam, k) / factorialOf(k)
+  if (lam < 0 || k < 0 || k !== Math.trunc(k)) return Number.NaN
+  return (Math.exp(-lam) * lam ** k) / factorialOf(k)
 }
 
 function poissonCdf(k: number, lam: number): number {
@@ -487,7 +606,9 @@ function poissonCdf(k: number, lam: number): number {
 // Evaluator
 // ────────────────────────────────────────────────────────────────────────────
 
-function truthy(v: number): boolean { return v !== 0 && !Number.isNaN(v) }
+function truthy(v: number): boolean {
+  return v !== 0 && !Number.isNaN(v)
+}
 
 function evaluateAst(node: AstNode, scope: Record<string, number>): number {
   if (node.type === 'num') return node.value
@@ -521,39 +642,60 @@ function evaluateAst(node: AstNode, scope: Record<string, number>): number {
     }
     if (node.op === '||') {
       const a = evaluateAst(node.lhs, scope)
-      return truthy(a) ? 1 : (truthy(evaluateAst(node.rhs, scope)) ? 1 : 0)
+      return truthy(a) ? 1 : truthy(evaluateAst(node.rhs, scope)) ? 1 : 0
     }
     const a = evaluateAst(node.lhs, scope)
     const b = evaluateAst(node.rhs, scope)
     switch (node.op) {
-      case '+': return a + b
-      case '-': return a - b
-      case '*': return a * b
-      case '/': return a / b
-      case '%': return a - b * Math.floor(a / b)
-      case '^': return Math.pow(a, b)
-      case '<': return a < b ? 1 : 0
-      case '<=': return a <= b ? 1 : 0
-      case '>': return a > b ? 1 : 0
-      case '>=': return a >= b ? 1 : 0
-      case '==': return a === b ? 1 : 0
-      case '!=': return a !== b ? 1 : 0
-      default: throw new Error(`Unknown operator "${node.op}".`)
+      case '+':
+        return a + b
+      case '-':
+        return a - b
+      case '*':
+        return a * b
+      case '/':
+        return a / b
+      case '%':
+        return a - b * Math.floor(a / b)
+      case '^':
+        return a ** b
+      case '<':
+        return a < b ? 1 : 0
+      case '<=':
+        return a <= b ? 1 : 0
+      case '>':
+        return a > b ? 1 : 0
+      case '>=':
+        return a >= b ? 1 : 0
+      case '==':
+        return a === b ? 1 : 0
+      case '!=':
+        return a !== b ? 1 : 0
+      default:
+        throw new Error(`Unknown operator "${node.op}".`)
     }
   }
   if (node.type === 'call') return evaluateCall(node, scope)
   throw new Error('Unknown AST node.')
 }
 
-function evaluateCall(node: { type: 'call'; name: string; args: AstNode[] }, scope: Record<string, number>): number {
+function evaluateCall(
+  node: { type: 'call'; name: string; args: AstNode[] },
+  scope: Record<string, number>,
+): number {
   const def = FUNCTIONS[node.name]
   if (!def) throw new Error(`Unknown function "${node.name}".`)
   if ('kind' in def && def.kind === 'special') {
     return evaluateSpecialCall(node.name, node.args, scope)
   }
-  const fnDef = def as { arity: number | 'variadic'; fn: (args: number[]) => number }
+  const fnDef = def as {
+    arity: number | 'variadic'
+    fn: (args: number[]) => number
+  }
   if (fnDef.arity !== 'variadic' && node.args.length !== fnDef.arity) {
-    throw new Error(`"${node.name}" expects ${fnDef.arity} arg(s), got ${node.args.length}.`)
+    throw new Error(
+      `"${node.name}" expects ${fnDef.arity} arg(s), got ${node.args.length}.`,
+    )
   }
   const values = node.args.map((arg) => evaluateAst(arg, scope))
   return fnDef.fn(values)
@@ -562,12 +704,18 @@ function evaluateCall(node: { type: 'call'; name: string; args: AstNode[] }, sco
 // Specials use custom scoping: `sigma(lo, hi, body)` binds `i` over the
 // integer range; `iterate(init, count, body)` binds `x` over each iteration;
 // `cases(c1, v1, c2, v2, ..., default)` short-circuits like a switch.
-function evaluateSpecialCall(name: string, args: AstNode[], scope: Record<string, number>): number {
+function evaluateSpecialCall(
+  name: string,
+  args: AstNode[],
+  scope: Record<string, number>,
+): number {
   if (name === 'sigma' || name === 'pi_iter') {
-    if (args.length !== 3) throw new Error(`"${name}" expects 3 args: (lo, hi, body).`)
+    if (args.length !== 3)
+      throw new Error(`"${name}" expects 3 args: (lo, hi, body).`)
     const lo = Math.round(evaluateAst(args[0] as AstNode, scope))
     const hi = Math.round(evaluateAst(args[1] as AstNode, scope))
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) throw new Error(`"${name}" bounds must be finite.`)
+    if (!Number.isFinite(lo) || !Number.isFinite(hi))
+      throw new Error(`"${name}" bounds must be finite.`)
     const span = hi - lo + 1
     if (span < 0 || span > MAX_ITERATIONS) {
       throw new Error(`"${name}" range exceeds ${MAX_ITERATIONS} iterations.`)
@@ -582,7 +730,8 @@ function evaluateSpecialCall(name: string, args: AstNode[], scope: Record<string
     return acc
   }
   if (name === 'iterate') {
-    if (args.length !== 3) throw new Error('"iterate" expects 3 args: (init, count, body).')
+    if (args.length !== 3)
+      throw new Error('"iterate" expects 3 args: (init, count, body).')
     const init = evaluateAst(args[0] as AstNode, scope)
     const count = Math.round(evaluateAst(args[1] as AstNode, scope))
     if (!Number.isFinite(count) || count < 0 || count > MAX_ITERATIONS) {
@@ -593,15 +742,19 @@ function evaluateSpecialCall(name: string, args: AstNode[], scope: Record<string
     for (let i = 0; i < count; i += 1) {
       inner.x = x
       x = evaluateAst(args[2] as AstNode, inner)
-      if (!Number.isFinite(x)) throw new Error('"iterate" diverged to a non-finite value.')
+      if (!Number.isFinite(x))
+        throw new Error('"iterate" diverged to a non-finite value.')
     }
     return x
   }
   if (name === 'cases') {
-    if (args.length < 1) throw new Error('"cases" needs at least a default value.')
+    if (args.length < 1)
+      throw new Error('"cases" needs at least a default value.')
     // Pairs of (cond, val), then a trailing default.
     if (args.length % 2 !== 1) {
-      throw new Error('"cases" needs an odd arg count: (cond1, val1, cond2, val2, ..., default).')
+      throw new Error(
+        '"cases" needs an odd arg count: (cond1, val1, cond2, val2, ..., default).',
+      )
     }
     for (let i = 0; i < args.length - 1; i += 2) {
       const cond = evaluateAst(args[i] as AstNode, scope)
@@ -613,7 +766,10 @@ function evaluateSpecialCall(name: string, args: AstNode[], scope: Record<string
 }
 
 // Public: parse + evaluate a single formula in one shot.
-export function evaluate(formula: string, scope: Record<string, number>): number {
+export function evaluate(
+  formula: string,
+  scope: Record<string, number>,
+): number {
   const result = evaluateAst(parseFormula(formula), scope)
   if (!Number.isFinite(result)) {
     throw new Error('Formula did not evaluate to a finite number.')
@@ -630,7 +786,10 @@ function roundTo(value: number, decimals: number): number {
 // order (binding its name in the scope), then runs the final formula over the
 // extended scope. The one source the generator, the lesson UI, and the
 // server-side regrade all agree on.
-export function computeExpected(spec: CalcSpec, values: Record<string, number>): number {
+export function computeExpected(
+  spec: CalcSpec,
+  values: Record<string, number>,
+): number {
   const scope: Record<string, number> = { ...values }
   for (const step of spec.steps ?? []) {
     const v = evaluate(step.formula, scope)
@@ -657,7 +816,9 @@ export function generateInstance(
   const expected = computeExpected(spec, values)
   let prompt = spec.prompt_template
   for (const variable of spec.variables) {
-    prompt = prompt.split(`{${variable.name}}`).join(formatNumber(values[variable.name] as number))
+    prompt = prompt
+      .split(`{${variable.name}}`)
+      .join(formatNumber(values[variable.name] as number))
   }
   return { prompt, values, expected }
 }
@@ -688,7 +849,9 @@ export function validateCalcSpec(raw: unknown): CalcSpec | null {
   if (!raw || typeof raw !== 'object') return null
   const record = raw as Record<string, unknown>
   const formula =
-    typeof record.formula === 'string' ? record.formula.trim().slice(0, MAX_FORMULA_CHARS) : ''
+    typeof record.formula === 'string'
+      ? record.formula.trim().slice(0, MAX_FORMULA_CHARS)
+      : ''
   const promptTemplate =
     typeof record.prompt_template === 'string'
       ? record.prompt_template.trim().slice(0, 500)
@@ -702,8 +865,8 @@ export function validateCalcSpec(raw: unknown): CalcSpec | null {
     const value = rawVariable as Record<string, unknown>
     const name = typeof value.name === 'string' ? value.name.trim() : ''
     if (!VARIABLE_NAME.test(name) || RESERVED_NAMES.has(name)) continue
-    let min = typeof value.min === 'number' ? value.min : NaN
-    let max = typeof value.max === 'number' ? value.max : NaN
+    let min = typeof value.min === 'number' ? value.min : Number.NaN
+    let max = typeof value.max === 'number' ? value.max : Number.NaN
     if (!Number.isFinite(min) || !Number.isFinite(max)) continue
     if (min > max) [min, max] = [max, min]
     const decimals =
@@ -713,7 +876,8 @@ export function validateCalcSpec(raw: unknown): CalcSpec | null {
     variables.push({ name, min, max, decimals })
   }
   if (variables.length === 0) return null
-  if (new Set(variables.map((v) => v.name)).size !== variables.length) return null
+  if (new Set(variables.map((v) => v.name)).size !== variables.length)
+    return null
 
   // Step parsing: each step's name must be a fresh, unreserved identifier and
   // its formula must parse + evaluate on the running midpoint sample. A
@@ -729,9 +893,12 @@ export function validateCalcSpec(raw: unknown): CalcSpec | null {
     if (!rawStep || typeof rawStep !== 'object') return null
     const stepRec = rawStep as Record<string, unknown>
     const stepName = typeof stepRec.name === 'string' ? stepRec.name.trim() : ''
-    const stepFormula = typeof stepRec.formula === 'string'
-      ? stepRec.formula.trim().slice(0, MAX_FORMULA_CHARS) : ''
-    if (!VARIABLE_NAME.test(stepName) || RESERVED_NAMES.has(stepName)) return null
+    const stepFormula =
+      typeof stepRec.formula === 'string'
+        ? stepRec.formula.trim().slice(0, MAX_FORMULA_CHARS)
+        : ''
+    if (!VARIABLE_NAME.test(stepName) || RESERVED_NAMES.has(stepName))
+      return null
     if (knownNames.has(stepName)) return null
     if (!stepFormula) return null
     try {

@@ -1,7 +1,7 @@
-// @vitest-environment happy-dom
-import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const navigate = vi.fn()
 const invoke = vi.fn()
@@ -21,7 +21,9 @@ vi.mock('../../lib/supabaseClient', () => ({
 import DeleteAccountCard from './DeleteAccountCard'
 
 function deleteButton() {
-  return screen.getByRole('button', { name: 'Delete my account' }) as HTMLButtonElement
+  return screen.getByRole('button', {
+    name: 'Delete my account',
+  }) as HTMLButtonElement
 }
 
 describe('DeleteAccountCard', () => {
@@ -54,13 +56,17 @@ describe('DeleteAccountCard', () => {
   })
 
   test('on failure it shows the error and does not navigate away', async () => {
-    invoke.mockResolvedValue({ error: { message: 'Could not delete your account.' } })
+    invoke.mockResolvedValue({
+      error: { message: 'Could not delete your account.' },
+    })
     render(<DeleteAccountCard />)
 
     await userEvent.type(screen.getByPlaceholderText('DELETE'), 'DELETE')
     await userEvent.click(deleteButton())
 
-    expect(await screen.findByText('Could not delete your account.')).toBeTruthy()
+    expect(
+      await screen.findByText('Could not delete your account.'),
+    ).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
     // Re-enabled so the user can retry.
     expect(deleteButton().disabled).toBe(false)

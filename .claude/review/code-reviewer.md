@@ -1,19 +1,14 @@
-# Code Review — PR #67 generation pipeline rework
+# Code review — Biome + Depot migration (2026-06-22)
 
-## Verdict: PASS
+**Verdict: PASS** (findings resolved before PR opened)
 
-### Findings
-1. **`fillMissingQuestions` atomic claim:** Correctly dispatched only after the same atomic claim that guards `generate`. `needsFill=true` cannot be set on a course in `processing` state.
+Initial findings — both fixed:
+1. `src/hooks/useAsync.ts:3-5` — leftover `/* eslint-disable */` block comment → removed
+2. `src/hooks/ProfileProvider.tsx:15-16,36` — leftover ESLint disable/enable pair → removed
+3. `MEMORY.md:10,12-13,16` — stale ESLint/Prettier toolchain entries → updated to Biome
 
-2. **`force=true` path correct:** When `force=true`, the early-return block is skipped entirely, so `needsFill` stays `false` and `generate` (full wipe+rebuild) is dispatched — correct.
-
-3. **`SyllabusNode` synthetic shape:** `generateLessonQuestions` needs `title`, `chunk_index`, and optionally `summary`. The synthetic node sets all three (`summary: ''` for fill path). Type-safe.
-
-4. **Concurrency of per-node updates:** `mapConcurrent(underfilled, CHAPTER_CONCURRENCY, ...)` runs at most 4 parallel deletes+inserts. Each delete is scoped by `node_id` (indexed FK). No contention beyond normal PG row locks.
-
-5. **Thinking budget 1024:** Values 1–1023 are all promoted to 1024 internally by Gemini 2.5 Flash; setting 1024 explicitly is idiomatic and correct.
-
-6. **Test additions:** Two new assertions cover the fill_blank single-blank constraint and the mcq_multi few-shot example. Existing constant assertions still pass (MIN=5 < QUESTIONS=8 > 0).
-
-### Deliberate debt noted (not blockers)
-- Per-node `credit_prize` UPDATE in fill path mirrors the existing pattern in `generateChapter`. Batch-upsert refactor deferred as stand-alone cleanup.
+All biome-ignore suppressions are justified with explanations. Migration is complete:
+- No remaining ESLint/Prettier references in source files
+- `lint` script name preserved (CI contract)
+- `lint:fix` added for local developer use
+- No src/services files changed (no sibling test requirement triggered)

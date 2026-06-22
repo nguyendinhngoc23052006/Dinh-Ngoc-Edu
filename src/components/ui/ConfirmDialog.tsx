@@ -41,12 +41,14 @@ function ConfirmDialog({
   if (!open) return null
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: overlay backdrop dismiss is click-only by convention; Escape is handled at document level by the dialog role
     <div
       className="modal-overlay"
       onClick={() => {
         if (!busy) onCancel()
       }}
     >
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: alertdialog traps focus; keyboard dismiss is handled by the role and the Cancel button */}
       <div
         className="modal-card"
         role="alertdialog"

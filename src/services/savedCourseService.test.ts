@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { supabaseMock, sessionResult } from '../test/supabaseMock'
+import { sessionResult, supabaseMock } from '../test/supabaseMock'
 import {
   cloneCourse,
   listSavedCourseIds,

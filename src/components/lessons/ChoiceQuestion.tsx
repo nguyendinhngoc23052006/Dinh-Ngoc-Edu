@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Question } from '../../types/database'
 import type { QuestionResponse } from '../../services/lessonService'
+import type { Question } from '../../types/database'
 import MathText from './MathText'
 
 interface ChoiceQuestionProps {
@@ -26,10 +26,13 @@ function ChoiceQuestion({ question, onSubmit }: ChoiceQuestionProps) {
 
   return (
     <div className="question">
-      <p className="prompt"><MathText text={question.prompt} /></p>
+      <p className="prompt">
+        <MathText text={question.prompt} />
+      </p>
       {multi ? <p className="hint">Select all that apply.</p> : null}
       <ul className="options">
         {question.options.map((option, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: options are plain strings with no stable ID
           <li key={index}>
             <label>
               <input

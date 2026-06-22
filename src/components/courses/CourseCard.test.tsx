@@ -1,9 +1,9 @@
-// @vitest-environment happy-dom
-import { describe, expect, test } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import CourseCard from './CourseCard'
+// @vitest-environment happy-dom
+import { describe, expect, test } from 'vitest'
 import type { Course } from '../../types/database'
+import CourseCard from './CourseCard'
 
 const course: Course = {
   id: 'course-1',
@@ -25,7 +25,9 @@ describe('CourseCard', () => {
   test('links to the course and shows status + visibility meta', () => {
     renderCard(<CourseCard course={course} />)
 
-    const link = screen.getByRole('link', { name: 'Linear Algebra' }) as HTMLAnchorElement
+    const link = screen.getByRole('link', {
+      name: 'Linear Algebra',
+    }) as HTMLAnchorElement
     expect(link.getAttribute('href')).toBe('/courses/course-1')
     expect(screen.getByText(/English · Ready · Public/)).toBeTruthy()
   })
@@ -43,7 +45,9 @@ describe('CourseCard', () => {
   })
 
   test('renders the progress bar only when there is progress', () => {
-    renderCard(<CourseCard course={course} progress={{ completed: 3, total: 10 }} />)
+    renderCard(
+      <CourseCard course={course} progress={{ completed: 3, total: 10 }} />,
+    )
     expect(screen.getByText('3 / 10 lessons')).toBeTruthy()
 
     const bar = document.querySelector('progress') as HTMLProgressElement
@@ -52,7 +56,9 @@ describe('CourseCard', () => {
   })
 
   test('hides the progress bar when total is zero', () => {
-    renderCard(<CourseCard course={course} progress={{ completed: 0, total: 0 }} />)
+    renderCard(
+      <CourseCard course={course} progress={{ completed: 0, total: 0 }} />,
+    )
     expect(document.querySelector('progress')).toBeNull()
   })
 })

@@ -16,7 +16,10 @@ beforeEach(() => supabaseMock.reset([]))
 describe('listOwnedCosmeticIds', () => {
   test('returns the owned ids as a set', async () => {
     supabaseMock.reset([
-      { data: [{ cosmetic_id: 'theme-ocean' }, { cosmetic_id: 'pet-cat' }], error: null },
+      {
+        data: [{ cosmetic_id: 'theme-ocean' }, { cosmetic_id: 'pet-cat' }],
+        error: null,
+      },
     ])
     expect(await listOwnedCosmeticIds()).toEqual(
       new Set(['theme-ocean', 'pet-cat']),
@@ -42,7 +45,9 @@ describe('purchaseCosmetic', () => {
   })
 
   test('passes the RPC error message through (e.g. not enough credits)', async () => {
-    supabaseMock.reset([{ data: null, error: { message: 'Not enough credits.' } }])
+    supabaseMock.reset([
+      { data: null, error: { message: 'Not enough credits.' } },
+    ])
     await expect(purchaseCosmetic('theme-midnight', 'key-2')).rejects.toThrow(
       /Not enough credits/,
     )

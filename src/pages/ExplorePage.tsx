@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import CourseCard from '../components/courses/CourseCard'
 import { useAsync } from '../hooks/useAsync'
 import {
+  PAGE_SIZE,
   listOutputLanguages,
   listPublicCourses,
-  PAGE_SIZE,
 } from '../services/courseService'
 import type { PublicCourseSort } from '../services/courseService'
 import { getDisplayNames } from '../services/profileService'
@@ -13,7 +14,6 @@ import {
   saveCourse,
   unsaveCourse,
 } from '../services/savedCourseService'
-import CourseCard from '../components/courses/CourseCard'
 
 function ExplorePage() {
   const [page, setPage] = useState(0)

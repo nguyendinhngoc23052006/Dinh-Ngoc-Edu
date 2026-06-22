@@ -1,11 +1,13 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
 // @vitest-environment happy-dom
 import { describe, expect, test, vi } from 'vitest'
-import { renderHook, waitFor, act } from '@testing-library/react'
 import { useAsync } from './useAsync'
 
 describe('useAsync', () => {
   test('starts loading, then resolves with data', async () => {
-    const { result } = renderHook(() => useAsync(() => Promise.resolve('hi'), []))
+    const { result } = renderHook(() =>
+      useAsync(() => Promise.resolve('hi'), []),
+    )
 
     expect(result.current.loading).toBe(true)
     expect(result.current.data).toBeNull()

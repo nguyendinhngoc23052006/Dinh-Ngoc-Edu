@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import CourseMap from '../components/courses/CourseMap'
+import OwnerCourseControls from '../components/courses/OwnerCourseControls'
+import MockTestList from '../components/mock-tests/MockTestList'
 import { useAsync } from '../hooks/useAsync'
 import { useAuth } from '../hooks/useAuth'
+import { statusLabel } from '../lib/courseLabels'
 import {
   deleteCourse,
   getCourse,
   renameCourse,
   setCourseVisibility,
 } from '../services/courseService'
+import { startGeneration } from '../services/generationService'
 import { getCourseContent } from '../services/lessonService'
 import { listMaterials } from '../services/materialService'
-import { getCompletedNodeIds } from '../services/progressService'
-import { getDisplayNames } from '../services/profileService'
-import { statusLabel } from '../lib/courseLabels'
-import { cloneCourse, saveCourse } from '../services/savedCourseService'
 import {
   deleteMockTest,
   listMyMockTests,
   renameMockTest,
 } from '../services/mockTestService'
-import { startGeneration } from '../services/generationService'
-import CourseMap from '../components/courses/CourseMap'
-import OwnerCourseControls from '../components/courses/OwnerCourseControls'
-import MockTestList from '../components/mock-tests/MockTestList'
+import { getDisplayNames } from '../services/profileService'
+import { getCompletedNodeIds } from '../services/progressService'
+import { cloneCourse, saveCourse } from '../services/savedCourseService'
 import type { Visibility } from '../types/database'
 
 const POLL_MS = 4000
@@ -273,36 +273,38 @@ function CoursePage() {
         )
       ) : null}
       {course.status === 'ready' &&
-      chapters.some((c) => c.nodes.some((n) => n.question_count < 5)) ? (
-        (() => {
-          const totalLessons = chapters.reduce((s, c) => s + c.nodes.length, 0)
-          const incompleteLessons = chapters.reduce(
-            (s, c) =>
-              s + c.nodes.filter((n) => n.question_count < 5).length,
-            0,
-          )
-          return (
-            <p className="state state-error">
-              {incompleteLessons} of {totalLessons} lessons need more
-              questions.
-              {isOwner ? (
-                <>
-                  {' '}
-                  Tap to fill them — only the incomplete lessons are
-                  regenerated, your other lessons and progress are preserved.{' '}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleStartGeneration}
-                  >
-                    Fill incomplete lessons
-                  </button>
-                </>
-              ) : null}
-            </p>
-          )
-        })()
-      ) : null}
+      chapters.some((c) => c.nodes.some((n) => n.question_count < 5))
+        ? (() => {
+            const totalLessons = chapters.reduce(
+              (s, c) => s + c.nodes.length,
+              0,
+            )
+            const incompleteLessons = chapters.reduce(
+              (s, c) => s + c.nodes.filter((n) => n.question_count < 5).length,
+              0,
+            )
+            return (
+              <p className="state state-error">
+                {incompleteLessons} of {totalLessons} lessons need more
+                questions.
+                {isOwner ? (
+                  <>
+                    {' '}
+                    Tap to fill them — only the incomplete lessons are
+                    regenerated, your other lessons and progress are preserved.{' '}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleStartGeneration}
+                    >
+                      Fill incomplete lessons
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            )
+          })()
+        : null}
       {course.status === 'failed' ? (
         <p className="state state-error">
           Generation failed

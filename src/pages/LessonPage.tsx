@@ -1,17 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useAsync } from '../hooks/useAsync'
+import LessonPlayer from '../components/lessons/LessonPlayer'
 import { useProfile } from '../hooks/profileContext'
+import { useAsync } from '../hooks/useAsync'
 import {
   completeLesson,
   getNodeQuestions,
   shuffleLessonQuestions,
 } from '../services/lessonService'
-import type {
-  LessonResult,
-  LessonSubmission,
-} from '../services/lessonService'
-import LessonPlayer from '../components/lessons/LessonPlayer'
+import type { LessonResult, LessonSubmission } from '../services/lessonService'
 
 function LessonPage() {
   const { courseId = '', nodeId = '' } = useParams()

@@ -1,8 +1,8 @@
-import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import type { Course } from '../../types/database'
-import type { CourseProgress } from '../../services/progressService'
+import { Link } from 'react-router-dom'
 import { statusLabel, visibilityLabel } from '../../lib/courseLabels'
+import type { CourseProgress } from '../../services/progressService'
+import type { Course } from '../../types/database'
 
 interface CourseCardProps {
   course: Course

@@ -5,10 +5,7 @@ import type { Profile } from '../types/database'
 // to the caller; the row itself is created by a signup trigger, so a freshly
 // migrated account always has one. Returns null when logged out.
 export async function getMyProfile(): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select()
-    .maybeSingle()
+  const { data, error } = await supabase.from('profiles').select().maybeSingle()
   if (error) throw new Error(error.message)
   return (data as Profile | null) ?? null
 }

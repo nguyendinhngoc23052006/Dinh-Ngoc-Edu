@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAsync } from '../hooks/useAsync'
+import DeleteAccountCard from '../components/settings/DeleteAccountCard'
 import { useProfile } from '../hooks/profileContext'
+import { useAsync } from '../hooks/useAsync'
 import { dimensionLabel } from '../lib/dimensions'
 import {
+  equipCosmetic,
   listCosmetics,
   listOwnedCosmeticIds,
-  equipCosmetic,
 } from '../services/cosmeticsService'
 import {
   setDisplayName,
   setPetCheersEnabled,
   setPetEnabled,
 } from '../services/profileService'
-import DeleteAccountCard from '../components/settings/DeleteAccountCard'
 
 function SettingsPage() {
   const { profile, setProfile } = useProfile()
@@ -27,7 +27,10 @@ function SettingsPage() {
   const [nameSaved, setNameSaved] = useState(false)
   const name = nameEdit ?? profile?.display_name ?? ''
 
-  async function save(apply: () => Promise<void>, patch: Partial<typeof profile>) {
+  async function save(
+    apply: () => Promise<void>,
+    patch: Partial<typeof profile>,
+  ) {
     setBusy(true)
     setError(null)
     try {

@@ -38,40 +38,46 @@ const calc: GradableQuestion = {
 
 describe('isExactlyCorrect', () => {
   test('mcq matches by option text, not index (survives shuffling)', () => {
-    expect(isExactlyCorrect(mcq, { kind: 'choice', selected: ['Mitochondria'] })).toBe(
-      true,
-    )
-    expect(isExactlyCorrect(mcq, { kind: 'choice', selected: ['Nucleus'] })).toBe(
-      false,
-    )
+    expect(
+      isExactlyCorrect(mcq, { kind: 'choice', selected: ['Mitochondria'] }),
+    ).toBe(true)
+    expect(
+      isExactlyCorrect(mcq, { kind: 'choice', selected: ['Nucleus'] }),
+    ).toBe(false)
   })
 
   test('mcq_multi needs the exact set — no missing, no extra', () => {
-    expect(isExactlyCorrect(mcqMulti, { kind: 'choice', selected: ['C', 'A'] })).toBe(
-      true,
-    )
-    expect(isExactlyCorrect(mcqMulti, { kind: 'choice', selected: ['A'] })).toBe(false)
+    expect(
+      isExactlyCorrect(mcqMulti, { kind: 'choice', selected: ['C', 'A'] }),
+    ).toBe(true)
+    expect(
+      isExactlyCorrect(mcqMulti, { kind: 'choice', selected: ['A'] }),
+    ).toBe(false)
     expect(
       isExactlyCorrect(mcqMulti, { kind: 'choice', selected: ['A', 'B', 'C'] }),
     ).toBe(false)
   })
 
   test('fill_blank is an exact normalized match (no fuzzy credit)', () => {
-    expect(isExactlyCorrect(fill, { kind: 'text', text: '  the SUN ' })).toBe(true)
+    expect(isExactlyCorrect(fill, { kind: 'text', text: '  the SUN ' })).toBe(
+      true,
+    )
     expect(isExactlyCorrect(fill, { kind: 'text', text: 'sunn' })).toBe(false)
   })
 
   test('calc re-computes from the submitted values', () => {
-    expect(isExactlyCorrect(calc, { kind: 'calc', values: { x: 4 }, answer: 8 })).toBe(
-      true,
-    )
-    expect(isExactlyCorrect(calc, { kind: 'calc', values: { x: 4 }, answer: 7 })).toBe(
-      false,
-    )
+    expect(
+      isExactlyCorrect(calc, { kind: 'calc', values: { x: 4 }, answer: 8 }),
+    ).toBe(true)
+    expect(
+      isExactlyCorrect(calc, { kind: 'calc', values: { x: 4 }, answer: 7 }),
+    ).toBe(false)
   })
 
   test('a mismatched answer kind is never correct', () => {
-    expect(isExactlyCorrect(mcq, { kind: 'text', text: 'Mitochondria' })).toBe(false)
+    expect(isExactlyCorrect(mcq, { kind: 'text', text: 'Mitochondria' })).toBe(
+      false,
+    )
   })
 })
 
