@@ -7,7 +7,7 @@ on:
 
 jobs:
   tests:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,7 +21,7 @@ jobs:
         run: tail -n 15 test-output.log >> "$GITHUB_STEP_SUMMARY"
 
   lint:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,7 +32,7 @@ jobs:
       - run: npm run lint
 
   typecheck:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

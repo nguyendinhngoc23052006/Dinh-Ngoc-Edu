@@ -1,6 +1,6 @@
-Replace ESLint + Prettier with Biome, and switch CI runners to Depot.
+Replace ESLint + Prettier with Biome.
 
-Biome replaces two separate tools with one binary that is ~10–25× faster in CI. Depot replaces GitHub's default runners with up to 3× faster build execution and 10× faster cache I/O.
+Biome replaces two separate tools with one binary that is ~10–25× faster in CI. The `lint` script name and all CI job names are unchanged.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -15,12 +15,10 @@ Biome replaces two separate tools with one binary that is ~10–25× faster in C
 - [x] every subagent dispatched on a model below the orchestrator's — haiku used for all three reviewers
 
 ## For you
-**What changed:** ESLint + Prettier removed; Biome 1.9.4 installed (`biome check .` = lint, `biome check --write .` = fix). Pre-existing patterns that Biome flags but ESLint didn't (KaTeX dangerouslySetInnerHTML, numerical parameter assigns, etc.) have targeted `biome-ignore` comments with explanations. Both `ci.yml` and `e2e.yml` now use `runs-on: depot-ubuntu-latest` for faster builds.
+**What changed:** ESLint + Prettier removed; Biome 1.9.4 installed (`biome check .` = lint, `biome check --write .` = fix). Pre-existing patterns that Biome flags but ESLint didn't have targeted `biome-ignore` comments with explanations. CI workflows unchanged (still `ubuntu-latest`).
 
-**What you do next:** Two things before merging — both are yours to do:
-1. **depot.dev → Sign up → Install the Depot GitHub App for this repository.** (If you skip this, CI will fail with "depot-ubuntu-latest" runner not found.)
-2. **Confirm Depot is installed**, then merge.
+**What you do next:** Review the preview, then merge — no env vars or secrets needed.
 
-**How to roll it back:** Revert this PR. To restore ESLint + Prettier, the old `eslint.config.js`, `.prettierrc`, `.prettierignore` and their devDependencies are in the git history. To restore GitHub runners, change `depot-ubuntu-latest` back to `ubuntu-latest` in both workflow files.
+**How to roll it back:** Revert this PR. The old `eslint.config.js`, `.prettierrc`, `.prettierignore` and their devDependencies are in the git history.
 
 no new lesson — all suppressions documented in MEMORY.md under Biome suppression format entry.
