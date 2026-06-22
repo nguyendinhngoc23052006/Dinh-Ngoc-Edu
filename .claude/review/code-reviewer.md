@@ -1,11 +1,20 @@
-# Code review — KaTeX math rendering
+# Code Review — fill_blank multi-blank validation
 
-**Verdict: PASS — one finding fixed pre-push**
+## Verdict: PASS
 
-Reviewed: `src/components/lessons/MathText.tsx`, `LessonPlayer.tsx`, `ChoiceQuestion.tsx`, `FillBlankQuestion.tsx`, `CalcQuestion.tsx`, `src/main.tsx`
+### Findings
+1. **Structural guard placement:** `validateQuestion` (pipeline.ts:252–253) checks blank count **before** the accepted-array filter (line 254+), enforcing the constraint upfront — correct order.
 
-- **Fixed:** `LessonPlayer.tsx:116` — feedback section rendered `{question.prompt}` as plain text after answer submission. Now uses `<MathText>` so math renders consistently in the feedback view too.
-- Two-pass split logic (display `$$...$$` first, inline `$...$` on remainder) is correct. Offsets reset between passes because the inline regex runs over the remainder string, not the original. Edge cases (text-only, trailing text, adjacent display+inline) all handled.
-- `memo()` wrapper on `MathText` prevents re-running KaTeX when text prop is unchanged (e.g., option clicks in ChoiceQuestion that change `selected` state).
-- KaTeX CSS imported at app entry point (`main.tsx`). `throwOnError: false` degrades gracefully. No duplicated logic; single responsibility component.
-- All four call sites (`ChoiceQuestion`, `FillBlankQuestion`, `CalcQuestion`, `LessonPlayer`) covered.
+2. **Grader guard logic:** `gradeQuestion` (lessonService.ts:174) returns `'incorrect'` immediately for multi-blank, short-circuiting before near-miss logic that assumes single-blank prompts. Clean, idempotent.
+
+3. **No missed call sites:** `completeLesson` (lessonService.ts:120) delegates to the Edge Function, which calls `gradeQuestion` server-side. The guard fires in both paths (client-side preview, server-side final grade).
+
+4. **Test coverage:** 
+   - Pipeline test (pipeline.test.ts:298) rejects multi-blank in malformed-inputs.
+   - LessonService test (lessonService.test.ts:108–116) verifies multi-blank grades incorrect regardless of input.
+   - All fill_blank tests updated to include explicit single-blank prompts.
+
+5. **No duplication or over-engineering:** Guard is minimal (one match + length check), placed only where needed (generation and grading boundaries).
+
+### Rationale
+The changes follow the single-responsibility rule: generation rejects, grading guards, tests confirm. No abstraction layer added for one-off behavior; no helper function for a two-line check.

@@ -86,6 +86,7 @@ describe('gradeQuestion', () => {
   test('fill_blank: ignores case and surrounding whitespace', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: 'The ___ is the powerhouse of the cell',
       options: [],
       answer: { accepted: ['Mitochondria'] },
     })
@@ -97,10 +98,21 @@ describe('gradeQuestion', () => {
   test('fill_blank: empty answer is incorrect', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: 'The ___ is the powerhouse of the cell',
       options: [],
       answer: { accepted: ['x'] },
     })
     expect(gradeQuestion(q, { kind: 'text', text: '   ' })).toBe('incorrect')
+  })
+
+  test('fill_blank: multi-blank question grades incorrect regardless of input', () => {
+    const q = makeQuestion({
+      kind: 'fill_blank',
+      prompt: 'Goods ___ and ___ are complements',
+      options: [],
+      answer: { accepted: ['X'] },
+    })
+    expect(gradeQuestion(q, { kind: 'text', text: 'X' })).toBe('incorrect')
   })
 
   test('mismatched response kind is incorrect', () => {
@@ -111,6 +123,7 @@ describe('gradeQuestion', () => {
   test('fill_blank: a small typo is partially correct', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: 'The ___ is the powerhouse of the cell',
       options: [],
       answer: { accepted: ['mitochondria'] },
     })
@@ -122,6 +135,7 @@ describe('gradeQuestion', () => {
   test('fill_blank: the right phrase inside a longer answer is partial', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: '___ is how plants make food',
       options: [],
       answer: { accepted: ['photosynthesis'] },
     })
@@ -133,6 +147,7 @@ describe('gradeQuestion', () => {
   test('fill_blank: a genuinely different answer stays incorrect', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: 'The ___ is the powerhouse of the cell',
       options: [],
       answer: { accepted: ['mitochondria'] },
     })
@@ -144,6 +159,7 @@ describe('gradeQuestion', () => {
   test('fill_blank: a one-letter answer never rides containment to partial', () => {
     const q = makeQuestion({
       kind: 'fill_blank',
+      prompt: 'The ___ is the powerhouse of the cell',
       options: [],
       answer: { accepted: ['mitochondria'] },
     })

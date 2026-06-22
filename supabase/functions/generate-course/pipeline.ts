@@ -249,6 +249,8 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
   if (!prompt) return null
   const difficulty = toDifficulty(raw.difficulty)
   if (raw.kind === 'fill_blank') {
+    const blankCount = (prompt.match(/___/g) ?? []).length
+    if (blankCount !== 1) return null
     const accepted = (Array.isArray(raw.accepted) ? raw.accepted : [])
       .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
       .map((a) => a.trim().slice(0, 300))
@@ -500,7 +502,7 @@ export function buildNodeQuestionsPrompt(
     `Use any of these kinds, mixing across the questions:`,
     `- "mcq": one correct option, 3-4 options, give "correct_indexes"`,
     `- "mcq_multi": several correct options, 3-4 options, give "correct_indexes"`,
-    `- "fill_blank": student types a missing word/phrase, give "accepted" (copy verbatim from the source)`,
+    `- "fill_blank": student types a missing word/phrase; use exactly ONE ___ blank per question, give "accepted" (copy verbatim from the source)`,
     ``,
     `Constraints:`,
     `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,

@@ -293,6 +293,11 @@ describe('validateNodeQuestions', () => {
           prompt: 'No answers',
           accepted: [],
         },
+        {
+          kind: 'fill_blank',
+          prompt: 'Goods ___ and ___ are complements',
+          accepted: ['X'],
+        },
         { kind: 'essay', prompt: 'Unknown kind' },
         // A calc with a malformed spec must be dropped even though `calc` is
         // an accepted kind elsewhere — the main per-lesson schema's enum
