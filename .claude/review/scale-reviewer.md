@@ -1,17 +1,19 @@
-# Scale Review — fill_blank multi-blank validation
+# Scale Review — PR #67 generation pipeline rework
 
-## Verdict: PASS
+## Verdict: PASS (with debt noted)
 
 ### Findings
-1. **Input bounds:** Prompt is capped at 1000 characters (pipeline.ts:248), so regex runs on bounded input. Max cost is O(1000) per question.
+1. **`questions(count)` in nodes query:** PostgREST aggregate — single SQL query with COUNT subquery, not N+1. Safe.
 
-2. **Regex complexity:** `/___/g` is a literal-string search with no quantifiers, alternations, or backtracking. Linear scan, no pathological cases.
+2. **Node query bounded:** `.limit(500)` on nodes fetch. Indexed by `course_id` FK. No unbounded scan.
 
-3. **Call frequency:** Executed once per question at generation time (validation) and once per student attempt (grading) — negligible overhead on the per-lesson and per-submission hotpaths.
+3. **Delete by `node_id`:** `questions.delete().eq('node_id', nodeRow.id)` hits the `questions_node_id_idx` FK index. Fast row-level lock, no table scan.
 
-4. **No N+1 or unbounded loops:** Regex runs on a single string, not in a loop over rows or options. Single pass.
+4. **Concurrent deletes/inserts:** `mapConcurrent(CHAPTER_CONCURRENCY=4)` bounds parallel DB operations. No burst risk.
 
-5. **Idempotent:** Repeated calls on the same question produce the same result (same string, same regex behavior).
+5. **QUESTIONS_PER_NODE 6→8:** Insert batch grows by 33% per lesson (8 rows vs 6). Still O(1) per `supabase.from('questions').insert(questionRows)` call.
 
-### Rationale
-The regex is sublinear and runs on a bounded string. Compared to the cost of database I/O (list_tables, select questions), Gemini API calls (buildNodeQuestionsPrompt), and Levenshtein distance (isNearMiss), the blank-count check is negligible.
+### Deliberate debt noted
+- **Per-node `credit_prize` UPDATE:** Each fill worker fires one UPDATE per node after inserting questions. Identical to the existing `generateChapter` pattern — already flagged as stand-alone batch-upsert refactor candidate. Not a regression introduced by this PR.
+
+- **Delete-then-insert atomicity gap:** If question insert fails after delete succeeds, the node ends up with 0 questions. Recoverable on next "Fill incomplete lessons" click (threshold `< MIN_QUESTIONS_PER_NODE` picks up 0-question nodes). No permanent data loss; consistent with Supabase Edge Function constraints (no multi-statement transactions across network calls). Noted as tech debt.

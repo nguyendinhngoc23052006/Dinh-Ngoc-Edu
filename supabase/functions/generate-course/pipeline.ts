@@ -8,10 +8,10 @@ export const MAX_NODES_PER_CHAPTER = 5
 // reliably produces them without tripping structured-output truncation —
 // the previous chapter-batch shape asked for 50 questions in one call and
 // failed silently when Gemini couldn't satisfy responseSchema.minItems.
-export const QUESTIONS_PER_NODE = 6
+export const QUESTIONS_PER_NODE = 8
 // Acceptance floor: a lesson with fewer than this many usable questions
 // after the first call gets ONE focused retry for the missing count.
-export const MIN_QUESTIONS_PER_NODE = 4
+export const MIN_QUESTIONS_PER_NODE = 5
 const MAX_QUESTIONS_PER_NODE = 10
 const MAX_OPTIONS = 6
 
@@ -456,6 +456,7 @@ function nodeSourceContext(node: SyllabusNode, chunks: string[]): string {
 
 const FEW_SHOT_EXAMPLE = [
   '{"kind":"mcq","difficulty":"easy","prompt":"What is the defining outcome of mitosis?","options":["Two genetically identical daughter cells","Four haploid gametes","A single polyploid cell","Two cells with halved chromosomes"],"correct_indexes":[0],"accepted":[]}',
+  '{"kind":"mcq_multi","difficulty":"medium","prompt":"Which of the following are products of aerobic respiration?","options":["ATP","Carbon dioxide","Ethanol","Water"],"correct_indexes":[0,1,3],"accepted":[]}',
   '{"kind":"fill_blank","difficulty":"medium","prompt":"Osmosis is the movement of ___ across a semipermeable membrane.","options":[],"correct_indexes":[],"accepted":["water"]}',
 ].join('\n')
 
@@ -510,12 +511,14 @@ export function buildNodeQuestionsPrompt(
       ? `- DO NOT duplicate, paraphrase, or invert any existing question above.`
       : `- DO NOT repeat the same concept across questions.`,
     `- DO NOT cluster every question on one paragraph — distribute coverage evenly across the lesson's material.`,
+    `- fill_blank questions MUST contain EXACTLY ONE ___ blank in the prompt — never zero, never two or more.`,
     ``,
     `Example of one well-formed question:`,
     FEW_SHOT_EXAMPLE,
     ``,
     // === VARIABLE SUFFIX ===
     `---`,
+    `IMPORTANT: fill_blank prompts must contain EXACTLY ONE ___ — no more, no fewer.`,
     existing.length > 0
       ? `Write exactly ${count} NEW quiz questions in ${outputLanguage} for the lesson above.`
       : `Write ${count} quiz questions in ${outputLanguage} for the lesson above.`,
@@ -614,7 +617,7 @@ export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
           },
           prompt: {
             type: 'string',
-            description: 'The question text shown to the student.',
+            description: 'The question text shown to the student. For fill_blank, include EXACTLY ONE ___ placeholder.',
           },
           options: {
             type: 'array',

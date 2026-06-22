@@ -1,15 +1,18 @@
-# Security Review — fill_blank multi-blank validation
+# Security Review — PR #67 generation pipeline rework
 
 ## Verdict: PASS
 
 ### Findings
-1. **Regex safety (ReDoS):** The regex `/___/g` is a literal-string search with no quantifiers, character classes, or alternations. Zero ReDoS risk. The fallback `?? []` safely handles falsy matches.
+1. **Auth/RLS:** Caller JWT passed through to supabase client; `getUser()` enforced at entry; owner check (`course.owner_id !== userData.user.id`) blocks non-owner access. All `fillMissingQuestions` queries scope by `course.id`.
 
-2. **Validation order:** `validateQuestion` checks `blankCount !== 1` **before** processing the accepted array, rejecting malformed questions upfront and preventing downstream mishandling.
+2. **No owner escalation:** `fillMissingQuestions` uses the same supabase client as `generate` (caller JWT, not service role). RLS owner policies on `nodes` and `questions` apply to every read and write.
 
-3. **Grader guard placement:** `gradeQuestion` applies the multi-blank check before the near-miss logic, preventing edge cases where a corrupted DB row (multi-blank) would silently grade partially correct.
+3. **Atomic claim gate:** `needsFill=true` path goes through the same atomic claim (`status IN ('ready','failed','pending')` → `processing`) — no concurrent pipelines, no double-billing.
 
-4. **Server-side verification:** `completeLesson` invokes the Edge Function, which calls `gradeQuestion` server-side — the guard runs in both contexts, preventing client-side spoofing.
+4. **Secret management:** `AI_API_KEY` read from `Deno.env` only; never in client code or response bodies.
 
-### Rationale
-The changes follow the defense-in-depth pattern: reject at generation (pipeline), guard at grading (lessonService), and verify server-side (Edge Function). No secrets leak into regex, no unvalidated input reaches the regex, and the guard is idempotent.
+5. **Prompt injection:** Node title sanitization (`replace(/"/g, "'")`) in place; titles originate from DB (owner-controlled, not open input).
+
+6. **Input validation:** `courseId` validated as non-empty string; `force` as boolean; all AI responses through `validateNodeQuestions`/`validateSyllabus` before DB write.
+
+7. **No new security boundary introduced.**
