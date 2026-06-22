@@ -1,9 +1,10 @@
-# Scale review — Biome + Depot migration (2026-06-22)
+# scale-reviewer verdict — 2026-06-22
 
-**Verdict: PASS**
+PR: add `.github/workflows/dependabot-auto-merge.yml`
 
-Pure tooling change — no queries, migrations, or API changes. Pre-existing code verified:
-- All queries use `.limit()` or `.range()` pagination
-- Filtered/joined columns are indexed (owner_id, course_id, node_id, cosmetic_id)
-- No N+1 patterns; batch-fetch pattern used throughout
-- Writes are idempotent (upsert + idempotency_keys table)
+## PASS
+
+- Workflow fires only on `pull_request_target` from `dependabot[bot]` for patch-level updates — bounded, low-frequency trigger.
+- `gh pr merge --auto` is idempotent: safe to re-run if the workflow triggers again on the same PR.
+- No database queries, no indexes, no N+1 concerns — CI infrastructure only.
+- No new npm dependencies introduced.

@@ -1,14 +1,13 @@
-# Code review — Biome + Depot migration (2026-06-22)
+# code-reviewer verdict — 2026-06-22
 
-**Verdict: PASS** (findings resolved before PR opened)
+PR: add `.github/workflows/dependabot-auto-merge.yml`
 
-Initial findings — both fixed:
-1. `src/hooks/useAsync.ts:3-5` — leftover `/* eslint-disable */` block comment → removed
-2. `src/hooks/ProfileProvider.tsx:15-16,36` — leftover ESLint disable/enable pair → removed
-3. `MEMORY.md:10,12-13,16` — stale ESLint/Prettier toolchain entries → updated to Biome
+## PASS
 
-All biome-ignore suppressions are justified with explanations. Migration is complete:
-- No remaining ESLint/Prettier references in source files
-- `lint` script name preserved (CI contract)
-- `lint:fix` added for local developer use
-- No src/services files changed (no sibling test requirement triggered)
+- Single-responsibility file: one workflow, one job, one concern.
+- `pull_request_target` + no checkout is the established safe pattern for Dependabot auto-merge workflows.
+- `dependabot/fetch-metadata@v2` (pinned major) is idiomatic — no version drift risk.
+- Job-level `if: github.actor == 'dependabot[bot]'` guard is correct placement (skips the whole job, not just individual steps).
+- Step-level condition on `version-update:semver-patch` correctly narrows to patch-only auto-merge.
+- Env var names (`PR_URL`, `GH_TOKEN`) follow GitHub Actions conventions.
+- No duplication. File is 23 lines — well within single-responsibility bound.
