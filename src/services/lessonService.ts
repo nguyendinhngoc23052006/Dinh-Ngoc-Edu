@@ -171,6 +171,7 @@ export function gradeQuestion(
   }
   if (question.kind === 'fill_blank') {
     if (response.kind !== 'text') return 'incorrect'
+    if ((question.prompt.match(/___/g) ?? []).length !== 1) return 'incorrect'
     const given = normalizeText(response.text)
     if (given.length === 0) return 'incorrect'
     const accepted = (question.answer.accepted ?? []).map(normalizeText)

@@ -1,10 +1,17 @@
-# Scale review — KaTeX math rendering
+# Scale Review — fill_blank multi-blank validation
 
-**Verdict: PASS — one known tradeoff documented; memoization finding fixed pre-push**
+## Verdict: PASS
 
-Reviewed: `src/components/lessons/MathText.tsx`, `ChoiceQuestion.tsx`, `CalcQuestion.tsx`
+### Findings
+1. **Input bounds:** Prompt is capped at 1000 characters (pipeline.ts:248), so regex runs on bounded input. Max cost is O(1000) per question.
 
-- **Fixed:** `MathText` is now wrapped in `memo()` — KaTeX `renderToString` is skipped on re-renders where the `text` prop is unchanged (e.g., `selected` toggles in `ChoiceQuestion`).
-- **Known tradeoff — bundle size:** KaTeX (~100 kB minified) is not tree-shakeable and always bundles. Acceptable: math rendering is the core use case for STEM courses; the tradeoff is deliberate. Dynamic import would add complexity for marginal UX gain; deferred if Lighthouse budget becomes a concern.
-- Regex split is O(n) over question text (<500 chars) — not a scale concern.
-- No new queries, N+1 patterns, or unbounded operations.
+2. **Regex complexity:** `/___/g` is a literal-string search with no quantifiers, alternations, or backtracking. Linear scan, no pathological cases.
+
+3. **Call frequency:** Executed once per question at generation time (validation) and once per student attempt (grading) — negligible overhead on the per-lesson and per-submission hotpaths.
+
+4. **No N+1 or unbounded loops:** Regex runs on a single string, not in a loop over rows or options. Single pass.
+
+5. **Idempotent:** Repeated calls on the same question produce the same result (same string, same regex behavior).
+
+### Rationale
+The regex is sublinear and runs on a bounded string. Compared to the cost of database I/O (list_tables, select questions), Gemini API calls (buildNodeQuestionsPrompt), and Levenshtein distance (isNearMiss), the blank-count check is negligible.

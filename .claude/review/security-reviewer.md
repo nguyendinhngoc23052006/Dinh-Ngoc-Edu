@@ -1,10 +1,15 @@
-# Security review — KaTeX math rendering
+# Security Review — fill_blank multi-blank validation
 
-**Verdict: PASS — no findings**
+## Verdict: PASS
 
-Reviewed: `src/components/lessons/MathText.tsx`, `LessonPlayer.tsx`, `ChoiceQuestion.tsx`, `FillBlankQuestion.tsx`, `CalcQuestion.tsx`, `src/main.tsx`
+### Findings
+1. **Regex safety (ReDoS):** The regex `/___/g` is a literal-string search with no quantifiers, character classes, or alternations. Zero ReDoS risk. The fallback `?? []` safely handles falsy matches.
 
-- `dangerouslySetInnerHTML` with KaTeX output is safe: KaTeX is a battle-tested library (Khan Academy) that renders only a fixed set of math DOM elements — no script tags, no event handlers. `throwOnError: false` degrades malformed LaTeX to a readable placeholder, never throws.
-- All text flowing into `MathText` originates from AI-generated, pipeline-validated DB rows (`question.prompt` capped at generation time, `question.options[]` likewise). No raw user typing reaches KaTeX.
-- Regex patterns (`/\$\$([\s\S]+?)\$\$/g`, `/\$([^$\n]+?)\$/g`) use non-greedy quantifiers — no ReDoS risk.
-- KaTeX CSS import (`katex/dist/katex.min.css`) is a static stylesheet. No secrets, no new env vars, no auth paths, no RLS changes.
+2. **Validation order:** `validateQuestion` checks `blankCount !== 1` **before** processing the accepted array, rejecting malformed questions upfront and preventing downstream mishandling.
+
+3. **Grader guard placement:** `gradeQuestion` applies the multi-blank check before the near-miss logic, preventing edge cases where a corrupted DB row (multi-blank) would silently grade partially correct.
+
+4. **Server-side verification:** `completeLesson` invokes the Edge Function, which calls `gradeQuestion` server-side — the guard runs in both contexts, preventing client-side spoofing.
+
+### Rationale
+The changes follow the defense-in-depth pattern: reject at generation (pipeline), guard at grading (lessonService), and verify server-side (Edge Function). No secrets leak into regex, no unvalidated input reaches the regex, and the guard is idempotent.
