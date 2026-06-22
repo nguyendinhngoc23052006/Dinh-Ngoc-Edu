@@ -273,29 +273,29 @@ function CoursePage() {
         )
       ) : null}
       {course.status === 'ready' &&
-      chapters.some((c) => c.nodes.some((n) => n.question_count === 0)) ? (
+      chapters.some((c) => c.nodes.some((n) => n.question_count < 5)) ? (
         (() => {
           const totalLessons = chapters.reduce((s, c) => s + c.nodes.length, 0)
-          const emptyLessons = chapters.reduce(
+          const incompleteLessons = chapters.reduce(
             (s, c) =>
-              s + c.nodes.filter((n) => n.question_count === 0).length,
+              s + c.nodes.filter((n) => n.question_count < 5).length,
             0,
           )
           return (
             <p className="state state-error">
-              {emptyLessons} of {totalLessons} lessons need more questions.
+              {incompleteLessons} of {totalLessons} lessons need more
+              questions.
               {isOwner ? (
                 <>
                   {' '}
-                  Tap to fill them — regeneration rebuilds the course
-                  (chapters, questions and lesson progress) from the current
-                  materials.{' '}
+                  Tap to fill them — only the incomplete lessons are
+                  regenerated, your other lessons and progress are preserved.{' '}
                   <button
                     type="button"
                     disabled={busy}
                     onClick={handleStartGeneration}
                   >
-                    Fill empty lessons
+                    Fill incomplete lessons
                   </button>
                 </>
               ) : null}

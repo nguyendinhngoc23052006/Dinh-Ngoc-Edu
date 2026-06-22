@@ -50,13 +50,11 @@ import {
 import type { GeneratedQuestion, SyllabusChapter, SyllabusNode } from './pipeline.ts'
 
 const CALC_QUESTIONS_PER_NODE = 2
-// Smaller ask + richer schema = ~25 s end-to-end on Flash 2.5. Tighter than
-// the main per-lesson timeout because the call asks for at most 2 questions
-// in a single fixed-shape DSL.
-const CALC_FOLLOWUP_TIMEOUT_MS = 25_000
+// Smaller ask + richer schema = ~40 s end-to-end on Flash 2.5 on a slow day.
+const CALC_FOLLOWUP_TIMEOUT_MS = 40_000
 // Budget gate: skip the calc follow-up if less than this much time is left in
 // the pipeline deadline. Sized to cover one calc call + a 5 s 429 backoff.
-const CALC_FOLLOWUP_HEADROOM_MS = 30_000
+const CALC_FOLLOWUP_HEADROOM_MS = 50_000
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void }
 
@@ -65,16 +63,14 @@ const MAX_SOURCE_CHARS = 200_000
 // pipeline budgets its own time well below it so it normally fails cleanly.
 const STALE_PROCESSING_MS = 15 * 60 * 1000
 // Chapters run in parallel; lessons within a chapter run sequentially. Worst
-// case for a math-heavy chapter: 5 lessons × (35 s main + 35 s retry + 25 s
-// calc follow-up) ≈ 8 min per chapter, plus syllabus ≈ 30 s. The per-lesson
+// case for a math-heavy chapter: 5 lessons × (55 s main + 55 s retry + 40 s
+// calc follow-up) ≈ 12.5 min per chapter, plus syllabus ≈ 50 s. The per-lesson
 // budget check skips the retry — and `CALC_FOLLOWUP_HEADROOM_MS` skips the
 // calc call — when this runs out, so the run always lands in `ready` or
 // `failed` before the 15-min staleness window above kicks in.
-const MAX_PIPELINE_MS = 10 * 60 * 1000
+const MAX_PIPELINE_MS = 12 * 60 * 1000
 // Chapters run four-at-a-time rather than all-at-once to avoid the burst
-// that causes 429 rate-limit hits. 4 is the minimum that keeps worst-case
-// wall time under MAX_PIPELINE_MS: ceil(10/4) batches × 5 lessons × 35 s
-// per-lesson timeout + 30 s syllabus ≈ 555 s < 600 s.
+// that causes 429 rate-limit hits.
 const CHAPTER_CONCURRENCY = 4
 
 const corsHeaders = {
@@ -90,11 +86,11 @@ interface ChatOptions {
   timeoutMs?: number
 }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
-// Per-lesson question calls ask for 6 questions max with a small schema;
-// 35 s is enough headroom for thinking + JSON emission on Flash 2.5 while
-// keeping 2× timeout under the per-chapter share of the pipeline budget.
-const QUESTION_REQUEST_TIMEOUT_MS = 35_000
+const DEFAULT_REQUEST_TIMEOUT_MS = 50_000
+// Per-lesson question calls ask for 8 questions max with a small schema;
+// 55 s gives Gemini 2.5 Flash enough headroom on slow days while staying
+// well within the pipeline budget even across retries.
+const QUESTION_REQUEST_TIMEOUT_MS = 55_000
 
 interface CourseRow {
   id: string
@@ -151,7 +147,8 @@ Deno.serve(async (req) => {
   // Re-running on a finished course is a no-op, so a double click or a retry
   // after a network blip never regenerates (and never double-bills the key).
   // Exceptions: force=true (owner deliberately rebuilding after new uploads),
-  // or a 'ready' course that still has question-less lessons (repair path).
+  // or a 'ready' course with under-filled lessons (targeted repair path).
+  let needsFill = false
   if (course.status === 'ready' && !force) {
     const { data: lessonNodes, error: nodesError } = await supabase
       .from('nodes')
@@ -159,10 +156,11 @@ Deno.serve(async (req) => {
       .eq('course_id', courseId)
       .limit(500)
     if (nodesError) return json({ error: nodesError.message }, 500)
-    const hasEmptyLesson = (
+    const hasUnderfilledLesson = (
       (lessonNodes ?? []) as Array<{ questions: Array<{ count: number }> }>
-    ).some((node) => (node.questions[0]?.count ?? 0) === 0)
-    if (!hasEmptyLesson) return json({ status: 'ready' }, 200)
+    ).some((node) => (node.questions[0]?.count ?? 0) < MIN_QUESTIONS_PER_NODE)
+    if (!hasUnderfilledLesson) return json({ status: 'ready' }, 200)
+    needsFill = true
   }
   if (!Deno.env.get('AI_API_KEY')) {
     return json(
@@ -194,7 +192,9 @@ Deno.serve(async (req) => {
     return json({ status: 'processing' }, 202)
   }
 
-  EdgeRuntime.waitUntil(generate(supabase, course))
+  EdgeRuntime.waitUntil(
+    needsFill ? fillMissingQuestions(supabase, course) : generate(supabase, course),
+  )
   return json({ status: 'processing' }, 202)
 })
 
@@ -223,6 +223,103 @@ function ensureTime(deadline: number): void {
   }
 }
 
+// Targeted repair: re-generate only the lessons that are still below the
+// minimum question threshold, leaving every other lesson and its progress
+// untouched. Called when a 'ready' course has under-filled lessons so the
+// owner can top them up without nuking the entire course.
+async function fillMissingQuestions(
+  supabase: SupabaseClient,
+  course: CourseRow,
+): Promise<void> {
+  const deadline = Date.now() + MAX_PIPELINE_MS
+  try {
+    const text = await extractMaterialsText(supabase, course.id)
+    const chunks = chunkText(text.slice(0, MAX_SOURCE_CHARS))
+    const language = course.output_language
+
+    type NodeWithCount = { id: string; title: string; chunk_index: number; questions: Array<{ count: number }> }
+    const { data: allNodes, error: nodesError } = await supabase
+      .from('nodes')
+      .select('id, title, chunk_index, questions(count)')
+      .eq('course_id', course.id)
+      .limit(500)
+    if (nodesError) throw new Error(nodesError.message)
+
+    const underfilled = ((allNodes ?? []) as NodeWithCount[]).filter(
+      (n) => (n.questions[0]?.count ?? 0) < MIN_QUESTIONS_PER_NODE,
+    )
+
+    if (underfilled.length === 0) {
+      await supabase.from('courses').update({ status: 'ready', generation_error: null }).eq('id', course.id)
+      return
+    }
+
+    const lessonErrors: string[] = []
+
+    await mapConcurrent(underfilled, CHAPTER_CONCURRENCY, async (nodeRow) => {
+      if (Date.now() > deadline) {
+        lessonErrors.push(`"${nodeRow.title}": skipped (pipeline budget exhausted)`)
+        return
+      }
+      // Delete existing (potentially malformed) questions for this node first.
+      const { error: delError } = await supabase
+        .from('questions')
+        .delete()
+        .eq('node_id', nodeRow.id)
+      if (delError) {
+        lessonErrors.push(`"${nodeRow.title}": ${delError.message}`)
+        return
+      }
+
+      const syntheticNode: SyllabusNode = {
+        title: nodeRow.title,
+        summary: '',
+        chunk_index: nodeRow.chunk_index,
+      }
+      const { questions, error } = await generateLessonQuestions(syntheticNode, chunks, language, deadline)
+      if (questions.length === 0) {
+        if (error) lessonErrors.push(`"${nodeRow.title}": ${error}`)
+        return
+      }
+      const chunk = chunks[nodeRow.chunk_index] ?? chunks[0]
+      const questionRows = questions.map((q, index) => ({
+        course_id: course.id,
+        node_id: nodeRow.id,
+        position: index + 1,
+        kind: q.kind,
+        difficulty: q.difficulty,
+        prompt: q.prompt,
+        options: q.options,
+        answer: q.answer,
+        calc: q.calc ?? null,
+        verified: verifyQuestion(q, chunk),
+      }))
+      const { error: insertError } = await supabase.from('questions').insert(questionRows)
+      if (insertError) {
+        lessonErrors.push(`"${nodeRow.title}": ${insertError.message}`)
+        return
+      }
+      const prize = lessonCreditPrize(questions)
+      if (prize > 0) {
+        await supabase.from('nodes').update({ credit_prize: prize }).eq('id', nodeRow.id)
+      }
+    })
+
+    const generationNote = lessonErrors.length === 0
+      ? null
+      : `${lessonErrors.length} lesson(s) still need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(0, 500)
+    await supabase
+      .from('courses')
+      .update({ status: 'ready', generation_error: generationNote })
+      .eq('id', course.id)
+  } catch (cause) {
+    await supabase
+      .from('courses')
+      .update({ status: 'failed', generation_error: messageOf(cause).slice(0, 500) })
+      .eq('id', course.id)
+  }
+}
+
 async function generate(
   supabase: SupabaseClient,
   course: CourseRow,
@@ -247,7 +344,7 @@ async function generate(
     ensureTime(deadline)
     let syllabus = validateSyllabus(
       parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
-        thinkingBudget: 128, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
+        thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
       })),
       chunks.length,
     )
@@ -470,7 +567,7 @@ async function generateLessonQuestions(
       buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, language),
       language,
       {
-        thinkingBudget: 256,
+        thinkingBudget: 1024,
         maxOutputTokens: 4096,
         jsonSchema: NODE_QUESTIONS_SCHEMA,
         timeoutMs: QUESTION_REQUEST_TIMEOUT_MS,
