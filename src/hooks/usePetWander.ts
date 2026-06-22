@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  initialWander,
-  stepWander,
   type Bounds,
   type Facing,
   type WanderState,
+  initialWander,
+  stepWander,
 } from '../lib/petWander'
 
 export interface PetPosition {

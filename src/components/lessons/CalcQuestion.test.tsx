@@ -1,10 +1,10 @@
-// @vitest-environment happy-dom
-import { describe, expect, test, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import CalcQuestion from './CalcQuestion'
+// @vitest-environment happy-dom
+import { describe, expect, test, vi } from 'vitest'
 import type { CalcSpec } from '../../../supabase/functions/_shared/calc'
 import type { Question } from '../../types/database'
+import CalcQuestion from './CalcQuestion'
 
 // A spec with no variables renders a fixed prompt, so the rolled instance is
 // deterministic without stubbing Math.random.
@@ -40,7 +40,9 @@ function checkButton() {
 describe('CalcQuestion', () => {
   test('renders the rolled statement and submits the typed numeric answer + values', async () => {
     const onSubmit = vi.fn()
-    render(<CalcQuestion question={makeQuestion(fixedCalc)} onSubmit={onSubmit} />)
+    render(
+      <CalcQuestion question={makeQuestion(fixedCalc)} onSubmit={onSubmit} />,
+    )
 
     expect(screen.getByText('Solve the calculation')).toBeTruthy()
     expect(screen.getByText('What is 2 + 3?')).toBeTruthy()
@@ -50,7 +52,11 @@ describe('CalcQuestion', () => {
     expect(checkButton().disabled).toBe(false)
     await userEvent.click(checkButton())
 
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'calc', values: {}, answer: 5 })
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: 'calc',
+      values: {},
+      answer: 5,
+    })
   })
 
   test('shows an unavailable message when the question has no calc spec', () => {

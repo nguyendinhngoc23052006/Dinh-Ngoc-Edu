@@ -81,7 +81,9 @@ describe('validateDisplayName', () => {
 describe('setDisplayName', () => {
   test('rejects an invalid name without calling the API', async () => {
     await expect(setDisplayName('   ')).rejects.toThrow(/enter a display name/i)
-    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(false)
+    expect(supabaseMock.calls.some((c) => c.path.endsWith('update'))).toBe(
+      false,
+    )
   })
 
   test('trims, updates display_name, and returns the trimmed value', async () => {

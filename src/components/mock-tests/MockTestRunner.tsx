@@ -1,13 +1,10 @@
 import { useState } from 'react'
-import type { Question } from '../../types/database'
-import {
-  correctAnswerText,
-  gradeQuestion,
-} from '../../services/lessonService'
+import { correctAnswerText, gradeQuestion } from '../../services/lessonService'
 import type { Grade, QuestionResponse } from '../../services/lessonService'
+import type { Question } from '../../types/database'
+import CalcQuestion from '../lessons/CalcQuestion'
 import ChoiceQuestion from '../lessons/ChoiceQuestion'
 import FillBlankQuestion from '../lessons/FillBlankQuestion'
-import CalcQuestion from '../lessons/CalcQuestion'
 
 interface MockTestRunnerProps {
   questions: Question[]

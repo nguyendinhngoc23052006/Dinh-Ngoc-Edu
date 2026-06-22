@@ -10,7 +10,7 @@
 // synchronously and the response carries the outcome.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { extractFileText, MAX_FILE_BYTES } from '../_shared/extract.ts'
+import { MAX_FILE_BYTES, extractFileText } from '../_shared/extract.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     {
+      // biome-ignore lint/style/noNonNullAssertion: Authorization header is guaranteed by Supabase JWT gate before this handler runs
       global: { headers: { Authorization: req.headers.get('Authorization')! } },
       auth: { persistSession: false },
     },

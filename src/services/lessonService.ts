@@ -1,6 +1,9 @@
-import { supabase } from '../lib/supabaseClient'
-import { computeExpected, gradeCalc } from '../../supabase/functions/_shared/calc'
+import {
+  computeExpected,
+  gradeCalc,
+} from '../../supabase/functions/_shared/calc'
 import type { SubmittedAnswer } from '../../supabase/functions/_shared/grade'
+import { supabase } from '../lib/supabaseClient'
 import type { Chapter, LessonNode, Question } from '../types/database'
 
 const MAX_CHAPTERS = 100
@@ -104,10 +107,17 @@ export function toSubmission(
   if (response.kind === 'calc') {
     return {
       questionId: question.id,
-      answer: { kind: 'calc', values: response.values, answer: response.answer },
+      answer: {
+        kind: 'calc',
+        values: response.values,
+        answer: response.answer,
+      },
     }
   }
-  return { questionId: question.id, answer: { kind: 'text', text: response.text } }
+  return {
+    questionId: question.id,
+    answer: { kind: 'text', text: response.text },
+  }
 }
 
 // Records completion and awards the lesson's credit prize when every answer is
@@ -150,7 +160,10 @@ function levenshtein(a: string, b: string): number {
 // an extra word around the right phrase) counts as partially correct, so a
 // student who clearly knew the answer is not graded like one who didn't.
 function isNearMiss(given: string, accepted: string): boolean {
-  if (accepted.length >= 4 && (given.includes(accepted) || accepted.includes(given))) {
+  if (
+    accepted.length >= 4 &&
+    (given.includes(accepted) || accepted.includes(given))
+  ) {
     return given.length >= 4
   }
   const distance = levenshtein(given, accepted)
@@ -199,7 +212,8 @@ export function shuffleLessonQuestions(
   return shuffled.map((question) => {
     // Only choice questions have options to reorder; fill_blank and calc carry
     // no options, so they pass through untouched.
-    if (question.kind === 'fill_blank' || question.kind === 'calc') return question
+    if (question.kind === 'fill_blank' || question.kind === 'calc')
+      return question
     const order = shuffle(
       question.options.map((_, index) => index),
       random,

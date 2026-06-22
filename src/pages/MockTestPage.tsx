@@ -1,8 +1,8 @@
 import { Link, useParams } from 'react-router-dom'
-import { useAsync } from '../hooks/useAsync'
-import { getMockTest, getMockTestQuestions } from '../services/mockTestService'
-import { getCourseContent } from '../services/lessonService'
 import MockTestRunner from '../components/mock-tests/MockTestRunner'
+import { useAsync } from '../hooks/useAsync'
+import { getCourseContent } from '../services/lessonService'
+import { getMockTest, getMockTestQuestions } from '../services/mockTestService'
 
 function MockTestPage() {
   const { testId = '' } = useParams()

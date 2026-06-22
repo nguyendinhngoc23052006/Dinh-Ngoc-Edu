@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
-import { requireUserId } from './authService'
 import type { Course, Visibility } from '../types/database'
+import { requireUserId } from './authService'
 
 export const PAGE_SIZE = 20
 

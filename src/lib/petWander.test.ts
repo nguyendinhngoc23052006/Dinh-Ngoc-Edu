@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import {
+  type Bounds,
   PET_SPEED,
+  type WanderState,
   initialWander,
   pickTarget,
   stepWander,
-  type Bounds,
-  type WanderState,
 } from './petWander'
 
 const BOUNDS: Bounds = { minX: 0, maxX: 100, minY: 0, maxY: 100 }

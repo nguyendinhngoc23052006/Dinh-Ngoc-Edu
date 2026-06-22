@@ -23,31 +23,35 @@
 // parallel and lessons within a chapter run sequentially so the chapter's
 // stable-prefix prompt benefits from Gemini's implicit cache.
 
-import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { type SupabaseClient, createClient } from 'npm:@supabase/supabase-js@2'
 import { extractFileText } from '../_shared/extract.ts'
 import {
+  CALC_QUESTIONS_SCHEMA,
+  MIN_QUESTIONS_PER_NODE,
+  NODE_QUESTIONS_SCHEMA,
+  QUESTIONS_PER_NODE,
+  SYLLABUS_SCHEMA,
   buildCalcQuestionsPrompt,
   buildNodeQuestionsPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
-  CALC_QUESTIONS_SCHEMA,
   chunkText,
   detectFormulas,
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
-  MIN_QUESTIONS_PER_NODE,
-  NODE_QUESTIONS_SCHEMA,
   parseJsonLoose,
-  QUESTIONS_PER_NODE,
-  SYLLABUS_SCHEMA,
   validateNodeCalcQuestions,
   validateNodeQuestions,
   validateSyllabus,
   validateSyllabusQuality,
   verifyQuestion,
 } from './pipeline.ts'
-import type { GeneratedQuestion, SyllabusChapter, SyllabusNode } from './pipeline.ts'
+import type {
+  GeneratedQuestion,
+  SyllabusChapter,
+  SyllabusNode,
+} from './pipeline.ts'
 
 const CALC_QUESTIONS_PER_NODE = 2
 // Smaller ask + richer schema = ~40 s end-to-end on Flash 2.5 on a slow day.
@@ -118,6 +122,7 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     {
+      // biome-ignore lint/style/noNonNullAssertion: Authorization header is guaranteed by Supabase JWT gate before this handler runs
       global: { headers: { Authorization: req.headers.get('Authorization')! } },
       auth: { persistSession: false },
     },
@@ -174,7 +179,8 @@ Deno.serve(async (req) => {
   // or spammed invocations get zero rows back and start nothing — no
   // parallel pipelines, no double-billing the key.
   const staleBefore = new Date(Date.now() - STALE_PROCESSING_MS).toISOString()
-  const claimable = course.status === 'ready' ? 'pending,failed,ready' : 'pending,failed'
+  const claimable =
+    course.status === 'ready' ? 'pending,failed,ready' : 'pending,failed'
   const { data: claimed, error: claimError } = await supabase
     .from('courses')
     .update({
@@ -193,7 +199,9 @@ Deno.serve(async (req) => {
   }
 
   EdgeRuntime.waitUntil(
-    needsFill ? fillMissingQuestions(supabase, course) : generate(supabase, course),
+    needsFill
+      ? fillMissingQuestions(supabase, course)
+      : generate(supabase, course),
   )
   return json({ status: 'processing' }, 202)
 })
@@ -211,7 +219,9 @@ async function mapConcurrent<T, U>(
       results[i] = await fn(items[i], i)
     }
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  )
   return results
 }
 
@@ -237,7 +247,12 @@ async function fillMissingQuestions(
     const chunks = chunkText(text.slice(0, MAX_SOURCE_CHARS))
     const language = course.output_language
 
-    type NodeWithCount = { id: string; title: string; chunk_index: number; questions: Array<{ count: number }> }
+    type NodeWithCount = {
+      id: string
+      title: string
+      chunk_index: number
+      questions: Array<{ count: number }>
+    }
     const { data: allNodes, error: nodesError } = await supabase
       .from('nodes')
       .select('id, title, chunk_index, questions(count)')
@@ -250,7 +265,10 @@ async function fillMissingQuestions(
     )
 
     if (underfilled.length === 0) {
-      await supabase.from('courses').update({ status: 'ready', generation_error: null }).eq('id', course.id)
+      await supabase
+        .from('courses')
+        .update({ status: 'ready', generation_error: null })
+        .eq('id', course.id)
       return
     }
 
@@ -258,7 +276,9 @@ async function fillMissingQuestions(
 
     await mapConcurrent(underfilled, CHAPTER_CONCURRENCY, async (nodeRow) => {
       if (Date.now() > deadline) {
-        lessonErrors.push(`"${nodeRow.title}": skipped (pipeline budget exhausted)`)
+        lessonErrors.push(
+          `"${nodeRow.title}": skipped (pipeline budget exhausted)`,
+        )
         return
       }
       // Delete existing (potentially malformed) questions for this node first.
@@ -276,7 +296,12 @@ async function fillMissingQuestions(
         summary: '',
         chunk_index: nodeRow.chunk_index,
       }
-      const { questions, error } = await generateLessonQuestions(syntheticNode, chunks, language, deadline)
+      const { questions, error } = await generateLessonQuestions(
+        syntheticNode,
+        chunks,
+        language,
+        deadline,
+      )
       if (questions.length === 0) {
         if (error) lessonErrors.push(`"${nodeRow.title}": ${error}`)
         return
@@ -294,20 +319,29 @@ async function fillMissingQuestions(
         calc: q.calc ?? null,
         verified: verifyQuestion(q, chunk),
       }))
-      const { error: insertError } = await supabase.from('questions').insert(questionRows)
+      const { error: insertError } = await supabase
+        .from('questions')
+        .insert(questionRows)
       if (insertError) {
         lessonErrors.push(`"${nodeRow.title}": ${insertError.message}`)
         return
       }
       const prize = lessonCreditPrize(questions)
       if (prize > 0) {
-        await supabase.from('nodes').update({ credit_prize: prize }).eq('id', nodeRow.id)
+        await supabase
+          .from('nodes')
+          .update({ credit_prize: prize })
+          .eq('id', nodeRow.id)
       }
     })
 
-    const generationNote = lessonErrors.length === 0
-      ? null
-      : `${lessonErrors.length} lesson(s) still need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(0, 500)
+    const generationNote =
+      lessonErrors.length === 0
+        ? null
+        : `${lessonErrors.length} lesson(s) still need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(
+            0,
+            500,
+          )
     await supabase
       .from('courses')
       .update({ status: 'ready', generation_error: generationNote })
@@ -315,7 +349,10 @@ async function fillMissingQuestions(
   } catch (cause) {
     await supabase
       .from('courses')
-      .update({ status: 'failed', generation_error: messageOf(cause).slice(0, 500) })
+      .update({
+        status: 'failed',
+        generation_error: messageOf(cause).slice(0, 500),
+      })
       .eq('id', course.id)
   }
 }
@@ -343,9 +380,13 @@ async function generate(
     const language = course.output_language
     ensureTime(deadline)
     let syllabus = validateSyllabus(
-      parseJsonLoose(await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
-        thinkingBudget: 1024, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA,
-      })),
+      parseJsonLoose(
+        await chatInLanguage(buildSyllabusPrompt(chunks, language), language, {
+          thinkingBudget: 1024,
+          maxOutputTokens: 4096,
+          jsonSchema: SYLLABUS_SCHEMA,
+        }),
+      ),
       chunks.length,
     )
 
@@ -358,9 +399,13 @@ async function generate(
         syllabus = validateSyllabus(
           parseJsonLoose(
             await chatInLanguage(
-              buildSyllabusPrompt(chunks, language) + '\n\n' + quality.feedback,
+              `${buildSyllabusPrompt(chunks, language)}\n\n${quality.feedback}`,
               language,
-              { thinkingBudget: 0, maxOutputTokens: 4096, jsonSchema: SYLLABUS_SCHEMA },
+              {
+                thinkingBudget: 0,
+                maxOutputTokens: 4096,
+                jsonSchema: SYLLABUS_SCHEMA,
+              },
             ),
           ),
           chunks.length,
@@ -387,7 +432,9 @@ async function generate(
           deadline,
         ).catch((err) => ({
           questionsWritten: 0,
-          lessonErrors: [`Chapter "${chapter.title}" failed: ${messageOf(err)}`],
+          lessonErrors: [
+            `Chapter "${chapter.title}" failed: ${messageOf(err)}`,
+          ],
         })),
     )
     const totalQuestions = chapterResults.reduce(
@@ -407,9 +454,13 @@ async function generate(
     // Partial completion stays 'ready' but records WHICH lessons came back
     // empty, so the owner can see in the CoursePage banner why some lessons
     // need a fill — and the next "Fill empty lessons" tap can land cleanly.
-    const generationNote = lessonErrors.length === 0
-      ? null
-      : `${lessonErrors.length} lesson(s) need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(0, 500)
+    const generationNote =
+      lessonErrors.length === 0
+        ? null
+        : `${lessonErrors.length} lesson(s) need a retry — ${lessonErrors.slice(0, 2).join('; ')}${lessonErrors.length > 2 ? '...' : ''}`.slice(
+            0,
+            500,
+          )
     await supabase
       .from('courses')
       .update({ status: 'ready', generation_error: generationNote })
@@ -612,7 +663,12 @@ async function generateLessonQuestions(
   ) {
     try {
       const raw = await chatInLanguage(
-        buildCalcQuestionsPrompt(node, CALC_QUESTIONS_PER_NODE, chunks, language),
+        buildCalcQuestionsPrompt(
+          node,
+          CALC_QUESTIONS_PER_NODE,
+          chunks,
+          language,
+        ),
         language,
         {
           thinkingBudget: 0,
@@ -630,7 +686,10 @@ async function generateLessonQuestions(
 
   return {
     questions,
-    error: questions.length === 0 ? firstError ?? 'no usable questions returned' : null,
+    error:
+      questions.length === 0
+        ? (firstError ?? 'no usable questions returned')
+        : null,
   }
 }
 
@@ -640,7 +699,9 @@ async function extractMaterialsText(
 ): Promise<string> {
   const { data: materials, error } = await supabase
     .from('course_materials')
-    .select('file_name, storage_path, extract_status, extract_error, extracted_path')
+    .select(
+      'file_name, storage_path, extract_status, extract_error, extracted_path',
+    )
     .eq('course_id', courseId)
     .order('created_at', { ascending: true })
     .limit(100)
@@ -696,7 +757,10 @@ async function chatInLanguage(
   const system = buildSystemPrompt(outputLanguage)
   const content = await chat(prompt, system, opts)
   if (matchesOutputLanguage(content, outputLanguage)) return content
-  return chat(prompt + languageReminder(outputLanguage), system, { ...opts, thinkingBudget: 0 })
+  return chat(prompt + languageReminder(outputLanguage), system, {
+    ...opts,
+    thinkingBudget: 0,
+  })
 }
 
 async function chat(
@@ -733,18 +797,15 @@ async function chat(
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     let response: Response
     try {
-      response = await fetch(
-        `${baseUrl}/models/${model}:generateContent`,
-        {
-          signal: controller.signal,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey ?? '',
-          },
-          body: JSON.stringify(body),
+      response = await fetch(`${baseUrl}/models/${model}:generateContent`, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey ?? '',
         },
-      )
+        body: JSON.stringify(body),
+      })
     } catch (err) {
       clearTimeout(timer)
       if (err instanceof Error && err.name === 'AbortError') {
@@ -763,10 +824,11 @@ async function chat(
         }>
       }
       const parts = payload.candidates?.[0]?.content?.parts
-      const text = parts
-        ?.filter((p) => typeof p.text === 'string' && !p.thought)
-        ?.map((p) => p.text)
-        ?.join('') ?? ''
+      const text =
+        parts
+          ?.filter((p) => typeof p.text === 'string' && !p.thought)
+          ?.map((p) => p.text)
+          ?.join('') ?? ''
       if (text === '') {
         throw new Error('The AI returned an empty response.')
       }

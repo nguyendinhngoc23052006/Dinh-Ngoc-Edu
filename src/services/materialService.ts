@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
-import { requireUserId } from './authService'
 import type { CourseMaterial } from '../types/database'
+import { requireUserId } from './authService'
 
 // Mirrors the course-materials bucket's file_size_limit and allowed_mime_types
 // (migration 20260612090000) — this check is the friendly message, the bucket
@@ -50,6 +50,7 @@ export function toStorageName(fileName: string): string {
   const ascii =
     fileName
       .normalize('NFKD')
+      // biome-ignore lint/suspicious/noMisleadingCharacterClass: intentional Unicode combining-diacritics range for NFKD normalisation
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^A-Za-z0-9._-]+/g, '_') || 'file'
   return `${hash.toString(36)}_${ascii}`

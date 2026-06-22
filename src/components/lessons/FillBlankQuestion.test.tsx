@@ -1,9 +1,9 @@
-// @vitest-environment happy-dom
-import { describe, expect, test, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import FillBlankQuestion from './FillBlankQuestion'
+// @vitest-environment happy-dom
+import { describe, expect, test, vi } from 'vitest'
 import type { Question } from '../../types/database'
+import FillBlankQuestion from './FillBlankQuestion'
 
 const question: Question = {
   id: 'q1',
@@ -37,7 +37,10 @@ describe('FillBlankQuestion', () => {
     const onSubmit = vi.fn()
     render(<FillBlankQuestion question={question} onSubmit={onSubmit} />)
 
-    await userEvent.type(screen.getByPlaceholderText('Type your answer'), 'Paris')
+    await userEvent.type(
+      screen.getByPlaceholderText('Type your answer'),
+      'Paris',
+    )
     await userEvent.click(checkButton())
 
     expect(onSubmit).toHaveBeenCalledWith({ kind: 'text', text: 'Paris' })

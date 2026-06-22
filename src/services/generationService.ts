@@ -6,7 +6,10 @@ import { supabase } from '../lib/supabaseClient'
 // polls course.status until it leaves 'processing'.
 // Pass force=true to rebuild a fully-generated 'ready' course (e.g. after
 // uploading new materials); without it a complete course is a no-op.
-export async function startGeneration(courseId: string, force?: boolean): Promise<void> {
+export async function startGeneration(
+  courseId: string,
+  force?: boolean,
+): Promise<void> {
   if (courseId === '') throw new Error('courseId is required.')
   const { error } = await supabase.functions.invoke('generate-course', {
     body: force ? { courseId, force: true } : { courseId },

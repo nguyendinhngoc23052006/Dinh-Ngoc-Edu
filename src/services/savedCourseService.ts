@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
+import type { Course } from '../types/database'
 import { requireUserId } from './authService'
 import { PAGE_SIZE } from './courseService'
-import type { Course } from '../types/database'
 
 // Upsert keeps saving idempotent: saving twice is a no-op, never an error.
 export async function saveCourse(courseId: string): Promise<void> {

@@ -49,7 +49,8 @@ export interface GeneratedQuestion {
 
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard']
 function toDifficulty(value: unknown): Difficulty {
-  return typeof value === 'string' && (DIFFICULTIES as readonly string[]).includes(value)
+  return typeof value === 'string' &&
+    (DIFFICULTIES as readonly string[]).includes(value)
     ? (value as Difficulty)
     : 'medium'
 }
@@ -57,7 +58,11 @@ function toDifficulty(value: unknown): Difficulty {
 // A lesson's credit prize is the sum of its questions' difficulty weights —
 // the AI's per-question difficulty calls roll up into how much a flawless run
 // is worth, so harder lessons pay more.
-const DIFFICULTY_WEIGHT: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 }
+const DIFFICULTY_WEIGHT: Record<Difficulty, number> = {
+  easy: 1,
+  medium: 2,
+  hard: 3,
+}
 export function lessonCreditPrize(questions: GeneratedQuestion[]): number {
   return questions.reduce((sum, q) => sum + DIFFICULTY_WEIGHT[q.difficulty], 0)
 }
@@ -87,15 +92,22 @@ export function stripBoilerplate(text: string): string {
     if (!t) return true // preserve blank lines; collapse runs below
     if (repeated.has(t)) return false
     // Standalone page numbers: "42", "- 42 -", "Page 5 of 10"
-    if (/^[-–—\s]*(?:page\s+)?\d+[-–—\s]*(?:of\s+\d+)?\s*$/i.test(t)) return false
+    if (/^[-–—\s]*(?:page\s+)?\d+[-–—\s]*(?:of\s+\d+)?\s*$/i.test(t))
+      return false
     // TOC entries: "Chapter 3 ......... 45"
     if (/\.{3,}\s*\d+\s*$/.test(t)) return false
     // Copyright / legal boilerplate
-    if (/©|all rights reserved|no part of this publication|may not be reproduced/i.test(t)) return false
+    if (
+      /©|all rights reserved|no part of this publication|may not be reproduced/i.test(
+        t,
+      )
+    )
+      return false
     // Download / upload attribution (any platform)
     if (/\b(downloaded|uploaded|shared)\s+by\b/i.test(t)) return false
     // Document-sharing platform names
-    if (/\b(studocu|coursehero|scribd|academia\.edu|researchgate)\b/i.test(t)) return false
+    if (/\b(studocu|coursehero|scribd|academia\.edu|researchgate)\b/i.test(t))
+      return false
     // ISBN / publication metadata
     if (/\bISBN[-\s]?\d|first published|published\s+by\b/i.test(t)) return false
     // Watermark-only lines
@@ -104,11 +116,15 @@ export function stripBoilerplate(text: string): string {
     if (/^[^\s@]+@[^\s@]+\.[^\s]{2,}$/.test(t)) return false
     // URL-dominant short lines (URL > 60% of line, line < 120 chars)
     const urlMatch = t.match(/https?:\/\/\S+|www\.[^\s]+/i)
-    if (urlMatch && t.length < 120 && urlMatch[0].length / t.length > 0.6) return false
+    if (urlMatch && t.length < 120 && urlMatch[0].length / t.length > 0.6)
+      return false
     return true
   })
 
-  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return filtered
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 // Rejects chunks that are too thin to generate 4–6 grounded questions from.
@@ -256,7 +272,13 @@ function validateQuestion(entry: unknown): GeneratedQuestion | null {
       .map((a) => a.trim().slice(0, 300))
       .slice(0, 10)
     if (accepted.length === 0) return null
-    return { kind: 'fill_blank', difficulty, prompt, options: [], answer: { accepted } }
+    return {
+      kind: 'fill_blank',
+      difficulty,
+      prompt,
+      options: [],
+      answer: { accepted },
+    }
   }
   if (raw.kind === 'calc') {
     const calc = validateCalcSpec(raw.calc)
@@ -316,10 +338,27 @@ export function verifyQuestion(
 }
 
 const LATIN_LANGUAGES = new Set([
-  'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian',
-  'Dutch', 'Romanian', 'Polish', 'Czech', 'Slovak', 'Hungarian',
-  'Swedish', 'Norwegian', 'Danish', 'Finnish', 'Turkish', 'Indonesian',
-  'Malay', 'Tagalog', 'Swahili',
+  'English',
+  'Spanish',
+  'French',
+  'German',
+  'Portuguese',
+  'Italian',
+  'Dutch',
+  'Romanian',
+  'Polish',
+  'Czech',
+  'Slovak',
+  'Hungarian',
+  'Swedish',
+  'Norwegian',
+  'Danish',
+  'Finnish',
+  'Turkish',
+  'Indonesian',
+  'Malay',
+  'Tagalog',
+  'Swahili',
 ])
 
 export function isLatinScript(language: string): boolean {
@@ -338,11 +377,11 @@ export function buildSystemPrompt(outputLanguage: string): string {
   const base = [
     `You write educational content strictly in ${outputLanguage}.`,
     `Every chapter title, summary, lesson title, question, option, and accepted answer MUST be written in ${outputLanguage}, even though these instructions are in English and even when the source material is in a different language.`,
-    `Only proper nouns, formulas, and technical terms quoted verbatim from the source may stay in their original language.`,
-    `Respond with JSON only — no prose, no code fences.`,
+    'Only proper nouns, formulas, and technical terms quoted verbatim from the source may stay in their original language.',
+    'Respond with JSON only — no prose, no code fences.',
   ].join(' ')
   if (isLatinScript(outputLanguage)) return base
-  return base + ` (Repeat: ALL text values in the JSON must be in ${outputLanguage}.)`
+  return `${base} (Repeat: ALL text values in the JSON must be in ${outputLanguage}.)`
 }
 
 export function languageReminder(outputLanguage: string): string {
@@ -367,7 +406,7 @@ export function matchesOutputLanguage(
   outputLanguage: string,
 ): boolean {
   const decoded = text.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) =>
-    String.fromCharCode(parseInt(h, 16)),
+    String.fromCharCode(Number.parseInt(h, 16)),
   )
   const hasVietnamese = VIETNAMESE_CHARS.test(decoded)
   return outputLanguage === 'Vietnamese' ? hasVietnamese : !hasVietnamese
@@ -387,9 +426,9 @@ export function buildSyllabusPrompt(
     `The materials were split into ${chunks.length} chunks, excerpted below.`,
     `Design a syllabus: at most ${MAX_CHAPTERS} chapters, each with 2-${MAX_NODES_PER_CHAPTER} short lessons ("nodes").`,
     `The material has ${chunks.length} chunks — design ${minNodes}-${maxNodes} total lessons, ensuring every chunk is covered by at least one lesson.`,
-    `Each node names the chunk (by index) its content comes from.`,
+    'Each node names the chunk (by index) its content comes from.',
     `Write every title and summary in ${outputLanguage}, regardless of the materials' language.`,
-    `Respond with ONLY this JSON:`,
+    'Respond with ONLY this JSON:',
     `{"chapters":[{"title":"...","summary":"one sentence","nodes":[{"title":"...","chunk_index":0}]}]}`,
     '',
     excerpts,
@@ -434,7 +473,8 @@ export function validateSyllabusQuality(
     if (minSize > 0 && maxSize / minSize > 2) {
       const bigIdx = sizes.indexOf(maxSize)
       const smallIdx = sizes.indexOf(minSize)
-      const sanitize = (t: string) => t.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
+      const sanitize = (t: string) =>
+        t.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
       problems.push(
         `Chapter "${sanitize(syllabus[bigIdx].title)}" has ${maxSize} lessons while "${sanitize(syllabus[smallIdx].title)}" has only ${minSize}. Redistribute more evenly.`,
       )
@@ -478,51 +518,51 @@ export function buildNodeQuestionsPrompt(
   const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   const lines: string[] = [
     // === STABLE PREFIX (cache-eligible across retries / same chapter) ===
-    `Source material:`,
+    'Source material:',
     source,
-    ``,
+    '',
     `Lesson: "${safeTitle}"`,
-    ``,
+    '',
   ]
   if (existing.length > 0) {
     lines.push(
-      `Questions that ALREADY exist for this lesson — do not repeat or paraphrase any of them:`,
+      'Questions that ALREADY exist for this lesson — do not repeat or paraphrase any of them:',
       ...existing.map(
         (q, i) =>
           `  ${i + 1}. ${q.prompt.replace(/[\r\n]+/g, ' ').slice(0, 200)}`,
       ),
-      ``,
+      '',
     )
   }
   lines.push(
-    `For every question:`,
-    `- Base the question and answer ONLY on the source text above — never invent facts.`,
+    'For every question:',
+    '- Base the question and answer ONLY on the source text above — never invent facts.',
     `- Tag "difficulty" as "easy" (recall a stated fact), "medium" (apply or connect ideas), or "hard" (multi-step reasoning). Let the material decide the mix.`,
     `- Write the prompt and every option in ${outputLanguage}.`,
-    ``,
-    `Use any of these kinds, mixing across the questions:`,
+    '',
+    'Use any of these kinds, mixing across the questions:',
     `- "mcq": one correct option, 3-4 options, give "correct_indexes"`,
     `- "mcq_multi": several correct options, 3-4 options, give "correct_indexes"`,
     `- "fill_blank": student types a missing word/phrase; use exactly ONE ___ blank per question, give "accepted" (copy verbatim from the source)`,
-    ``,
-    `Constraints:`,
-    `- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.`,
+    '',
+    'Constraints:',
+    '- DO NOT write questions answerable by general common sense — every answer must be supported by THIS source text.',
     existing.length > 0
-      ? `- DO NOT duplicate, paraphrase, or invert any existing question above.`
-      : `- DO NOT repeat the same concept across questions.`,
+      ? '- DO NOT duplicate, paraphrase, or invert any existing question above.'
+      : '- DO NOT repeat the same concept across questions.',
     `- DO NOT cluster every question on one paragraph — distribute coverage evenly across the lesson's material.`,
-    `- fill_blank questions MUST contain EXACTLY ONE ___ blank in the prompt — never zero, never two or more.`,
-    ``,
-    `Example of one well-formed question:`,
+    '- fill_blank questions MUST contain EXACTLY ONE ___ blank in the prompt — never zero, never two or more.',
+    '',
+    'Example of one well-formed question:',
     FEW_SHOT_EXAMPLE,
-    ``,
+    '',
     // === VARIABLE SUFFIX ===
-    `---`,
-    `IMPORTANT: fill_blank prompts must contain EXACTLY ONE ___ — no more, no fewer.`,
+    '---',
+    'IMPORTANT: fill_blank prompts must contain EXACTLY ONE ___ — no more, no fewer.',
     existing.length > 0
       ? `Write exactly ${count} NEW quiz questions in ${outputLanguage} for the lesson above.`
       : `Write ${count} quiz questions in ${outputLanguage} for the lesson above.`,
-    `Respond with ONLY this JSON:`,
+    'Respond with ONLY this JSON:',
     `{"questions":[{...},{...}]}`,
   )
   return lines.join('\n')
@@ -582,16 +622,21 @@ export const SYLLABUS_SCHEMA: Record<string, unknown> = {
 export function detectFormulas(text: string): boolean {
   if (!text) return false
   // Equals sign in a formula context (e.g., "P = 2Q + 10", "MR = MC")
-  if (/[A-Za-z][A-Za-z0-9_]*\s*=\s*[^=\n]{1,80}[\d+\-*/^()]/m.test(text)) return true
+  if (/[A-Za-z][A-Za-z0-9_]*\s*=\s*[^=\n]{1,80}[\d+\-*/^()]/m.test(text))
+    return true
   // Two-sided arithmetic on numerics (e.g., "5% × 2 years", "100 / 25", "2*x")
   if (/\d\s*[×✕*/^+-]\s*[\d(]/m.test(text)) return true
   // Narrow formula markers — "where X =" / "is given by" / calculus terms.
   // Broad keywords like "formula", "calculate", "equation" are deliberately
   // excluded: they fire on plain narrative ("calculate the present value of...")
   // and were the primary source of false-positive calc calls.
-  if (/\b(where\s+[A-Za-z]\s*=|is\s+given\s+by|derivative|integral)\b/i.test(text)) return true
+  if (
+    /\b(where\s+[A-Za-z]\s*=|is\s+given\s+by|derivative|integral)\b/i.test(text)
+  )
+    return true
   // LaTeX markers
-  if (/\\(frac|sqrt|int|sum|prod|partial|alpha|beta|theta|sigma)\b/i.test(text)) return true
+  if (/\\(frac|sqrt|int|sum|prod|partial|alpha|beta|theta|sigma)\b/i.test(text))
+    return true
   // Greek-letter usage in body text (not just glossaries)
   if (/[αβγδεθλμπρσφω]/.test(text)) return true
   return false
@@ -617,25 +662,36 @@ export const NODE_QUESTIONS_SCHEMA: Record<string, unknown> = {
           },
           prompt: {
             type: 'string',
-            description: 'The question text shown to the student. For fill_blank, include EXACTLY ONE ___ placeholder.',
+            description:
+              'The question text shown to the student. For fill_blank, include EXACTLY ONE ___ placeholder.',
           },
           options: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Answer options for mcq/mcq_multi; empty array [] for fill_blank.',
+            description:
+              'Answer options for mcq/mcq_multi; empty array [] for fill_blank.',
           },
           correct_indexes: {
             type: 'array',
             items: { type: 'integer' },
-            description: 'Zero-based indexes of correct options for mcq/mcq_multi; empty array [] for fill_blank.',
+            description:
+              'Zero-based indexes of correct options for mcq/mcq_multi; empty array [] for fill_blank.',
           },
           accepted: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Accepted answer strings for fill_blank, copied verbatim from source; empty array [] for mcq/mcq_multi.',
+            description:
+              'Accepted answer strings for fill_blank, copied verbatim from source; empty array [] for mcq/mcq_multi.',
           },
         },
-        required: ['kind', 'difficulty', 'prompt', 'options', 'correct_indexes', 'accepted'],
+        required: [
+          'kind',
+          'difficulty',
+          'prompt',
+          'options',
+          'correct_indexes',
+          'accepted',
+        ],
       },
     },
   },
@@ -662,7 +718,8 @@ export const CALC_QUESTIONS_SCHEMA: Record<string, unknown> = {
           },
           prompt: {
             type: 'string',
-            description: 'Short one-sentence description of what the question asks (the prompt_template carries the actual student-facing wording).',
+            description:
+              'Short one-sentence description of what the question asks (the prompt_template carries the actual student-facing wording).',
           },
           calc: {
             type: 'object',
@@ -673,17 +730,25 @@ export const CALC_QUESTIONS_SCHEMA: Record<string, unknown> = {
                 items: {
                   type: 'object',
                   properties: {
-                    name: { type: 'string', description: 'Identifier — letters/digits/underscore, must start with a letter.' },
+                    name: {
+                      type: 'string',
+                      description:
+                        'Identifier — letters/digits/underscore, must start with a letter.',
+                    },
                     min: { type: 'number' },
                     max: { type: 'number' },
-                    decimals: { type: 'integer', description: '0 = whole number.' },
+                    decimals: {
+                      type: 'integer',
+                      description: '0 = whole number.',
+                    },
                   },
                   required: ['name', 'min', 'max', 'decimals'],
                 },
               },
               steps: {
                 type: 'array',
-                description: 'Optional ordered intermediate bindings. Each step name binds for later steps and the final formula.',
+                description:
+                  'Optional ordered intermediate bindings. Each step name binds for later steps and the final formula.',
                 items: {
                   type: 'object',
                   properties: {
@@ -693,12 +758,32 @@ export const CALC_QUESTIONS_SCHEMA: Record<string, unknown> = {
                   required: ['name', 'formula'],
                 },
               },
-              formula: { type: 'string', description: 'Final answer expression over variables and step names.' },
-              prompt_template: { type: 'string', description: 'Student-facing wording with {var} placeholders, e.g. "Principal {P} at {r}%...".' },
-              decimals: { type: 'integer', description: 'Rounding applied to the computed answer.' },
-              tolerance: { type: 'number', description: 'Absolute slack allowed when grading.' },
+              formula: {
+                type: 'string',
+                description:
+                  'Final answer expression over variables and step names.',
+              },
+              prompt_template: {
+                type: 'string',
+                description:
+                  'Student-facing wording with {var} placeholders, e.g. "Principal {P} at {r}%...".',
+              },
+              decimals: {
+                type: 'integer',
+                description: 'Rounding applied to the computed answer.',
+              },
+              tolerance: {
+                type: 'number',
+                description: 'Absolute slack allowed when grading.',
+              },
             },
-            required: ['variables', 'formula', 'prompt_template', 'decimals', 'tolerance'],
+            required: [
+              'variables',
+              'formula',
+              'prompt_template',
+              'decimals',
+              'tolerance',
+            ],
           },
         },
         required: ['difficulty', 'prompt', 'calc'],
@@ -776,47 +861,47 @@ export function buildCalcQuestionsPrompt(
   const source = nodeSourceContext(node, chunks)
   const safeTitle = node.title.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')
   return [
-    `Source material:`,
+    'Source material:',
     source,
-    ``,
+    '',
     `Lesson: "${safeTitle}"`,
-    ``,
-    `You are writing parametric calculation questions for this lesson. Each question stores a SOLVER (variables + optional intermediate steps + a final formula) and a prompt template — the student UI rolls fresh random values each play and the answer is recomputed from the formula, so the question grades itself.`,
-    ``,
-    `Use ONLY this DSL inside every formula and step:`,
-    `- Arithmetic: + - * / % ^   (^ is right-associative; % is floored mod)`,
-    `- Comparison: < <= > >= == !=    Logical: && || !    Ternary: cond ? then : else`,
-    `- Functions: abs sign min max sqrt cbrt pow mod`,
-    `             exp ln log log10 log2 logb`,
-    `             sin cos tan asin acos atan atan2  (radians)`,
-    `             sinh cosh tanh asinh acosh atanh`,
-    `             floor ceil round trunc`,
-    `             factorial choose perm gcd lcm`,
-    `             sum prod mean median variance stdev  (variadic over numeric args)`,
-    `             binom_pmf(n,k,p) binom_cdf(n,k,p) normal_pdf(x,mu,sigma) normal_cdf(x,mu,sigma) poisson_pmf(k,lam) poisson_cdf(k,lam)`,
-    `             sigma(lo, hi, body)   pi_iter(lo, hi, body)   iterate(init, count, body)   cases(c1, v1, c2, v2, ..., default)`,
+    '',
+    'You are writing parametric calculation questions for this lesson. Each question stores a SOLVER (variables + optional intermediate steps + a final formula) and a prompt template — the student UI rolls fresh random values each play and the answer is recomputed from the formula, so the question grades itself.',
+    '',
+    'Use ONLY this DSL inside every formula and step:',
+    '- Arithmetic: + - * / % ^   (^ is right-associative; % is floored mod)',
+    '- Comparison: < <= > >= == !=    Logical: && || !    Ternary: cond ? then : else',
+    '- Functions: abs sign min max sqrt cbrt pow mod',
+    '             exp ln log log10 log2 logb',
+    '             sin cos tan asin acos atan atan2  (radians)',
+    '             sinh cosh tanh asinh acosh atanh',
+    '             floor ceil round trunc',
+    '             factorial choose perm gcd lcm',
+    '             sum prod mean median variance stdev  (variadic over numeric args)',
+    '             binom_pmf(n,k,p) binom_cdf(n,k,p) normal_pdf(x,mu,sigma) normal_cdf(x,mu,sigma) poisson_pmf(k,lam) poisson_cdf(k,lam)',
+    '             sigma(lo, hi, body)   pi_iter(lo, hi, body)   iterate(init, count, body)   cases(c1, v1, c2, v2, ..., default)',
     `             (sigma/pi_iter bind 'i'; iterate binds 'x'; ranges capped at 10000 iterations)`,
-    `- Constants: pi, e`,
-    `- Variable names: letters/digits/underscore, must start with a letter; cannot shadow a function or constant.`,
-    ``,
-    `Rules:`,
+    '- Constants: pi, e',
+    '- Variable names: letters/digits/underscore, must start with a letter; cannot shadow a function or constant.',
+    '',
+    'Rules:',
     `- Base every question on a formula or numerical relationship that is EXPLICITLY stated in the source above. Never invent a formula the source doesn't define.`,
     `- prompt_template uses {var} placeholders for every variable. Write it in ${outputLanguage}.`,
     `- "prompt" is a short label (used internally, also in ${outputLanguage}).`,
-    `- Set realistic min/max ranges so the answer stays in a sensible domain (no log of zero, no division by zero, no negative under sqrt).`,
-    `- Tolerance should be small but non-zero; decimals matches the precision the student should type.`,
+    '- Set realistic min/max ranges so the answer stays in a sensible domain (no log of zero, no division by zero, no negative under sqrt).',
+    '- Tolerance should be small but non-zero; decimals matches the precision the student should type.',
     `- Use "steps" when the answer naturally factors into intermediate quantities (compute Q first, then P, then surplus).`,
     `- Use ternary or "cases" for piecewise definitions (tax brackets, supply/demand kinks).`,
     `- Use "sigma" for series (PV of annuity, Riemann sums), "iterate" for Newton-style root finding.`,
-    ``,
+    '',
     `IMPORTANT: if the source has NO explicit numerical formula you can use, return {"questions":[]} — the lesson will fall back to its mcq/fill_blank questions. Do not invent.`,
-    ``,
-    `Few-shot examples (one per pattern):`,
+    '',
+    'Few-shot examples (one per pattern):',
     CALC_FEW_SHOTS,
-    ``,
-    `---`,
+    '',
+    '---',
     `Write up to ${count} calculation question(s) in ${outputLanguage} for the lesson above. If the source supports fewer, write fewer. If none, return an empty array.`,
-    `Respond with ONLY this JSON:`,
+    'Respond with ONLY this JSON:',
     `{"questions":[{...}]}`,
   ].join('\n')
 }

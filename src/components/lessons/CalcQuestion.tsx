@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { generateInstance } from '../../../supabase/functions/_shared/calc'
-import type { Question } from '../../types/database'
 import type { QuestionResponse } from '../../services/lessonService'
+import type { Question } from '../../types/database'
 import MathText from './MathText'
 
 interface CalcQuestionProps {
@@ -26,8 +26,12 @@ function CalcQuestion({ question, onSubmit }: CalcQuestionProps) {
 
   return (
     <div className="question">
-      <p className="prompt"><MathText text={question.prompt} /></p>
-      <p className="calc-statement"><MathText text={instance.prompt} /></p>
+      <p className="prompt">
+        <MathText text={question.prompt} />
+      </p>
+      <p className="calc-statement">
+        <MathText text={instance.prompt} />
+      </p>
       <input
         type="number"
         step="any"

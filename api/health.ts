@@ -10,7 +10,8 @@ declare const process: { env: Record<string, string | undefined> }
 export const config = { runtime: 'edge' }
 
 export default async function handler(): Promise<Response> {
-  const url = process.env.VITE_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const url =
+    process.env.VITE_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
   const key =
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -19,7 +20,9 @@ export default async function handler(): Promise<Response> {
     return new Response('missing supabase config', { status: 503 })
   }
   try {
-    const res = await fetch(`${url}/auth/v1/health`, { headers: { apikey: key } })
+    const res = await fetch(`${url}/auth/v1/health`, {
+      headers: { apikey: key },
+    })
     if (!res.ok) return new Response('supabase unreachable', { status: 503 })
   } catch {
     return new Response('supabase unreachable', { status: 503 })

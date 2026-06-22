@@ -35,10 +35,14 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''
   const authHeader = req.headers.get('Authorization')
-  const authClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
-    global: { headers: { Authorization: authHeader ?? '' } },
-    auth: { persistSession: false },
-  })
+  const authClient = createClient(
+    url,
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    {
+      global: { headers: { Authorization: authHeader ?? '' } },
+      auth: { persistSession: false },
+    },
+  )
   const { data: userData } = await authClient.auth.getUser()
   if (!userData?.user) return json({ error: 'You must be logged in.' }, 401)
   const userId = userData.user.id

@@ -1,5 +1,5 @@
-import { memo } from 'react'
 import katex from 'katex'
+import { memo } from 'react'
 
 interface MathTextProps {
   text: string
@@ -23,6 +23,7 @@ const MathText = memo(function MathText({ text }: MathTextProps) {
     parts.push(
       <span
         key={key++}
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX renders controlled math HTML
         dangerouslySetInnerHTML={{ __html: renderMath(src, true) }}
       />,
     )
@@ -38,6 +39,7 @@ const MathText = memo(function MathText({ text }: MathTextProps) {
     inlineParts.push(
       <span
         key={key++}
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX renders controlled math HTML
         dangerouslySetInnerHTML={{ __html: renderMath(src, false) }}
       />,
     )

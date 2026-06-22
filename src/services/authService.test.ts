@@ -86,7 +86,9 @@ describe('updatePassword', () => {
   })
 
   test('passes a Supabase error through', async () => {
-    updateUser.mockResolvedValue({ error: { message: 'Auth session missing!' } })
+    updateUser.mockResolvedValue({
+      error: { message: 'Auth session missing!' },
+    })
     await expect(updatePassword('a-good-password')).rejects.toThrow(
       /session missing/,
     )

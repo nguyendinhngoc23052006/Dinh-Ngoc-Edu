@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useAsync } from '../../hooks/useAsync'
 import { useProfile } from '../../hooks/profileContext'
+import { useAsync } from '../../hooks/useAsync'
 import { usePetWander } from '../../hooks/usePetWander'
-import { petForm } from '../../lib/petProgress'
 import { pickCheer } from '../../lib/petCheers'
+import { petForm } from '../../lib/petProgress'
 import { listCosmetics } from '../../services/cosmeticsService'
 import { getActivePet, listSpecies } from '../../services/petService'
-import PetSprite from '../pet/PetSprite'
 import type { Pet, Species } from '../../types/database'
+import PetSprite from '../pet/PetSprite'
 
 // On-screen size (px) of the roaming companion before per-form scaling.
 const PET_SIZE = 30

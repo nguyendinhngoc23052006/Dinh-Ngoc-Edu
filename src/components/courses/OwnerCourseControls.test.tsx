@@ -1,6 +1,6 @@
+import { render, screen } from '@testing-library/react'
 // @vitest-environment happy-dom
 import { describe, expect, test, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
 import { supabaseMock } from '../../test/supabaseMock'
 import type { Course } from '../../types/database'
 

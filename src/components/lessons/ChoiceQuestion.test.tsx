@@ -1,9 +1,9 @@
-// @vitest-environment happy-dom
-import { describe, expect, test, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import ChoiceQuestion from './ChoiceQuestion'
+// @vitest-environment happy-dom
+import { describe, expect, test, vi } from 'vitest'
 import type { Question } from '../../types/database'
+import ChoiceQuestion from './ChoiceQuestion'
 
 function makeQuestion(overrides: Partial<Question> = {}): Question {
   return {
@@ -39,7 +39,10 @@ describe('ChoiceQuestion', () => {
     await userEvent.click(checkButton())
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'choice', selectedIndexes: [1] })
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: 'choice',
+      selectedIndexes: [1],
+    })
   })
 
   test('single-choice: picking another option replaces the selection', async () => {
@@ -50,7 +53,10 @@ describe('ChoiceQuestion', () => {
     await userEvent.click(screen.getByLabelText('Gamma'))
     await userEvent.click(checkButton())
 
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'choice', selectedIndexes: [2] })
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: 'choice',
+      selectedIndexes: [2],
+    })
   })
 
   test('multi-choice: accumulates and toggles indexes, shows the hint', async () => {
@@ -69,6 +75,9 @@ describe('ChoiceQuestion', () => {
     await userEvent.click(screen.getByLabelText('Alpha')) // toggle off
     await userEvent.click(checkButton())
 
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'choice', selectedIndexes: [2] })
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: 'choice',
+      selectedIndexes: [2],
+    })
   })
 })

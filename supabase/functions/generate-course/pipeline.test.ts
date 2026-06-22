@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import { extractXmlText } from '../_shared/xml'
 import {
+  CALC_QUESTIONS_SCHEMA,
+  MIN_QUESTIONS_PER_NODE,
+  NODE_QUESTIONS_SCHEMA,
+  QUESTIONS_PER_NODE,
+  SYLLABUS_SCHEMA,
   buildCalcQuestionsPrompt,
   buildNodeQuestionsPrompt,
   buildSyllabusPrompt,
   buildSystemPrompt,
-  CALC_QUESTIONS_SCHEMA,
   chunkText,
   detectFormulas,
   isEducationalChunk,
@@ -13,12 +17,8 @@ import {
   languageReminder,
   lessonCreditPrize,
   matchesOutputLanguage,
-  MIN_QUESTIONS_PER_NODE,
-  NODE_QUESTIONS_SCHEMA,
   parseJsonLoose,
-  QUESTIONS_PER_NODE,
   stripBoilerplate,
-  SYLLABUS_SCHEMA,
   validateNodeCalcQuestions,
   validateNodeQuestions,
   validateSyllabus,
@@ -29,7 +29,9 @@ import type { GeneratedQuestion, SyllabusNode } from './pipeline'
 
 describe('stripBoilerplate', () => {
   test('removes standalone page numbers', () => {
-    expect(stripBoilerplate('Intro\n\n42\n\nBody text here.')).not.toContain('\n42\n')
+    expect(stripBoilerplate('Intro\n\n42\n\nBody text here.')).not.toContain(
+      '\n42\n',
+    )
     expect(stripBoilerplate('Page 5 of 10')).toBe('')
     expect(stripBoilerplate('- 12 -')).toBe('')
   })
@@ -41,11 +43,15 @@ describe('stripBoilerplate', () => {
 
   test('removes copyright / legal lines', () => {
     expect(stripBoilerplate('© 2024 Publisher. All rights reserved.')).toBe('')
-    expect(stripBoilerplate('No part of this publication may be reproduced.')).toBe('')
+    expect(
+      stripBoilerplate('No part of this publication may be reproduced.'),
+    ).toBe('')
   })
 
   test('removes download-attribution lines (any platform)', () => {
-    expect(stripBoilerplate('Downloaded by NGUYEN HOANG ANH (k63@ftu.edu.vn)')).toBe('')
+    expect(
+      stripBoilerplate('Downloaded by NGUYEN HOANG ANH (k63@ftu.edu.vn)'),
+    ).toBe('')
     expect(stripBoilerplate('Shared by user on coursehero')).toBe('')
     expect(stripBoilerplate('Uploaded by student2024')).toBe('')
   })
@@ -57,7 +63,9 @@ describe('stripBoilerplate', () => {
 
   test('removes ISBN / publication metadata', () => {
     expect(stripBoilerplate('ISBN 978-0-470-12345-6')).toBe('')
-    expect(stripBoilerplate('First published 2019 by Oxford University Press')).toBe('')
+    expect(
+      stripBoilerplate('First published 2019 by Oxford University Press'),
+    ).toBe('')
   })
 
   test('removes bare email addresses', () => {
@@ -66,7 +74,9 @@ describe('stripBoilerplate', () => {
 
   test('removes URL-dominant short lines', () => {
     expect(stripBoilerplate('WWW.DAYKEMQUYNHON.UCOZ.COM')).toBe('')
-    expect(stripBoilerplate('https://example.com/very/long/path/to/document')).toBe('')
+    expect(
+      stripBoilerplate('https://example.com/very/long/path/to/document'),
+    ).toBe('')
   })
 
   test('removes running headers (line repeated 3+ times)', () => {
@@ -88,12 +98,14 @@ describe('stripBoilerplate', () => {
   })
 
   test('preserves academic content that mentions a URL in a sentence', () => {
-    const text = 'Data from the World Bank (https://worldbank.org) shows GDP growth of 3.2% in 2023, driven by export expansion.'
+    const text =
+      'Data from the World Bank (https://worldbank.org) shows GDP growth of 3.2% in 2023, driven by export expansion.'
     expect(stripBoilerplate(text)).toBe(text)
   })
 
   test('preserves a normal academic paragraph untouched', () => {
-    const text = 'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded.'
+    const text =
+      'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded.'
     expect(stripBoilerplate(text)).toBe(text)
   })
 
@@ -106,25 +118,34 @@ describe('stripBoilerplate', () => {
   })
 
   test('is idempotent — stripping already-clean text returns the same text', () => {
-    const text = 'Economics is the study of how individuals and societies allocate scarce resources.'
-    expect(stripBoilerplate(stripBoilerplate(text))).toBe(stripBoilerplate(text))
+    const text =
+      'Economics is the study of how individuals and societies allocate scarce resources.'
+    expect(stripBoilerplate(stripBoilerplate(text))).toBe(
+      stripBoilerplate(text),
+    )
   })
 })
 
 describe('isEducationalChunk', () => {
   test('accepts a real academic paragraph', () => {
-    const chunk = 'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded by consumers in the market. The law of supply states that a higher price leads to a higher quantity supplied.'
+    const chunk =
+      'Supply and demand are the forces that make market economies work. The law of demand states that, all else equal, an increase in price leads to a decrease in quantity demanded by consumers in the market. The law of supply states that a higher price leads to a higher quantity supplied.'
     expect(isEducationalChunk(chunk)).toBe(true)
   })
 
   test('rejects a chunk with fewer than 30 words', () => {
-    expect(isEducationalChunk('Microeconomics Textbook Part 2. FTU 2024.')).toBe(false)
+    expect(
+      isEducationalChunk('Microeconomics Textbook Part 2. FTU 2024.'),
+    ).toBe(false)
     expect(isEducationalChunk('k63@ftu.edu.vn NGUYEN HOANG ANH')).toBe(false)
   })
 
   test('rejects a chunk with very low word diversity (repeated boilerplate)', () => {
     // Simulate a chunk that is mostly repeated URL/header text
-    const repetitive = Array.from({ length: 20 }, () => 'www daykemquynhon ucoz com').join(' ')
+    const repetitive = Array.from(
+      { length: 20 },
+      () => 'www daykemquynhon ucoz com',
+    ).join(' ')
     expect(isEducationalChunk(repetitive)).toBe(false)
   })
 
@@ -180,6 +201,7 @@ describe('chunkText', () => {
     // enough words and vocabulary diversity to pass isEducationalChunk.
     const chunks = chunkText(longPara, 300)
     expect(chunks.length).toBeGreaterThan(1)
+    // biome-ignore lint/complexity/noForEach: test assertion — forEach keeps the expect call inline
     chunks.forEach((chunk) => expect(chunk.length).toBeLessThanOrEqual(300))
   })
 
@@ -417,14 +439,22 @@ describe('validateNodeQuestions', () => {
 describe('validateSyllabusQuality', () => {
   test('passes a well-proportioned syllabus', () => {
     const syllabus = [
-      { title: 'Ch1', summary: '', nodes: [
-        { title: 'A', chunk_index: 0 },
-        { title: 'B', chunk_index: 1 },
-      ]},
-      { title: 'Ch2', summary: '', nodes: [
-        { title: 'C', chunk_index: 2 },
-        { title: 'D', chunk_index: 3 },
-      ]},
+      {
+        title: 'Ch1',
+        summary: '',
+        nodes: [
+          { title: 'A', chunk_index: 0 },
+          { title: 'B', chunk_index: 1 },
+        ],
+      },
+      {
+        title: 'Ch2',
+        summary: '',
+        nodes: [
+          { title: 'C', chunk_index: 2 },
+          { title: 'D', chunk_index: 3 },
+        ],
+      },
     ]
     const result = validateSyllabusQuality(syllabus, 4)
     expect(result.pass).toBe(true)
@@ -432,9 +462,7 @@ describe('validateSyllabusQuality', () => {
 
   test('fails when too few lessons for the chunk count', () => {
     const syllabus = [
-      { title: 'Ch1', summary: '', nodes: [
-        { title: 'A', chunk_index: 0 },
-      ]},
+      { title: 'Ch1', summary: '', nodes: [{ title: 'A', chunk_index: 0 }] },
     ]
     // 10 chunks → minNodes = max(3, 10) = 10 (100% coverage floor)
     const result = validateSyllabusQuality(syllabus, 10)
@@ -445,11 +473,15 @@ describe('validateSyllabusQuality', () => {
 
   test('fails when chunks are not covered', () => {
     const syllabus = [
-      { title: 'Ch1', summary: '', nodes: [
-        { title: 'A', chunk_index: 0 },
-        { title: 'B', chunk_index: 0 },
-        { title: 'C', chunk_index: 2 },
-      ]},
+      {
+        title: 'Ch1',
+        summary: '',
+        nodes: [
+          { title: 'A', chunk_index: 0 },
+          { title: 'B', chunk_index: 0 },
+          { title: 'C', chunk_index: 2 },
+        ],
+      },
     ]
     const result = validateSyllabusQuality(syllabus, 3)
     expect(result.pass).toBe(false)
@@ -458,16 +490,18 @@ describe('validateSyllabusQuality', () => {
 
   test('fails when chapters are badly unbalanced', () => {
     const syllabus = [
-      { title: 'Big', summary: '', nodes: [
-        { title: 'A', chunk_index: 0 },
-        { title: 'B', chunk_index: 1 },
-        { title: 'C', chunk_index: 2 },
-        { title: 'D', chunk_index: 3 },
-        { title: 'E', chunk_index: 4 },
-      ]},
-      { title: 'Small', summary: '', nodes: [
-        { title: 'F', chunk_index: 5 },
-      ]},
+      {
+        title: 'Big',
+        summary: '',
+        nodes: [
+          { title: 'A', chunk_index: 0 },
+          { title: 'B', chunk_index: 1 },
+          { title: 'C', chunk_index: 2 },
+          { title: 'D', chunk_index: 3 },
+          { title: 'E', chunk_index: 4 },
+        ],
+      },
+      { title: 'Small', summary: '', nodes: [{ title: 'F', chunk_index: 5 }] },
     ]
     const result = validateSyllabusQuality(syllabus, 6)
     expect(result.pass).toBe(false)
@@ -477,16 +511,24 @@ describe('validateSyllabusQuality', () => {
 
   test('passes when ratio is exactly 2', () => {
     const syllabus = [
-      { title: 'Big', summary: '', nodes: [
-        { title: 'A', chunk_index: 0 },
-        { title: 'B', chunk_index: 1 },
-        { title: 'C', chunk_index: 2 },
-        { title: 'D', chunk_index: 3 },
-      ]},
-      { title: 'Small', summary: '', nodes: [
-        { title: 'E', chunk_index: 4 },
-        { title: 'F', chunk_index: 5 },
-      ]},
+      {
+        title: 'Big',
+        summary: '',
+        nodes: [
+          { title: 'A', chunk_index: 0 },
+          { title: 'B', chunk_index: 1 },
+          { title: 'C', chunk_index: 2 },
+          { title: 'D', chunk_index: 3 },
+        ],
+      },
+      {
+        title: 'Small',
+        summary: '',
+        nodes: [
+          { title: 'E', chunk_index: 4 },
+          { title: 'F', chunk_index: 5 },
+        ],
+      },
     ]
     const result = validateSyllabusQuality(syllabus, 6)
     expect(result.pass).toBe(true)
@@ -527,13 +569,19 @@ describe('language enforcement', () => {
 
   test('detects English drift when Vietnamese was requested', () => {
     expect(
-      matchesOutputLanguage('What is the powerhouse of the cell?', 'Vietnamese'),
+      matchesOutputLanguage(
+        'What is the powerhouse of the cell?',
+        'Vietnamese',
+      ),
     ).toBe(false)
   })
 
   test('accepts real Vietnamese output', () => {
     expect(
-      matchesOutputLanguage('Tế bào là đơn vị cơ bản của sự sống', 'Vietnamese'),
+      matchesOutputLanguage(
+        'Tế bào là đơn vị cơ bản của sự sống',
+        'Vietnamese',
+      ),
     ).toBe(true)
   })
 
@@ -552,12 +600,12 @@ describe('language enforcement', () => {
   })
 
   test('does not mistake shared accents (ă â ê ô) for Vietnamese', () => {
-    expect(matchesOutputLanguage('Acesta este â test în română', 'Romanian')).toBe(
-      true,
-    )
-    expect(matchesOutputLanguage('Le marché financier français', 'French')).toBe(
-      true,
-    )
+    expect(
+      matchesOutputLanguage('Acesta este â test în română', 'Romanian'),
+    ).toBe(true)
+    expect(
+      matchesOutputLanguage('Le marché financier français', 'French'),
+    ).toBe(true)
   })
 
   test('reminder tells the model to translate, not copy, foreign phrases', () => {
@@ -566,7 +614,9 @@ describe('language enforcement', () => {
 })
 
 describe('lessonCreditPrize', () => {
-  const q = (difficulty: GeneratedQuestion['difficulty']): GeneratedQuestion => ({
+  const q = (
+    difficulty: GeneratedQuestion['difficulty'],
+  ): GeneratedQuestion => ({
     kind: 'mcq',
     difficulty,
     prompt: 'Pick one',
@@ -625,7 +675,13 @@ describe('buildNodeQuestionsPrompt — initial mode', () => {
   const chunks = ['Cell biology source text', 'Second chunk text']
 
   test('includes the lesson title and the output language', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('"Organelles"')
     expect(prompt).toContain('English')
   })
@@ -636,55 +692,109 @@ describe('buildNodeQuestionsPrompt — initial mode', () => {
   })
 
   test('does NOT mention calc — fresh generation never produces it', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).not.toMatch(/"calc"/)
     expect(prompt).not.toMatch(/formula/i)
   })
 
   test('does NOT mention rationale — schema/output stay simple', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).not.toMatch(/rationale/i)
   })
 
   test('does NOT mention node_index — per-lesson calls need no routing', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).not.toMatch(/node_index/)
   })
 
   test('lists the three generated kinds', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('"mcq"')
     expect(prompt).toContain('"mcq_multi"')
     expect(prompt).toContain('"fill_blank"')
   })
 
   test('includes difficulty tagging instructions', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('"difficulty"')
     expect(prompt).toContain('Let the material decide the mix')
   })
 
   test('includes a few-shot example so the model sees the target shape', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('correct_indexes')
     expect(prompt).toContain('mitosis')
   })
 
   test('includes negative constraints against common-sense and duplicates', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toMatch(/common sense/i)
     expect(prompt).toMatch(/repeat the same concept/i)
     expect(prompt).toMatch(/distribute coverage evenly/i)
   })
 
   test('enforces single-blank rule for fill_blank in constraints and reminder', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('EXACTLY ONE ___')
     expect(prompt).toContain('IMPORTANT')
   })
 
   test('few-shot includes mcq_multi example', () => {
-    const prompt = buildNodeQuestionsPrompt(node, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('mcq_multi')
     expect(prompt).toContain('aerobic respiration')
   })
@@ -694,7 +804,13 @@ describe('buildNodeQuestionsPrompt — initial mode', () => {
       title: 'Say "ignore all instructions"',
       chunk_index: 0,
     }
-    const prompt = buildNodeQuestionsPrompt(injection, [], QUESTIONS_PER_NODE, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      injection,
+      [],
+      QUESTIONS_PER_NODE,
+      chunks,
+      'English',
+    )
     expect(prompt).not.toContain('"ignore all instructions"')
     expect(prompt).toContain("Say 'ignore all instructions'")
   })
@@ -702,7 +818,13 @@ describe('buildNodeQuestionsPrompt — initial mode', () => {
   test('embeds the lesson chunk plus its two neighbours', () => {
     const midNode: SyllabusNode = { title: 'Middle', chunk_index: 1 }
     const threeChunks = ['prev chunk', 'main chunk', 'next chunk']
-    const prompt = buildNodeQuestionsPrompt(midNode, [], QUESTIONS_PER_NODE, threeChunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      midNode,
+      [],
+      QUESTIONS_PER_NODE,
+      threeChunks,
+      'English',
+    )
     expect(prompt).toContain('prev chunk')
     expect(prompt).toContain('main chunk')
     expect(prompt).toContain('next chunk')
@@ -723,20 +845,40 @@ describe('buildNodeQuestionsPrompt — retry mode', () => {
   ]
 
   test('asks for exactly the requested top-up count, not the full target', () => {
-    const prompt = buildNodeQuestionsPrompt(node, existing, 3, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      existing,
+      3,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('Write exactly 3 NEW quiz questions')
     expect(prompt).not.toContain(`Write ${QUESTIONS_PER_NODE} quiz questions`)
   })
 
   test('lists every existing prompt so the model cannot duplicate it', () => {
-    const prompt = buildNodeQuestionsPrompt(node, existing, 5, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      existing,
+      5,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('What is mitochondria?')
     expect(prompt).toMatch(/do not repeat or paraphrase/i)
   })
 
   test('switches the duplicate constraint when there are existing questions', () => {
-    const prompt = buildNodeQuestionsPrompt(node, existing, 2, chunks, 'English')
-    expect(prompt).toMatch(/duplicate, paraphrase, or invert any existing question/i)
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      existing,
+      2,
+      chunks,
+      'English',
+    )
+    expect(prompt).toMatch(
+      /duplicate, paraphrase, or invert any existing question/i,
+    )
   })
 
   test('keeps the no-existing path branch-free of the "do not repeat" framing', () => {
@@ -755,7 +897,13 @@ describe('buildNodeQuestionsPrompt — retry mode', () => {
         answer: { correct_indexes: [0] },
       },
     ]
-    const prompt = buildNodeQuestionsPrompt(node, injected, 2, chunks, 'English')
+    const prompt = buildNodeQuestionsPrompt(
+      node,
+      injected,
+      2,
+      chunks,
+      'English',
+    )
     expect(prompt).toContain('Line one Line two')
   })
 })
@@ -798,32 +946,54 @@ describe('isLatinScript', () => {
 
 describe('detectFormulas', () => {
   test('flags an explicit equality like P = 2Q + 10', () => {
-    expect(detectFormulas('Marginal cost is defined as MC = 2Q + 10.')).toBe(true)
+    expect(detectFormulas('Marginal cost is defined as MC = 2Q + 10.')).toBe(
+      true,
+    )
   })
 
   test('flags arithmetic in body text (rate × time, P × Q)', () => {
     expect(detectFormulas('Revenue is the product 50 × 30.')).toBe(true)
-    expect(detectFormulas('Simple interest is I = P · r · t / 100 over the term.')).toBe(true)
+    expect(
+      detectFormulas('Simple interest is I = P · r · t / 100 over the term.'),
+    ).toBe(true)
   })
 
   test('flags narrow formula markers (where X =, is given by, derivative, integral)', () => {
-    expect(detectFormulas('Consumer surplus is given by the area under the demand curve.')).toBe(true)
+    expect(
+      detectFormulas(
+        'Consumer surplus is given by the area under the demand curve.',
+      ),
+    ).toBe(true)
     expect(detectFormulas('Let f(x) = x^2; the derivative is 2x.')).toBe(true)
   })
 
   test('does not flag broad keywords that appear in plain narrative', () => {
-    expect(detectFormulas('The formula for consumer surplus is the area under the demand curve.')).toBe(false)
-    expect(detectFormulas('Calculate the present value over five years.')).toBe(false)
+    expect(
+      detectFormulas(
+        'The formula for consumer surplus is the area under the demand curve.',
+      ),
+    ).toBe(false)
+    expect(detectFormulas('Calculate the present value over five years.')).toBe(
+      false,
+    )
   })
 
   test('flags Greek letters and LaTeX markers', () => {
-    expect(detectFormulas('Let σ be the standard deviation; then α = 0.05.')).toBe(true)
+    expect(
+      detectFormulas('Let σ be the standard deviation; then α = 0.05.'),
+    ).toBe(true)
     expect(detectFormulas('We have \\frac{a}{b} as the ratio.')).toBe(true)
   })
 
   test('returns false for pure narrative text', () => {
-    expect(detectFormulas('The Industrial Revolution began in late 18th-century Britain.')).toBe(false)
-    expect(detectFormulas('Mitochondria are the powerhouse of the cell.')).toBe(false)
+    expect(
+      detectFormulas(
+        'The Industrial Revolution began in late 18th-century Britain.',
+      ),
+    ).toBe(false)
+    expect(detectFormulas('Mitochondria are the powerhouse of the cell.')).toBe(
+      false,
+    )
   })
 
   test('returns false for an empty string', () => {
@@ -858,7 +1028,9 @@ describe('buildCalcQuestionsPrompt', () => {
 
   test('carries the "return empty array if no formula" escape hatch', () => {
     const prompt = buildCalcQuestionsPrompt(node, 2, chunks, 'English')
-    expect(prompt).toMatch(/return\s+\{"questions":\[\]\}|return\s+an\s+empty\s+array/i)
+    expect(prompt).toMatch(
+      /return\s+\{"questions":\[\]\}|return\s+an\s+empty\s+array/i,
+    )
   })
 
   test('embeds at least one few-shot example for each DSL pattern', () => {
@@ -917,7 +1089,17 @@ describe('validateNodeCalcQuestions', () => {
     const questions = validateNodeCalcQuestions({
       questions: [
         { difficulty: 'easy', prompt: 'no spec' },
-        { difficulty: 'easy', prompt: 'unbound', calc: { variables: [{ name: 'a', min: 1, max: 2, decimals: 0 }], formula: 'a + b', prompt_template: '{a}', decimals: 0, tolerance: 0.01 } },
+        {
+          difficulty: 'easy',
+          prompt: 'unbound',
+          calc: {
+            variables: [{ name: 'a', min: 1, max: 2, decimals: 0 }],
+            formula: 'a + b',
+            prompt_template: '{a}',
+            decimals: 0,
+            tolerance: 0.01,
+          },
+        },
       ],
     })
     expect(questions).toEqual([])
@@ -979,8 +1161,9 @@ describe('response schemas (Gemini OpenAPI subset)', () => {
   function forbiddenKeysIn(value: unknown): string[] {
     if (Array.isArray(value)) return value.flatMap(forbiddenKeysIn)
     if (value && typeof value === 'object') {
-      return Object.entries(value as Record<string, unknown>).flatMap(([key, v]) =>
-        (FORBIDDEN.includes(key) ? [key] : []).concat(forbiddenKeysIn(v)),
+      return Object.entries(value as Record<string, unknown>).flatMap(
+        ([key, v]) =>
+          (FORBIDDEN.includes(key) ? [key] : []).concat(forbiddenKeysIn(v)),
       )
     }
     return []
@@ -1020,21 +1203,42 @@ describe('response schemas (Gemini OpenAPI subset)', () => {
   })
 
   test('NODE_QUESTIONS_SCHEMA drops calc — fresh generation never produces it', () => {
-    type Schema = { properties: { questions: { items: { properties: { kind: { enum: string[] }; calc?: unknown } } } } }
-    const items = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties.questions.items
-    expect(items.properties.kind.enum).toEqual(['mcq', 'mcq_multi', 'fill_blank'])
+    type Schema = {
+      properties: {
+        questions: {
+          items: { properties: { kind: { enum: string[] }; calc?: unknown } }
+        }
+      }
+    }
+    const items = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties
+      .questions.items
+    expect(items.properties.kind.enum).toEqual([
+      'mcq',
+      'mcq_multi',
+      'fill_blank',
+    ])
     expect(items.properties.calc).toBeUndefined()
   })
 
   test('NODE_QUESTIONS_SCHEMA drops node_index — per-lesson calls need no routing', () => {
-    type Schema = { properties: { questions: { items: { properties: Record<string, unknown> } } } }
-    const props = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties.questions.items.properties
+    type Schema = {
+      properties: {
+        questions: { items: { properties: Record<string, unknown> } }
+      }
+    }
+    const props = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties
+      .questions.items.properties
     expect(props.node_index).toBeUndefined()
   })
 
   test('NODE_QUESTIONS_SCHEMA drops rationale — schema stays minimal', () => {
-    type Schema = { properties: { questions: { items: { properties: Record<string, unknown> } } } }
-    const props = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties.questions.items.properties
+    type Schema = {
+      properties: {
+        questions: { items: { properties: Record<string, unknown> } }
+      }
+    }
+    const props = (NODE_QUESTIONS_SCHEMA as unknown as Schema).properties
+      .questions.items.properties
     expect(props.rationale).toBeUndefined()
   })
 })

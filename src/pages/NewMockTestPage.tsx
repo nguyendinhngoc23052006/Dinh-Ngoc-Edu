@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import ChapterPicker from '../components/mock-tests/ChapterPicker'
 import { useAsync } from '../hooks/useAsync'
 import { getCourseContent } from '../services/lessonService'
 import {
-  createMockTest,
   MAX_TEST_QUESTIONS,
+  createMockTest,
   validateNewMockTest,
 } from '../services/mockTestService'
-import ChapterPicker from '../components/mock-tests/ChapterPicker'
 
 function NewMockTestPage() {
   const { courseId = '' } = useParams()

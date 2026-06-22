@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import type { Question } from '../../types/database'
 import {
   correctAnswerText,
   gradeQuestion,
@@ -10,9 +9,10 @@ import type {
   LessonSubmission,
   QuestionResponse,
 } from '../../services/lessonService'
+import type { Question } from '../../types/database'
+import CalcQuestion from './CalcQuestion'
 import ChoiceQuestion from './ChoiceQuestion'
 import FillBlankQuestion from './FillBlankQuestion'
-import CalcQuestion from './CalcQuestion'
 import MathText from './MathText'
 
 interface LessonPlayerProps {
@@ -24,10 +24,16 @@ interface LessonPlayerProps {
 // Walks the node's questions one at a time with instant feedback, collecting
 // each answer by value, then hands the set to the page to record completion
 // and award credit (re-graded server-side).
-function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) {
+function LessonPlayer({
+  questions,
+  onComplete,
+  submitting,
+}: LessonPlayerProps) {
   const [index, setIndex] = useState(0)
   const [lastGrade, setLastGrade] = useState<Grade | null>(null)
-  const [lastResponse, setLastResponse] = useState<QuestionResponse | null>(null)
+  const [lastResponse, setLastResponse] = useState<QuestionResponse | null>(
+    null,
+  )
   const [score, setScore] = useState(0)
   // Answers accumulate in a ref so re-renders don't reset them; only the final
   // submit reads them.
@@ -114,7 +120,9 @@ function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) 
         )
       ) : (
         <div className="feedback">
-          <p className="question-prompt"><MathText text={question.prompt} /></p>
+          <p className="question-prompt">
+            <MathText text={question.prompt} />
+          </p>
           <div
             role="alert"
             className={
@@ -134,7 +142,9 @@ function LessonPlayer({ questions, onComplete, submitting }: LessonPlayerProps) 
             </p>
             {lastGrade === 'correct' ? null : (
               <p>
-                {lastGrade === 'partial' ? 'Exact answer: ' : 'Correct answer: '}
+                {lastGrade === 'partial'
+                  ? 'Exact answer: '
+                  : 'Correct answer: '}
                 <strong>
                   {correctAnswerText(question, lastResponse ?? undefined)}
                 </strong>

@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
 
-/* eslint-disable react-hooks/set-state-in-effect --
-   Generic fetch-on-mount hook: loading/error must reset synchronously when
-   the query deps change, before the new async result lands. */
-
 export interface AsyncState<T> {
   data: T | null
   loading: boolean
@@ -23,6 +19,7 @@ export function useAsync<T>(
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetcher is intentionally excluded (inline arrow changes every render); version is an explicit reload counter, not a React-managed dep
   useEffect(() => {
     let active = true
     setLoading(true)
@@ -42,7 +39,6 @@ export function useAsync<T>(
     return () => {
       active = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetcher is intentionally not a dep
   }, [version, ...deps])
 
   function reload() {

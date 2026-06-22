@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabaseClient'
 import type { Session } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabaseClient'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MIN_PASSWORD_LENGTH = 8

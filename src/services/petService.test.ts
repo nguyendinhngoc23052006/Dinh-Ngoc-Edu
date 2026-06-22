@@ -81,7 +81,10 @@ describe('adoptPet', () => {
 
   test('passes the RPC error through (e.g. storage full)', async () => {
     supabaseMock.reset([
-      { data: null, error: { message: 'Your storage is full (3 pets). Release one first.' } },
+      {
+        data: null,
+        error: { message: 'Your storage is full (3 pets). Release one first.' },
+      },
     ])
     await expect(adoptPet()).rejects.toThrow(/storage is full/)
   })
