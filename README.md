@@ -25,7 +25,7 @@ npm run dev                  # Vite dev server
 
 The client reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY ?? VITE_SUPABASE_ANON_KEY`.
 Both production (set by hand) and previews (injected by the Supabase→Vercel integration
-after step 6.7 sets the prefix to `VITE_`) use the same names — no cross-prefix fallback needed.
+after step 8.3 sets the prefix to `VITE_`) use the same names — no cross-prefix fallback needed.
 The browser only ever gets the **publishable** key — never a secret. See
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the full variable + secret list.
 

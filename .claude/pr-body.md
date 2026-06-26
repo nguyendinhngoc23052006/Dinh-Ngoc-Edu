@@ -1,4 +1,4 @@
-Sync edu repo to the guide's updated Vite "set it up" section. The guide was updated so that step 6.7 configures the Supabase→Vercel integration to inject `VITE_`-named vars into previews (matching production), eliminating the need for the `NEXT_PUBLIC_` fallback chain. This PR applies that change across every file in the env-var contract.
+Fix stale step reference in README.md: "step 6.7" → "step 8.3" (guide was restructured from 12 to 14 steps in PR #14 of cloud-pipeline-guide; the Supabase→Vercel integration prefix step is now numbered 8.3). No functional change — README only.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -13,6 +13,6 @@ Sync edu repo to the guide's updated Vite "set it up" section. The guide was upd
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Removed the `NEXT_PUBLIC_` two-prefix fallback across the entire env-var contract — `CLAUDE.md` (architecture rule, self-check item, memory example), `vite.config.ts` (envPrefix), `src/lib/supabaseClient.ts`, `src/vite-env.d.ts`, `api/health.ts`, `src/CLAUDE.md`, `README.md`, `docs/RUNBOOK.md`, and `MEMORY.md` — now all consistently use `VITE_` only, matching the guide after step 6.7 configures the integration prefix.
-**What you do next:** confirm the Supabase→Vercel integration prefix is set to `VITE_` in your dashboard (Supabase → project → Settings → Integrations → Vercel → Manage → Prefix = `VITE_`), then review and merge.
-**How to roll it back:** revert this PR's merge commit — that restores the two-prefix fallback chain across all files.
+**What changed:** One word in README.md line 28 — "step 6.7" corrected to "step 8.3" to match the current guide structure.
+**What you do next:** Review the preview (Vercel auto-deploy should fire — that's the point of this PR), then merge.
+**How to roll it back:** Revert this PR's merge commit — restores "step 6.7" in README.md.
