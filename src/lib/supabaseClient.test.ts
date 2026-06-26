@@ -12,16 +12,9 @@ test('creates a client from URL + publishable key', async () => {
   expect(supabase).toBeDefined()
 })
 
-test('falls back to the NEXT_PUBLIC_ names the preview integration injects', async () => {
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co')
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'sb_anon_test')
-  const { supabase } = await import('./supabaseClient')
-  expect(supabase).toBeDefined()
-})
-
-test('falls back to the NEXT_PUBLIC_ publishable key name', async () => {
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co')
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test')
+test('falls back to VITE_SUPABASE_ANON_KEY when publishable key is absent', async () => {
+  vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co')
+  vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'sb_anon_test')
   const { supabase } = await import('./supabaseClient')
   expect(supabase).toBeDefined()
 })

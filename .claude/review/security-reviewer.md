@@ -1,13 +1,12 @@
-# security-reviewer verdict — 2026-06-22
+# security-reviewer verdict — 2026-06-26
 
-PR: add `.github/workflows/dependabot-auto-merge.yml`
+PR: sync edu repo to guide's single VITE_ prefix (remove NEXT_PUBLIC_ fallback)
 
 ## PASS
 
-- `pull_request_target` is the correct trigger: runs in base branch context, no code checkout of the PR branch, GITHUB_TOKEN is granted write access for Dependabot PRs without exposing untrusted code to secrets.
-- Permissions scoped minimally: `contents: write` and `pull-requests: write` only.
-- `dependabot/fetch-metadata@v2` is the official action from Dependabot's own org — not a third-party action.
-- Condition `github.actor == 'dependabot[bot]'` at the job level prevents the workflow from acting on any non-Dependabot PR.
-- `gh pr merge --auto` queues a merge only when CI passes; it does not force-merge.
-- Patch-only filter (`version-update:semver-patch`) minimises surface area — minor/major bumps still require human review.
-- No secrets committed. No new external services. No RLS changes. No auth/money/PII/upload code touched.
+Initial pass flagged stale files: `src/vite-env.d.ts` still declared NEXT_PUBLIC_ types; `api/health.ts` still read NEXT_PUBLIC_ fallbacks; README and MEMORY still documented the old pattern. All resolved before commit.
+
+- Only publishable keys (VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_ANON_KEY) in client code — no secret key exposure. ✓
+- No new RLS gaps; no schema changes. ✓
+- `api/health.ts` reads VITE_-only env vars, no secret involved. ✓
+- `src/vite-env.d.ts` removed NEXT_PUBLIC_ declarations, added VITE_SUPABASE_ANON_KEY. ✓
