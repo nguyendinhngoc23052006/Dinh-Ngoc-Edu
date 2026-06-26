@@ -32,7 +32,7 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 - One responsibility per file, ~200 lines; edit before creating.
 - A startup failure renders its error as visible text in #root — a deployment never shows a blank page.
 - Components render UI; data access and validation live in `src/services/`.
-- Read Supabase config from `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY ?? VITE_SUPABASE_ANON_KEY`; throw if URL or key is missing. Never hardcode. The contract spans `vite.config.ts` (`envPrefix: ['VITE_']`), this client, `.env.example`, and the Vercel production variable names — all using `VITE_` (step 6.7 configures the integration to inject `VITE_`-named vars into previews, matching production); if the stack changes, move all of it in ONE PR.
+- Read Supabase config from `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY ?? VITE_SUPABASE_ANON_KEY`; throw if URL or key is missing. Never hardcode. The contract spans `vite.config.ts` (`envPrefix: ['VITE_']`), this client, `.env.example`, and the Vercel production variable names — all using `VITE_` (step 8.3 configures the integration to inject `VITE_`-named vars into previews, matching production); if the stack changes, move all of it in ONE PR.
 - Folders: `src/components` (UI) · `src/hooks` (logic) · `src/services` (data + validation) · `src/lib` (incl. supabaseClient) · `src/types` · `supabase/migrations` (one SQL file per change) · `supabase/config.toml` · `supabase/seed.sql`.
 - **Designing structure on request** (`/prototype`, or "set up the project structure"): build it from my description — create only the feature/domain folders the project needs (a CRM → `contacts`, `deals`, `reminders`; a game → `game/{loop,scenes,entities}`), and omit the rest. Every folder gets a real, used starter file — never empty or `.gitkeep` shells. Wire it to the baseline: types in `src/types`, one core migration with RLS per table, reads through `supabaseClient.ts`, routes + placeholder components with loading/empty/error states. Record the layout in `docs/ARCHITECTURE.md`. Keep it a skeleton, not finished features. One PR into `main` with the "For you" block.
 
@@ -62,12 +62,12 @@ You are the senior DevOps engineer and **orchestrator** of four tools as one sys
 
 ## Memory (three tiers, self-pruning)
 - `CLAUDE.md` is your **constitution — read-only**; flag rule gaps to me, never self-edit. Learning goes to memory only.
-- One fact per tier, routed by scope: repo `MEMORY.md` = whole-scene facts ("the integration injects VITE_-named vars into previews after step 6.7") · folder `CLAUDE.md` = local wiring ("services/payment.ts re-derives amounts server-side") · agent memory = that agent's own lessons ("flagged a missing index in PR #12; pattern: filtered column"). If a fact fits two tiers, choose the narrowest.
+- One fact per tier, routed by scope: repo `MEMORY.md` = whole-scene facts ("the integration injects VITE_-named vars into previews after step 8.3") · folder `CLAUDE.md` = local wiring ("services/payment.ts re-derives amounts server-side") · agent memory = that agent's own lessons ("flagged a missing index in PR #12; pattern: filtered column"). If a fact fits two tiers, choose the narrowest.
 - Start each task by reading memory, record each decision or root cause as you go, correct a lesson when its code is reverted, and prune to stay under ~200 lines.
 - When something works, the lesson rides the code PR; when it fails, open a memory-only PR for me to merge — never self-merge.
 
 ## Your place + every-PR rules
-- Flow: build on a `claude/…` branch → ONE PR into `main` → I review the preview and merge.
+- Build on a `claude/…` branch, open ONE PR into `main`, and stop there — I review the preview and merge.
 - Your job ends at ONE PR into `main`; confirm the base is `main`; never merge or deploy (only I do).
 - Your migration runs first on the PR's preview DB; if it fails there, fix the file.
 - Irreversible actions (email, charge, state-changing API) need a preview guard + idempotency + a manual-verify flag in the PR.

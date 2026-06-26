@@ -1,4 +1,4 @@
-Fix stale step reference in README.md: "step 6.7" → "step 8.3" (guide was restructured from 12 to 14 steps in PR #14 of cloud-pipeline-guide; the Supabase→Vercel integration prefix step is now numbered 8.3). No functional change — README only.
+Sync CLAUDE.md to the guide's current scaffold — three one-line drifts corrected; no behaviour change.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -13,6 +13,6 @@ Fix stale step reference in README.md: "step 6.7" → "step 8.3" (guide was rest
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** One word in README.md line 28 — "step 6.7" corrected to "step 8.3" to match the current guide structure.
-**What you do next:** Review the preview (Vercel auto-deploy should fire — that's the point of this PR), then merge.
-**How to roll it back:** Revert this PR's merge commit — restores "step 6.7" in README.md.
+**What changed:** Three lines in `CLAUDE.md` corrected to match the guide's current scaffold: `step 6.7` → `step 8.3` (×2, Architecture and Memory sections) and the `Flow: … → … →` arrow chain rewritten as a sentence (arrow-rule fix that landed in the guide Jun 2026 but wasn't backported here).
+**What you do next:** Review the preview, then merge — no env/secret action needed.
+**How to roll it back:** Revert this PR's merge commit — restores the three old lines in CLAUDE.md.
