@@ -1,12 +1,13 @@
-# security-reviewer verdict — 2026-06-26
+# Security Review — econ-question-answer-key fix
 
-PR: sync edu repo to guide's single VITE_ prefix (remove NEXT_PUBLIC_ fallback)
+**PR:** Fix UI/Validation mismatch — two-part calc prompt guard
+**Date:** 2026-06-26
+**Verdict: PASS**
 
-## PASS
+## Findings
 
-Initial pass flagged stale files: `src/vite-env.d.ts` still declared NEXT_PUBLIC_ types; `api/health.ts` still read NEXT_PUBLIC_ fallbacks; README and MEMORY still documented the old pattern. All resolved before commit.
-
-- Only publishable keys (VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_ANON_KEY) in client code — no secret key exposure. ✓
-- No new RLS gaps; no schema changes. ✓
-- `api/health.ts` reads VITE_-only env vars, no secret involved. ✓
-- `src/vite-env.d.ts` removed NEXT_PUBLIC_ declarations, added VITE_SUPABASE_ANON_KEY. ✓
+- Regex patterns are hardcoded; user input is never interpolated into regex construction. No injection risk.
+- `/\?/g` is a simple literal scan; `/,?\s+and\s+(how\s+(?:much|many)|what)\b/i` has all `\s+` bounded by surrounding literals with binary non-nested alternation. No ReDoS risk.
+- `return null` is the standard rejection path used throughout `validateCalcSpec()` — idempotent and safe.
+- LLM prompt rule addition is hardcoded text; no user input interpolated.
+- No RLS changes, no secrets in client code, no new data-access paths.

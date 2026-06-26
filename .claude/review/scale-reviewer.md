@@ -1,9 +1,12 @@
-# scale-reviewer verdict — 2026-06-26
+# Scale Review — econ-question-answer-key fix
 
-PR: sync edu repo to guide's single VITE_ prefix (remove NEXT_PUBLIC_ fallback)
+**PR:** Fix UI/Validation mismatch — two-part calc prompt guard
+**Date:** 2026-06-26
+**Verdict: PASS**
 
-## PASS
+## Findings
 
-No scale violations: no schema changes, no queries modified, no new unbounded reads, no N+1 patterns introduced. Pure env-var contract update.
-
-Configuration completeness confirmed: all files in the env-var dependency chain updated in one PR — `vite.config.ts`, `src/lib/supabaseClient.ts`, `src/vite-env.d.ts`, `api/health.ts`, `src/CLAUDE.md`, `CLAUDE.md`, `README.md`, `docs/RUNBOOK.md`, `MEMORY.md`. Connected-line principle satisfied. ✓
+- Regex runs once per question during course generation validation and once per re-grade in `complete-lesson`. `prompt_template` is bounded to 500 chars — negligible cost.
+- No new DB queries, no N+1 patterns, no index changes needed.
+- No new tables or schema changes.
+- `generateInstance()` and `gradeCalc()` receive only validated `CalcSpec` objects; no downstream perf impact.

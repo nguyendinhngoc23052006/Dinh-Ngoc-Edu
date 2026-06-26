@@ -858,6 +858,15 @@ export function validateCalcSpec(raw: unknown): CalcSpec | null {
       : ''
   if (!formula || !promptTemplate) return null
 
+  // A prompt asking for two separate values (e.g. "how much … and how much …")
+  // cannot be graded by a single formula — the second value is silently dropped.
+  // Reject here so the generator is forced to split it into two questions.
+  if (
+    (promptTemplate.match(/\?/g) ?? []).length > 1 ||
+    /,?\s+and\s+(how\s+(?:much|many)|what)\b/i.test(promptTemplate)
+  )
+    return null
+
   const variables: CalcVariable[] = []
   const rawVariables = Array.isArray(record.variables) ? record.variables : []
   for (const rawVariable of rawVariables.slice(0, 8)) {

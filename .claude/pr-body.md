@@ -1,4 +1,4 @@
-Sync CLAUDE.md to the guide's current scaffold — three one-line drifts corrected; no behaviour change.
+Prevent `calc` questions from silently grading only one of two requested values when the LLM generates a conjunctive "how much … and how much …" prompt template. Defense is two-layer: a generation-time rule in the LLM prompt, and a runtime guard in `validateCalcSpec()` that rejects the spec before it ever reaches the DB.
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -13,6 +13,6 @@ Sync CLAUDE.md to the guide's current scaffold — three one-line drifts correct
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Three lines in `CLAUDE.md` corrected to match the guide's current scaffold: `step 6.7` → `step 8.3` (×2, Architecture and Memory sections) and the `Flow: … → … →` arrow chain rewritten as a sentence (arrow-rule fix that landed in the guide Jun 2026 but wasn't backported here).
-**What you do next:** Review the preview, then merge — no env/secret action needed.
-**How to roll it back:** Revert this PR's merge commit — restores the three old lines in CLAUDE.md.
+**What changed:** `validateCalcSpec()` now rejects any `prompt_template` that contains more than one `?` or matches the pattern `, and (how much|how many|what)` — either indicates a two-part question whose second answer would be silently dropped. `buildCalcQuestionsPrompt()` adds an explicit rule forbidding two-part templates in the LLM instruction. A regression test covers both rejection patterns and the positive single-value case (390 tests, all green).
+**What you do next:** Review the preview, then merge — no env/secret action needed. Any existing two-part questions already in the DB are unaffected (they will continue to grade only one value); regenerating those course nodes will produce correctly split single-value questions.
+**How to roll it back:** Revert this PR's merge commit — removes both the runtime guard and the generation rule.
