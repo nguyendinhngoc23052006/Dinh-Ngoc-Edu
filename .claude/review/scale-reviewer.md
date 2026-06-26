@@ -1,10 +1,9 @@
-# scale-reviewer verdict — 2026-06-22
+# scale-reviewer verdict — 2026-06-26
 
-PR: add `.github/workflows/dependabot-auto-merge.yml`
+PR: sync edu repo to guide's single VITE_ prefix (remove NEXT_PUBLIC_ fallback)
 
 ## PASS
 
-- Workflow fires only on `pull_request_target` from `dependabot[bot]` for patch-level updates — bounded, low-frequency trigger.
-- `gh pr merge --auto` is idempotent: safe to re-run if the workflow triggers again on the same PR.
-- No database queries, no indexes, no N+1 concerns — CI infrastructure only.
-- No new npm dependencies introduced.
+No scale violations: no schema changes, no queries modified, no new unbounded reads, no N+1 patterns introduced. Pure env-var contract update.
+
+Configuration completeness confirmed: all files in the env-var dependency chain updated in one PR — `vite.config.ts`, `src/lib/supabaseClient.ts`, `src/vite-env.d.ts`, `api/health.ts`, `src/CLAUDE.md`, `CLAUDE.md`, `README.md`, `docs/RUNBOOK.md`, `MEMORY.md`. Connected-line principle satisfied. ✓

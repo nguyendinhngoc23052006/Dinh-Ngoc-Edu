@@ -23,14 +23,9 @@ cp .env.example .env.local   # then fill in your Supabase project values
 npm run dev                  # Vite dev server
 ```
 
-The client reads Supabase config through a two-prefix fallback so the same
-build runs against a hand-set production project and the preview project the
-Supabase→Vercel integration injects:
-
-- `VITE_SUPABASE_URL` ?? `NEXT_PUBLIC_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` ?? `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ??
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
+The client reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY ?? VITE_SUPABASE_ANON_KEY`.
+Both production (set by hand) and previews (injected by the Supabase→Vercel integration
+after step 6.7 sets the prefix to `VITE_`) use the same names — no cross-prefix fallback needed.
 The browser only ever gets the **publishable** key — never a secret. See
 [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the full variable + secret list.
 

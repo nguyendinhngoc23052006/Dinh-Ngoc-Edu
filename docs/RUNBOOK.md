@@ -24,21 +24,23 @@ with [`ARCHITECTURE.md`](ARCHITECTURE.md) for what the code does.
 
 ## Environment variables
 
-The browser client reads Supabase config through a two-prefix fallback
-(`src/lib/supabaseClient.ts`), so the same build works in both places:
+The browser client reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY ?? VITE_SUPABASE_ANON_KEY`
+(`src/lib/supabaseClient.ts`). Both production and previews use the same `VITE_` names — the
+Supabase→Vercel integration is configured (Supabase → Settings → Integrations → Vercel →
+Manage → Prefix = `VITE_`) to inject preview vars under the same prefix as the production values
+you set by hand:
 
 | Variable | Where it's set | Notes |
 | --- | --- | --- |
-| `VITE_SUPABASE_URL` | Vercel **Production** (set by hand) | Project URL |
+| `VITE_SUPABASE_URL` | Vercel **Production** (set by hand) + injected into **previews** by the integration | Project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Vercel **Production** (set by hand) | Publishable key only — never a secret |
-| `NEXT_PUBLIC_SUPABASE_URL` | Injected into **previews** by the Supabase→Vercel integration | Fallback for previews |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Injected into **previews** | Fallback for previews |
+| `VITE_SUPABASE_ANON_KEY` | Injected into **previews** by the Supabase→Vercel integration | Fallback when publishable key is absent |
 
 Setting production vars — click-path: **Vercel → the project → Settings →
 Environment Variables → add `VITE_SUPABASE_URL` and
 `VITE_SUPABASE_PUBLISHABLE_KEY` scoped to Production → redeploy.** Mirror any
-change in `.env.example` and in `vite.config.ts`'s `envPrefix` if the prefixes
-ever change (move all of it in one PR).
+change in `.env.example`, `src/vite-env.d.ts`, and `vite.config.ts`'s `envPrefix`
+(move all of it in one PR).
 
 ## Edge Function secrets (server-only)
 

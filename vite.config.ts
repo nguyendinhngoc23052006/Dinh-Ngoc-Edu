@@ -3,9 +3,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
-  // The Supabase→Vercel integration injects preview vars under fixed
-  // NEXT_PUBLIC_ names; Vite must expose them to the browser too.
-  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  envPrefix: ['VITE_'],
   test: {
     // The e2e/ folder is Playwright (its own runner); keep Vitest out of it —
     // its *.spec.ts files import @playwright/test, which Vitest can't run.
