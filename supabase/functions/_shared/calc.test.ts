@@ -497,5 +497,4 @@ describe('validateCalcSpec', () => {
       }),
     ).toBeNull()
   })
-
 })
