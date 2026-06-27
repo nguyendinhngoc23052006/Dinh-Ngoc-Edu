@@ -1,13 +1,15 @@
-# Security Review — econ-question-answer-key fix
+# Security Review — PR #74 (calc one-question-one-answer)
 
-**PR:** Fix UI/Validation mismatch — two-part calc prompt guard
-**Date:** 2026-06-26
+**Date:** 2026-06-27
 **Verdict: PASS**
 
-## Findings
+## Diff reviewed
+- Removed regex guard from `validateCalcSpec` (eliminates any ReDoS surface that existed there).
+- Added a hardcoded string rule to `buildCalcQuestionsPrompt`.
+- Removed tests that covered the now-deleted guard.
 
-- Regex patterns are hardcoded; user input is never interpolated into regex construction. No injection risk.
-- `/\?/g` is a simple literal scan; `/,?\s+and\s+(how\s+(?:much|many)|what)\b/i` has all `\s+` bounded by surrounding literals with binary non-nested alternation. No ReDoS risk.
-- `return null` is the standard rejection path used throughout `validateCalcSpec()` — idempotent and safe.
-- LLM prompt rule addition is hardcoded text; no user input interpolated.
-- No RLS changes, no secrets in client code, no new data-access paths.
+## Findings
+- No user input is interpolated into any regex or string.
+- Removing the validation-layer regex makes the surface smaller, not larger.
+- The `return null` rejection path in `validateCalcSpec` is unchanged for structural errors.
+- No new injection vectors, no secrets touched, no RLS impact.

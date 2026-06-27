@@ -498,39 +498,4 @@ describe('validateCalcSpec', () => {
     ).toBeNull()
   })
 
-  test('rejects a two-part prompt_template asking for two separate values', () => {
-    const base = {
-      variables: [
-        { name: 'a', min: 10, max: 30, decimals: 0 },
-        { name: 'b', min: 1, max: 5, decimals: 1 },
-      ],
-      steps: [{ name: 'q_max', formula: 'a / (2 * b)' }],
-      formula: 'a * q_max - b * q_max ^ 2',
-      decimals: 2,
-      tolerance: 0.5,
-    }
-    // Conjunctive "and how much" pattern
-    expect(
-      validateCalcSpec({
-        ...base,
-        prompt_template:
-          'How much will the factory produce to maximize its profit, and how much profit will it then have?',
-      }),
-    ).toBeNull()
-    // Two question marks
-    expect(
-      validateCalcSpec({
-        ...base,
-        prompt_template: 'What is q_max? What is the profit?',
-      }),
-    ).toBeNull()
-    // Single-value equivalent is accepted
-    expect(
-      validateCalcSpec({
-        ...base,
-        prompt_template:
-          'Calculate the total profit the factory earns when producing at its profit-maximising output level.',
-      }),
-    ).not.toBeNull()
-  })
 })

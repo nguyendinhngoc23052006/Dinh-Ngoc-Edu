@@ -1,4 +1,6 @@
-Prevent `calc` questions from silently grading only one of two requested values when the LLM generates a conjunctive "how much … and how much …" prompt template. Defense is two-layer: a generation-time rule in the LLM prompt, and a runtime guard in `validateCalcSpec()` that rejects the spec before it ever reaches the DB.
+Enforce a fundamental invariant in `calc` question generation: one question, one formula, one answer. The LLM occasionally generated a `prompt_template` asking for two numeric values (e.g. "how much will it produce, and how much profit…") while supplying only one `formula` — the second answer was silently dropped, causing wrong grading. Fix is a first-principle rule in the generation prompt rather than a fragile post-hoc pattern guard.
+
+No new lesson (the MEMORY.md entry for PR #74 was updated to reflect the simplified approach).
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -13,6 +15,6 @@ Prevent `calc` questions from silently grading only one of two requested values 
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** `validateCalcSpec()` now rejects any `prompt_template` that contains more than one `?` or matches the pattern `, and (how much|how many|what)` — either indicates a two-part question whose second answer would be silently dropped. `buildCalcQuestionsPrompt()` adds an explicit rule forbidding two-part templates in the LLM instruction. A regression test covers both rejection patterns and the positive single-value case (390 tests, all green).
-**What you do next:** Review the preview, then merge — no env/secret action needed. Any existing two-part questions already in the DB are unaffected (they will continue to grade only one value); regenerating those course nodes will produce correctly split single-value questions.
-**How to roll it back:** Revert this PR's merge commit — removes both the runtime guard and the generation rule.
+**What changed:** `buildCalcQuestionsPrompt` now carries the rule "One question, one answer — if a topic yields two values write two separate questions each with its own formula"; the structural `validateCalcSpec` is unchanged (it validates formula correctness, not prompt semantics). 389 tests, all green.
+**What you do next:** Review the preview, then merge — no env/secret action needed. Existing two-part questions already in the DB are unaffected; regenerating those course nodes produces correctly split single-value questions.
+**How to roll it back:** Revert this PR's merge commit — removes the generation rule and restores the old prompt.
