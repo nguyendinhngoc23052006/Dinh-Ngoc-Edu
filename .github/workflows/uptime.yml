@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Probe /health and file an issue if it is down
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
         with:
