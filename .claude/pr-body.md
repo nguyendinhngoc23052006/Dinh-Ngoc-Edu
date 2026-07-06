@@ -1,4 +1,6 @@
-Sync CLAUDE.md to the guide's current scaffold — three one-line drifts corrected; no behaviour change.
+Enforce a fundamental invariant in `calc` question generation: one question, one formula, one answer. The LLM occasionally generated a `prompt_template` asking for two numeric values (e.g. "how much will it produce, and how much profit…") while supplying only one `formula` — the second answer was silently dropped, causing wrong grading. Fix is a first-principle rule in the generation prompt rather than a fragile post-hoc pattern guard.
+
+No new lesson (the MEMORY.md entry for PR #74 was updated to reflect the simplified approach).
 
 ## Self-check
 - [x] base = main; exactly one PR
@@ -13,6 +15,6 @@ Sync CLAUDE.md to the guide's current scaffold — three one-line drifts correct
 - [x] every subagent dispatched on a model below the orchestrator's — never inherited
 
 ## For you
-**What changed:** Three lines in `CLAUDE.md` corrected to match the guide's current scaffold: `step 6.7` → `step 8.3` (×2, Architecture and Memory sections) and the `Flow: … → … →` arrow chain rewritten as a sentence (arrow-rule fix that landed in the guide Jun 2026 but wasn't backported here).
-**What you do next:** Review the preview, then merge — no env/secret action needed.
-**How to roll it back:** Revert this PR's merge commit — restores the three old lines in CLAUDE.md.
+**What changed:** `buildCalcQuestionsPrompt` now carries the rule "One question, one answer — if a topic yields two values write two separate questions each with its own formula"; the structural `validateCalcSpec` is unchanged (it validates formula correctness, not prompt semantics). 389 tests, all green.
+**What you do next:** Review the preview, then merge — no env/secret action needed. Existing two-part questions already in the DB are unaffected; regenerating those course nodes produces correctly split single-value questions.
+**How to roll it back:** Revert this PR's merge commit — removes the generation rule and restores the old prompt.

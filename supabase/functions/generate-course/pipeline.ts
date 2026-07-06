@@ -887,6 +887,7 @@ export function buildCalcQuestionsPrompt(
     'Rules:',
     `- Base every question on a formula or numerical relationship that is EXPLICITLY stated in the source above. Never invent a formula the source doesn't define.`,
     `- prompt_template uses {var} placeholders for every variable. Write it in ${outputLanguage}.`,
+    '- One question, one answer. Every calc question asks the student for exactly one numeric quantity and the formula computes exactly that quantity — nothing else. If a topic naturally yields two values (e.g. optimal output AND the resulting profit), write two separate questions each with its own formula. Never embed two sub-questions in a single prompt_template.',
     `- "prompt" is a short label (used internally, also in ${outputLanguage}).`,
     '- Set realistic min/max ranges so the answer stays in a sensible domain (no log of zero, no division by zero, no negative under sqrt).',
     '- Tolerance should be small but non-zero; decimals matches the precision the student should type.',

@@ -1,12 +1,15 @@
-# security-reviewer verdict — 2026-06-26
+# Security Review — PR #74 (calc one-question-one-answer)
 
-PR: sync edu repo to guide's single VITE_ prefix (remove NEXT_PUBLIC_ fallback)
+**Date:** 2026-06-27
+**Verdict: PASS**
 
-## PASS
+## Diff reviewed
+- Removed regex guard from `validateCalcSpec` (eliminates any ReDoS surface that existed there).
+- Added a hardcoded string rule to `buildCalcQuestionsPrompt`.
+- Removed tests that covered the now-deleted guard.
 
-Initial pass flagged stale files: `src/vite-env.d.ts` still declared NEXT_PUBLIC_ types; `api/health.ts` still read NEXT_PUBLIC_ fallbacks; README and MEMORY still documented the old pattern. All resolved before commit.
-
-- Only publishable keys (VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_ANON_KEY) in client code — no secret key exposure. ✓
-- No new RLS gaps; no schema changes. ✓
-- `api/health.ts` reads VITE_-only env vars, no secret involved. ✓
-- `src/vite-env.d.ts` removed NEXT_PUBLIC_ declarations, added VITE_SUPABASE_ANON_KEY. ✓
+## Findings
+- No user input is interpolated into any regex or string.
+- Removing the validation-layer regex makes the surface smaller, not larger.
+- The `return null` rejection path in `validateCalcSpec` is unchanged for structural errors.
+- No new injection vectors, no secrets touched, no RLS impact.
